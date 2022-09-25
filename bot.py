@@ -7,12 +7,11 @@ from datetime import datetime
 import os
 from pathlib import Path
 
+from utils import get_config
+
 intents = discord.Intents.all()
 
-async def command_prefix(bot, msg):
-    return 's!'
-
-bot = commands.Bot(intents=intents, command_prefix=command_prefix, case_insensitive=True)
+bot = commands.Bot(intents=intents, command_prefix=get_config()['Bot']['CommandPrefix'], case_insensitive=True)
 bot.remove_command('help')
 
 
@@ -139,8 +138,5 @@ async def on_ready():
     print("\nLaunched " + bot.user.name + " on " + str(datetime.now()))
     print("ID: " + str(bot.user.id))
 
-# Run the bot
-with open("token.txt", "r") as f:
-    token = f.read()
 
-bot.run(token)
+bot.run(get_config()['Bot']['Token'])
