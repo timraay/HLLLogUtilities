@@ -5,7 +5,7 @@ import re
 
 from typing import List
 
-from lib.rcon import HLLRconProtocol
+from lib.protocol import HLLRconProtocol
 from lib.credentials import Credentials
 from lib.exceptions import HLLConnectionError
 from lib.info_types import *

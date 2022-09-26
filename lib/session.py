@@ -16,12 +16,13 @@ SESSIONS: Dict[int, 'HLLCaptureSession'] = dict()
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS "sessions" (
-	"start_time"	VARCHAR(255) NOT NULL,
-	"end_time"	VARCHAR(255) NOT NULL,
+	"start_time"	VARCHAR(30) NOT NULL,
+	"end_time"	VARCHAR(30) NOT NULL,
 	"deleted"	BOOLEAN NOT NULL CHECK ("deleted" IN (0, 1)) DEFAULT 0,
 	"credentials_id"	INTEGER,
     FOREIGN KEY(credentials_id) REFERENCES credentials(ROWID)
 );""")
+database.commit()
 
 class HLLCaptureSession:
     def __init__(self, id: int, start_time: datetime, end_time: datetime, credentials: Credentials, loop: asyncio.AbstractEventLoop = None):

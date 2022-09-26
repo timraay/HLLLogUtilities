@@ -129,6 +129,8 @@ bot.setup_hook = load_all_cogs
 
 @bot.event
 async def on_ready():
+    for cmd in bot.tree.walk_commands():
+        cmd.default_permissions = discord.Permissions()
     try:
         await asyncio.wait_for(bot.tree.sync(), timeout=5)
         print('Synced app commands')

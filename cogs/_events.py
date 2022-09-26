@@ -4,26 +4,7 @@ from discord.ext import commands, tasks
 import random
 from datetime import datetime, timedelta
 
-from discord_utils import get_error_embed
-
-def convert_time(seconds):
-    sec = timedelta(seconds=seconds)
-    d = datetime(1,1,1) + sec
-
-    output = ("%dh%dm%ds" % (d.hour, d.minute, d.second))
-    if output.startswith("0h"):
-        output = output.replace("0h", "")
-    if output.startswith("0m"):
-        output = output.replace("0m", "")
-
-    return output
-
-
-class CustomException(Exception):
-    """Raised to log a custom exception"""
-    def __init__(self, error, *args):
-        self.error = error
-        super().__init__(*args)
+from discord_utils import handle_error
 
 class _events(commands.Cog):
     """A class with most events in it"""
@@ -33,45 +14,8 @@ class _events(commands.Cog):
         self.update_status.start()
 
         @bot.tree.error
-        async def on_interaction_error(interaction: Interaction, error):
-            exc = error.original if isinstance(error, app_commands.CommandInvokeError) else error
-
-            if isinstance(error, app_commands.CommandInvokeError):
-                error = error.original
-
-            if isinstance(error, app_commands.CommandNotFound):
-                embed = get_error_embed(title='Unknown command!')
-
-            elif type(error).__name__ == CustomException.__name__:
-                embed = get_error_embed(title=error.error, description=str(error))
-            
-            elif isinstance(error, app_commands.CommandOnCooldown):
-                embed = get_error_embed(title="That command is still on cooldown!", description="Cooldown expires in " + convert_time(int(error.retry_after)) + ".")
-            elif isinstance(error, app_commands.MissingPermissions):
-                embed = get_error_embed(title="Missing required permissions to use that command!", description=str(error))
-            elif isinstance(error, app_commands.BotMissingPermissions):
-                embed = get_error_embed(title="I am missing required permissions to use that command!", description=str(error))
-            elif isinstance(error, app_commands.CheckFailure):
-                embed = get_error_embed(title="Couldn't run that command!", description=None)
-            # elif isinstance(error, app_commands.MissingRequiredArgument):
-            #     embed = get_error_embed(title="Missing required argument(s)!")
-            #     embed.description = str(error)
-            # elif isinstance(error, app_commands.MaxConcurrencyReached):
-            #     embed = get_error_embed(title="You can't do that right now!")
-            #     embed.description = str(error)
-            elif isinstance(error, commands.BadArgument):
-                embed = get_error_embed(title="Invalid argument!", description=str(error))
-            else:
-                embed = get_error_embed(title="An unexpected error occured!", description=str(error))
-
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-
-            if not isinstance(error, app_commands.CommandOnCooldown):
-                try:
-                    print("\nError in " + interaction.guild.name + " #" + interaction.channel.name + ":\n" + str(error))
-                except:
-                    print("\nFailed to log error")
-            raise error
+        async def on_interaction_error(interaction: Interaction, error: Exception):
+            await handle_error(interaction, error)
 
     @tasks.loop(minutes=15.0)
     async def update_status(self):
