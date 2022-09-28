@@ -1,21 +1,31 @@
 import discord
-from discord.ext import commands, tasks
 from discord import app_commands, ui, Interaction
+from discord.ext import commands, tasks
+from discord.utils import escape_markdown as esc_md
 from datetime import datetime, timedelta, timezone
 from dateutil.parser import parse as dt_parse
+from enum import Enum
 
-from lib.session import SESSIONS, HLLCaptureSession
+from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions
 from lib.credentials import Credentials, credentials_in_guild_tll
 from lib.storage import cursor
 from cogs.credentials import RCONCredentialsModal, SECURITY_URL
-from discord_utils import CallableButton, CustomException, only_once, View
+from discord_utils import CallableButton, CustomException, get_success_embed, only_once, View
 from utils import get_config
 
 MAX_SESSION_DURATION = timedelta(minutes=get_config().getint('Session', 'MaxDurationInMinutes'))
 
+class SessionFilters(Enum):
+    all = "all"
+    scheduled = "scheduled"
+    ongoing = "ongoing"
+    finished = "finished"
+
 class sessions(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+
+    SessionGroup = app_commands.Group(name="session", description="Manage log records")
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -36,12 +46,23 @@ class sessions(commands.Cog):
             for credentials in await credentials_in_guild_tll(interaction.guild_id) if current.lower() in str(credentials).lower()]
         choices.append(app_commands.Choice(name="Custom", value=0))
         return choices
+    
+    async def autocomplete_sessions(self, interaction: Interaction, current: str):
+        choices = [app_commands.Choice(name=str(session), value=session.id)
+            for session in get_sessions(interaction.guild_id)
+            if current.lower() in str(session).lower()]
+        return choices
+    async def autocomplete_active_sessions(self, interaction: Interaction, current: str):
+        choices = [app_commands.Choice(name=str(session), value=session.id)
+            for session in get_sessions(interaction.guild_id)
+            if session.active_in() and current.lower() in str(session).lower()]
+        return choices
 
-    @app_commands.command(name="record", description="Start recording server logs at specified time")
+    @SessionGroup.command(name="new", description="Start recording server logs at specified time")
     @app_commands.autocomplete(
         server=autocomplete_credentials
     )
-    async def create_new_session(self, interaction: Interaction, start_time: str, end_time: str, server: int):
+    async def create_new_session(self, interaction: Interaction, name: str, start_time: str, end_time: str, server: int):
         try:
             if start_time.lower() == 'now':
                 start_time = datetime.now(tz=timezone.utc)
@@ -139,6 +160,7 @@ class sessions(commands.Cog):
             embed = discord.Embed(
                 title="Log capture session scheduled!",
                 description="\n".join([
+                    f"**{esc_md(name)}**",
                     f"🕓 <t:{int(start_time.timestamp())}:f> - <t:{int(end_time.timestamp())}:t>",
                     f"🚩 Server: `{credentials.name}`"
                 ]),
@@ -148,11 +170,110 @@ class sessions(commands.Cog):
                 text=str(interaction.user),
                 icon_url=interaction.user.avatar.url
             )
+
+            HLLCaptureSession.create_in_db(
+                guild_id=interaction.guild_id,
+                name=name,
+                start_time=start_time,
+                end_time=end_time,
+                credentials=credentials
+            )
+
             await _interaction.response.send_message(embed=embed)
 
         view = View(timeout=300)
         view.add_item(CallableButton(on_confirm, label="Confirm", style=discord.ButtonStyle.green))
         
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @SessionGroup.command(name="list", description="View all available sessions")
+    async def list_all_sessions(self, interaction: Interaction, filter: SessionFilters = SessionFilters.all):
+        all_sessions = get_sessions(interaction.guild_id)
+        count = 0
+        description = ""
+
+        if filter == SessionFilters.all or filter == SessionFilters.scheduled:
+            sessions = [session for session in all_sessions if isinstance(session.active_in(), timedelta)]
+            count += len(sessions)
+            if sessions:
+                description += "\n\n📅 **Scheduled records**"
+                for session in sessions:
+                    description += f"\n> • {esc_md(session.name)} (Starts <t:{int(session.start_time.timestamp())}:R>)\n> ⤷ <t:{int(session.start_time.timestamp())}:f> > <t:{int(session.end_time.timestamp())}:t> ({int(session.duration.total_seconds() // 60)} min.)"
+
+        if filter == SessionFilters.all or filter == SessionFilters.ongoing:
+            sessions = [session for session in all_sessions if session.active_in() is True]
+            count += len(sessions)
+            if sessions:
+                description += "\n\n🎦 **Currently recording**"
+                for session in sessions:
+                    description += f"\n> • {esc_md(session.name)} (Ends <t:{int(session.end_time.timestamp())}:R>)\n> ⤷ <t:{int(session.start_time.timestamp())}:f> > <t:{int(session.end_time.timestamp())}:t> ({int(session.duration.total_seconds() // 60)} min.)"
+
+        if filter == SessionFilters.all or filter == SessionFilters.finished:
+            sessions = [session for session in all_sessions if session.active_in() is False]
+            count += len(sessions)
+            if sessions:
+                description += "\n\n✅ **Finished records**"
+                for session in sessions:
+                    description += f"\n> • {esc_md(session.name)} (<t:{int(session.end_time.timestamp())}:R>) **[🗑️ <t:{int((session.end_time + DELETE_SESSION_AFTER).timestamp())}:R>]**\n> ⤷ <t:{int(session.start_time.timestamp())}:f> > <t:{int(session.end_time.timestamp())}:t> ({int(session.duration.total_seconds() // 60)} min.)"
+
+        embed = discord.Embed(
+            title=f"There are {count} {'total' if filter == SessionFilters.all else filter.value} sessions",
+            description=description or "Sessions can be created with the `/session new` command."
+        )
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    @SessionGroup.command(name="stop", description="Stop a session pre-emptively")
+    @app_commands.autocomplete(
+        session=autocomplete_active_sessions
+    )
+    async def stop_active_session(self, interaction: Interaction, session: int):
+        session: HLLCaptureSession = SESSIONS[session]
+        if not session.active_in():
+            raise CustomException(
+                "Invalid session!",
+                "Session has already ended and no longer needs to be stopped."
+            )
+        
+        @only_once
+        async def on_confirm(_interaction: Interaction):
+            await session.stop()
+            await _interaction.response.send_message(embed=get_success_embed(
+                f"Stopped \"{session.name}\"!"
+            ), ephemeral=True)
+
+        embed = discord.Embed(
+            title="Are you sure you want to stop this session?",
+            description="This will end the session, which cannot be reverted. Logs up until this point will still be available for download."
+        )
+
+        view = View()
+        view.add_item(CallableButton(on_confirm, label="Confirm", style=discord.ButtonStyle.gray))
+
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+    
+    @SessionGroup.command(name="delete", description="Delete a session and its records")
+    @app_commands.autocomplete(
+        session=autocomplete_sessions
+    )
+    async def delete_session(self, interaction: Interaction, session: int):
+        session: HLLCaptureSession = SESSIONS[session]
+
+        @only_once
+        async def on_confirm(_interaction: Interaction):
+            session.delete()
+            await _interaction.response.send_message(embed=get_success_embed(
+                f"Deleted \"{session.name}\"!"
+            ), ephemeral=True)
+        
+        embed = discord.Embed(
+            title="Are you sure you want to delete this session?",
+            description="This will also remove all the associated records. This cannot be reverted."
+        )
+
+        view = View()
+        view.add_item(CallableButton(on_confirm, label="Confirm", style=discord.ButtonStyle.gray))
+
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 

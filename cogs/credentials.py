@@ -52,12 +52,24 @@ class RCONCredentialsModal(ui.Modal):
                 "Password must not contain spaces."
             )
 
+        async def finish_callback(_interaction):
+            await self._callback(
+                _interaction,
+                name=self.name.value,
+                address=address,
+                port=port,
+                password=password
+            )
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
         try:
             transport = await create_plain_transport(
                 host=address,
                 port=port,
                 password=password
-            ).close()
+            )
+            transport._transport.close()
         except HLLConnectionError as error:
             if isinstance(error, HLLAuthError):
                 embed = get_error_embed(
@@ -72,24 +84,15 @@ class RCONCredentialsModal(ui.Modal):
             else:
                 embed = get_error_embed(
                     title=str(error),
-                    description="Failed to connect to your server, because the address could not be resolved. Possible solutions are as follows:\n\n• Verify that the address is correct\n• Make sure the server is online\n\nIf you still wish to continue, press the below button. Otherwise you may dismiss this message."
+                    description="Failed to connect to your server, because the address could not be resolved. Possible solutions are as follows:\n\n• Verify that the address and port are correct\n• Make sure the server is online\n\nIf you still wish to continue, press the below button. Otherwise you may dismiss this message."
                 )
 
             view = View()
-            view.add_item(CallableButton(finish_callback), label="Ignore & Continue", style=discord.ButtonStyle.gray)
+            view.add_item(CallableButton(finish_callback, label="Ignore & Continue", style=discord.ButtonStyle.gray))
             
-            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            await interaction.followup.send(embed=embed, view=view)
         else:
             await finish_callback(interaction)
-
-        async def finish_callback(_interaction):
-            await self._callback(
-                _interaction,
-                name=self.name.value,
-                address=address,
-                port=port,
-                password=password
-            )
     
     async def on_error(self, interaction: Interaction, error: Exception):
         await handle_error(interaction, error)
@@ -110,7 +113,7 @@ class credentials(commands.Cog):
         embed = discord.Embed(
             title="Credentials",
             description="\n".join([
-                f"**{esc_md(credentials.name)}**\n_  _{credentials.address}:{credentials.port}"
+                f"> • **{esc_md(credentials.name)}**\n> ⤷ {credentials.address}:{credentials.port}"
                 for credentials in all_credentials
             ]) if credentials else "No credentials are known yet."
         )
@@ -124,20 +127,12 @@ class credentials(commands.Cog):
         credentials = Credentials.load_from_db(credentials)
         credentials.delete()
         await interaction.response.send_message(embed=get_success_embed(
-            title=f"Removed `{credentials.name}`!",
-            description=f"{credentials.address}:{credentials.port}"
+            title=f"Removed \"{credentials.name}\"!",
+            description=f"⤷ {credentials.address}:{credentials.port}"
         ), ephemeral=True)
     
     @Group.command(name="add", description="Add credentials")
     async def add_credentials(self, interaction: Interaction):
-        embed = discord.Embed(
-            title="Before you proceed...",
-            description=f"Sharing passwords over the internet is a dangerous thing, and you should only do so with sources you trust. For that reason, I feel it is necessary to provide full clarity in what we use your information for and how we handle it. [Click here]({SECURITY_URL}) for more information.\n\nPressing the below button will open a form where you can enter the needed information."
-        )
-        view = View(timeout=600)
-        view.add_item(CallableButton(on_form_request, label="Open form", emoji="📝", style=discord.ButtonStyle.gray))
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-        
         async def on_form_request(_interaction: Interaction):
             modal = RCONCredentialsModal(on_form_submit, title="RCON Credentials Form")
             await _interaction.response.send_modal(modal)
@@ -146,19 +141,24 @@ class credentials(commands.Cog):
             credentials = Credentials.create_in_db(_interaction.guild_id, name=name, address=address, port=port, password=password)
 
             await _interaction.response.send_message(embed=get_success_embed(
-                title=f"Added `{credentials.name}`!",
-                description=f"{credentials.address}:{credentials.port}"
+                title=f"Added \"{credentials.name}\"!",
+                description=f"⤷ {credentials.address}:{credentials.port}"
             ), ephemeral=True)
     
+        embed = discord.Embed(
+            title="Before you proceed...",
+            description=f"Sharing passwords over the internet is a dangerous thing, and you should only do so with sources you trust. For that reason, I feel it is necessary to provide full clarity in what we use your information for and how we handle it. [Click here]({SECURITY_URL}) for more information.\n\nPressing the below button will open a form where you can enter the needed information."
+        )
+        view = View(timeout=600)
+        view.add_item(CallableButton(on_form_request, label="Open form", emoji="📝", style=discord.ButtonStyle.gray))
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        
     @Group.command(name="edit", description="Edit existing credentials")
     @app_commands.autocomplete(
         credentials=autocomplete_credentials
     )
-    async def add_credentials(self, interaction: Interaction, credentials: int):
+    async def edit_credentials(self, interaction: Interaction, credentials: int):
         credentials = Credentials.load_from_db(credentials)
-
-        modal = RCONCredentialsModal(on_form_submit, title="RCON Credentials Form", defaults=credentials)
-        await interaction.response.send_modal(modal)
 
         async def on_form_submit(_interaction: Interaction, name: str, address: str, port: int, password: str):
             credentials.name = name
@@ -168,9 +168,12 @@ class credentials(commands.Cog):
             credentials.save()
 
             await _interaction.response.send_message(embed=get_success_embed(
-                title=f"Edited `{credentials.name}`!",
-                description=f"{credentials.address}:{credentials.port}"
+                title=f"Edited \"{credentials.name}\"!",
+                description=f"⤷ {credentials.address}:{credentials.port}"
             ), ephemeral=True)
+
+        modal = RCONCredentialsModal(on_form_submit, title="RCON Credentials Form", defaults=credentials)
+        await interaction.response.send_modal(modal)
 
 async def setup(bot):
     await bot.add_cog(credentials(bot))

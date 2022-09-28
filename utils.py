@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import asyncio
 
 def to_timedelta(value):
@@ -103,13 +103,13 @@ async def schedule_coro(dt: datetime, coro): # How do you annotate coroutines???
     async def scheduled_coro():
         time_to_sleep = _SCHEDULER_TIME_BETWEEN_INTERVAL.total_seconds()
 
-        time_left = dt - datetime.utcnow()
+        time_left = dt - datetime.now(tz=timezone.utc)
         if time_left < timedelta(0):
             return await coro
 
         while time_left > _SCHEDULER_TIME_BETWEEN_INTERVAL:
             await asyncio.sleep(time_to_sleep)
-            time_left = dt - datetime.utcnow()
+            time_left = dt - datetime.now(tz=timezone.utc)
 
         await time_left.total_seconds()
         return await coro

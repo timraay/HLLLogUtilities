@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from discord.ext import tasks
 from pypika import Query, Table, Column
 from typing import Union, Dict
@@ -16,6 +16,8 @@ SESSIONS: Dict[int, 'HLLCaptureSession'] = dict()
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS "sessions" (
+	"guild_id"	INTEGER NOT NULL,
+	"name"	VARCHAR(40) NOT NULL,
 	"start_time"	VARCHAR(30) NOT NULL,
 	"end_time"	VARCHAR(30) NOT NULL,
 	"deleted"	BOOLEAN NOT NULL CHECK ("deleted" IN (0, 1)) DEFAULT 0,
@@ -24,9 +26,14 @@ CREATE TABLE IF NOT EXISTS "sessions" (
 );""")
 database.commit()
 
+def get_sessions(guild_id: int):
+    return sorted([sess for sess in SESSIONS.values() if sess.credentials.guild_id == guild_id], key=lambda sess: sess.start_time)
+
 class HLLCaptureSession:
-    def __init__(self, id: int, start_time: datetime, end_time: datetime, credentials: Credentials, loop: asyncio.AbstractEventLoop = None):
+    def __init__(self, id: int, guild_id: int, name: str, start_time: datetime, end_time: datetime, credentials: Credentials, loop: asyncio.AbstractEventLoop = None):
         self.id = id
+        self.guild_id = guild_id
+        self.name = name
         self.start_time = start_time
         self.end_time = end_time
         self.credentials = credentials
@@ -39,24 +46,27 @@ class HLLCaptureSession:
         self.rcon = None
         
         if self.active_in():
-            self.loop.create_task(schedule_coro(self.start_time, self.activate))
-            self.loop.create_task(schedule_coro(self.end_time, self.deactivate))
+            self._start_task = self.loop.create_task(schedule_coro(self.start_time, self.activate))
+            self._stop_task = self.loop.create_task(schedule_coro(self.end_time, self.deactivate))
+        else:
+            self._start_task = None
+            self._stop_task = None
 
         SESSIONS[self.id] = self
         
     @classmethod
     def load_from_db(cls, id: int):
-        cursor.execute('SELECT ROWID, start_time, end_time, deleted, credentials_id FROM sessions WHERE ROWID = ?', (id,))
+        cursor.execute('SELECT ROWID, guild_id, name, start_time, end_time, deleted, credentials_id FROM sessions WHERE ROWID = ?', (id,))
         res = cursor.fetchone()
 
         if not res:
             raise NotFound(f"No session exists with ID {id}")
 
-        deleted = bool(res[3])
+        deleted = bool(res[5])
         if deleted:
             raise SessionDeletedError
 
-        credentials_id = res[4]
+        credentials_id = res[6]
         if credentials_id is None:
             credentials = None
         else:
@@ -64,17 +74,19 @@ class HLLCaptureSession:
 
         return cls(
             id=int(res[0]),
-            start_time=datetime.fromisoformat(res[1]),
-            end_time=datetime.fromisoformat(res[2]),
+            guild_id=int(res[1]),
+            name=str(res[2]),
+            start_time=datetime.fromisoformat(res[3]),
+            end_time=datetime.fromisoformat(res[4]),
             credentials=credentials
         )
     
     @classmethod
-    def create_in_db(cls, start_time: datetime, end_time: datetime, credentials: Credentials):
-        if datetime.utcnow() > end_time:
+    def create_in_db(cls, guild_id: int, name: str, start_time: datetime, end_time: datetime, credentials: Credentials):
+        if datetime.now(tz=timezone.utc) > end_time:
             raise ValueError('This capture session would have already ended')
 
-        cursor.execute('INSERT INTO sessions (start_time, end_time, credentials_id) VALUES (?,?,?)', (start_time, end_time, credentials.id))
+        cursor.execute('INSERT INTO sessions (guild_id, name, start_time, end_time, credentials_id) VALUES (?,?,?,?,?)', (guild_id, name, start_time, end_time, credentials.id))
         id_ = cursor.lastrowid
 
         # Create the table if needed
@@ -88,6 +100,8 @@ class HLLCaptureSession:
 
         return cls(
             id=id_,
+            guild_id=guild_id,
+            name=name,
             start_time=start_time,
             end_time=end_time,
             credentials=credentials,
@@ -96,6 +110,14 @@ class HLLCaptureSession:
     @property
     def duration(self):
         return self.end_time - self.start_time
+
+    def __str__(self):
+        return f"{self.name} ({self.credentials.name})" if self.credentials else f"{self.name} (⚠️)"
+
+    def save(self):
+        cursor.execute("""UPDATE sessions SET name = ?, start_time = ?, end_time = ?, credentials_id = ? WHERE ROWID = ?""",
+            (self.name, self.start_time, self.end_time, self.credentials.id if self.credentials else None, self.id))
+        database.commit()
 
     def active_in(self) -> Union[timedelta, bool]:
         """Returns how long until the session should start. Otherwise
@@ -107,14 +129,14 @@ class HLLCaptureSession:
             The time until the session should activate, otherwise
             whether it is currently active.
         """
-        now = datetime.utcnow()
+        now = datetime.now(tz=timezone.utc)
         if self.start_time > now:
             return now - self.start_time
         else:
             return self.end_time > now
     
     def should_delete(self):
-        return datetime.utcnow() > (self.end_time + DELETE_SESSION_AFTER)
+        return datetime.now(tz=timezone.utc) > (self.end_time + DELETE_SESSION_AFTER)
 
     async def activate(self):
         if not self.credentials:
@@ -124,6 +146,25 @@ class HLLCaptureSession:
         self.gatherer.start()
     async def deactivate(self):
         self.gatherer.stop()
+
+    async def stop(self):
+        active = self.active_in()
+
+        if active == False:
+            pass
+        elif active == True:
+            self.end_time = datetime.now(tz=timezone.utc)
+            self.save()
+        else:
+            self.start_time = self.end_time = datetime.now(tz=timezone.utc)
+            self.save()
+        
+        await self.deactivate()
+
+        if self._start_task and not self._start_task.done():
+            self._start_task.cancel()
+        if self._stop_task and not self._stop_task.done():
+            self._stop_task.cancel()
 
     @tasks.loop(seconds=5)
     async def gatherer(self):

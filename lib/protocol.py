@@ -12,7 +12,6 @@ class HLLRconProtocol(asyncio.Protocol):
         self._loop = loop
         self.timeout = timeout
         self.xorkey = None
-        self.logger = getLogger()
 
         self.has_key = loop.create_future()
 
@@ -22,7 +21,6 @@ class HLLRconProtocol(asyncio.Protocol):
 
     def data_received(self, data):
         if self.xorkey is None:
-            self.logger.debug('Received XOR-key: %s', data)
             self.xorkey = data
             self.has_key.set_result(True)
         else:
@@ -33,7 +31,6 @@ class HLLRconProtocol(asyncio.Protocol):
                 waiter.set_result(data)
 
     def connection_lost(self, exc):
-        self.logger.fatal('Connection lost: %s', exc)
         self._transport = None
         if exc:
             raise HLLConnectionLostError(exc)
@@ -67,7 +64,6 @@ class HLLRconProtocol(asyncio.Protocol):
         else:
             self._buffer = None
 
-        self.logger.debug('Writing: %s', message)
         xored = self._xor(message)
         self._transport.write(xored)
 
@@ -86,8 +82,6 @@ class HLLRconProtocol(asyncio.Protocol):
                     self._buffer = b""
 
                 waiter2 = self._waiters.pop(0)
-                if waiter != waiter2:
-                    self.logger.warning('Popped waiter does not match')
                 waiter.set_result(data)
                 res = self._xor(data, decode=decode)
             
@@ -98,7 +92,6 @@ class HLLRconProtocol(asyncio.Protocol):
             data = await waiter
             res = self._xor(data, decode=decode)
 
-        self.logger.debug('Response: %s', res[:200].replace('\n', '\\n')+'...' if len(res) > 200 else res.replace('\n', '\\n'))
         return res
 
     async def execute(self, command, unpack_array=False, can_fail=False, multipart=False):
@@ -123,7 +116,6 @@ class HLLRconProtocol(asyncio.Protocol):
         return res
 
     async def authenticate(self, password):
-        self.logger.debug('Waiting to login...')
         await self.has_key # Wait for XOR-key
         res = await self.execute(f'login {password}')
         if res != True:
