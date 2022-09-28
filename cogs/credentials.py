@@ -98,7 +98,7 @@ class credentials(commands.Cog):
     @Group.command(name="add", description="Add credentials")
     async def add_credentials(self, interaction: Interaction):
         embed = discord.Embed(
-            title="Before you proceed..."
+            title="Before you proceed...",
             description=f"Sharing passwords over the internet is a dangerous thing, and you should only do so with sources you trust. For that reason, I feel it is necessary to provide full clarity in what we use your information for and how we handle it. [Click here]({SECURITY_URL}) for more information.\n\nPressing the below button will open a form where you can enter the needed information."
         )
         view = View(timeout=600)
