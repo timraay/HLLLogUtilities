@@ -13,9 +13,6 @@ from utils import get_config
 
 MAX_SESSION_DURATION = timedelta(minutes=get_config().getint('Session', 'MaxDurationInMinutes'))
 
-MIN_ALLOWED_PORT = 1025
-MAX_ALLOWED_PORT = 65536
-
 class sessions(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -95,7 +92,7 @@ class sessions(commands.Cog):
         async def on_confirm(_interaction: Interaction):
             if not credentials:
                 embed = discord.Embed(
-                    description="**Important notice!**\nIn order to retrieve logs, RCON access to your server is needed! You shouldn't hand your credentials to any sources you don't trust however. See [what was done to make sharing your password with me as safe as possible :bust_in_silhouette:](SECURITY_URL).\n\nPressing the below button will open a form where you can enter the needed information."
+                    description=f"**Important notice!**\nIn order to retrieve logs, RCON access to your server is needed! You shouldn't hand your credentials to any sources you don't trust however. See [what was done to make sharing your password with me as safe as possible :bust_in_silhouette:]({SECURITY_URL}).\n\nPressing the below button will open a form where you can enter the needed information."
                 )
                 view = View(timeout=600)
                 view.add_item(CallableButton(on_form_request, label="Open form", emoji="📝", style=discord.ButtonStyle.gray))

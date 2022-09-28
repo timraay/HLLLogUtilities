@@ -6,8 +6,11 @@ from ipaddress import IPv4Address
 from typing import Optional
 
 from lib.credentials import Credentials, credentials_in_guild_tll
-from discord_utils import CallableButton, handle_error, CustomException, only_once, View
+from discord_utils import CallableButton, get_success_embed, handle_error, CustomException, only_once, View
 from utils import get_config
+
+MIN_ALLOWED_PORT = 1025
+MAX_ALLOWED_PORT = 65536
 
 SECURITY_URL = "https://github.com/timraay/HLLLogUtilities/blob/main/SECURITY.md"
 
@@ -16,7 +19,10 @@ class RCONCredentialsModal(ui.Modal):
     address = ui.TextInput(label="RCON Address - To connect to RCON", placeholder="XXX.XXX.XXX.XXX:XXXXX", required=True, min_length=12, max_length=21)
     password = ui.TextInput(label="RCON Password - For authentication", required=True, max_length=40)
 
-    def __init__(self, callback, *, title: str = ..., timeout: Optional[float] = None, **kwargs) -> None:
+    def __init__(self, callback, *, title: str = ..., defaults: 'Credentials' = None, timeout: Optional[float] = None, **kwargs) -> None:
+        if defaults:
+            self.name.default = defaults.name
+            self.address.default = f"{defaults.address}:{defaults.port}"
         super().__init__(title=title, timeout=timeout, **kwargs)
         self._callback = callback
 
@@ -65,7 +71,7 @@ class credentials(commands.Cog):
         return [app_commands.Choice(name=str(credentials), value=credentials.id)
             for credentials in await credentials_in_guild_tll(interaction.guild_id) if current.lower() in str(credentials).lower()]
 
-    @app_commands.command(name="list", description="Get a list of all known credentials")
+    @Group.command(name="list", description="Get a list of all known credentials")
     async def list_credentials(self, interaction: Interaction):
         all_credentials = Credentials.in_guild(interaction.guild_id)
         embed = discord.Embed(
@@ -77,6 +83,61 @@ class credentials(commands.Cog):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+    @Group.command(name="remove", description="Remove credentials")
+    @app_commands.autocomplete(
+        credentials=autocomplete_credentials
+    )
+    async def remove_credentials(self, interaction: Interaction, credentials: int):
+        credentials = Credentials.load_from_db(credentials)
+        credentials.delete()
+        await interaction.response.send_message(embed=get_success_embed(
+            title=f"Removed `{credentials.name}`!",
+            description=f"{credentials.address}:{credentials.port}"
+        ), ephemeral=True)
+    
+    @Group.command(name="add", description="Add credentials")
+    async def add_credentials(self, interaction: Interaction):
+        embed = discord.Embed(
+            title="Before you proceed..."
+            description=f"Sharing passwords over the internet is a dangerous thing, and you should only do so with sources you trust. For that reason, I feel it is necessary to provide full clarity in what we use your information for and how we handle it. [Click here]({SECURITY_URL}) for more information.\n\nPressing the below button will open a form where you can enter the needed information."
+        )
+        view = View(timeout=600)
+        view.add_item(CallableButton(on_form_request, label="Open form", emoji="📝", style=discord.ButtonStyle.gray))
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        
+        async def on_form_request(_interaction: Interaction):
+            modal = RCONCredentialsModal(on_form_submit, title="RCON Credentials Form")
+            await _interaction.response.send_modal(modal)
+
+        async def on_form_submit(_interaction: Interaction, name: str, address: str, port: int, password: str):
+            credentials = Credentials.create_in_db(_interaction.guild_id, name=name, address=address, port=port, password=password)
+
+            await _interaction.response.send_message(embed=get_success_embed(
+                title=f"Added `{credentials.name}`!",
+                description=f"{credentials.address}:{credentials.port}"
+            ), ephemeral=True)
+    
+    @Group.command(name="edit", description="Edit existing credentials")
+    @app_commands.autocomplete(
+        credentials=autocomplete_credentials
+    )
+    async def add_credentials(self, interaction: Interaction, credentials: int):
+        credentials = Credentials.load_from_db(credentials)
+
+        modal = RCONCredentialsModal(on_form_submit, title="RCON Credentials Form", defaults=credentials)
+        await interaction.response.send_modal(modal)
+
+        async def on_form_submit(_interaction: Interaction, name: str, address: str, port: int, password: str):
+            credentials.name = name
+            credentials.address = address
+            credentials.port = port
+            credentials.password = password
+            credentials.save()
+
+            await _interaction.response.send_message(embed=get_success_embed(
+                title=f"Edited `{credentials.name}`!",
+                description=f"{credentials.address}:{credentials.port}"
+            ), ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(credentials(bot))

@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS "sessions" (
 	"end_time"	VARCHAR(30) NOT NULL,
 	"deleted"	BOOLEAN NOT NULL CHECK ("deleted" IN (0, 1)) DEFAULT 0,
 	"credentials_id"	INTEGER,
-    FOREIGN KEY(credentials_id) REFERENCES credentials(ROWID)
+    FOREIGN KEY(credentials_id) REFERENCES credentials(ROWID) ON DELETE SET NULL
 );""")
 database.commit()
 

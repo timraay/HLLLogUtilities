@@ -105,6 +105,14 @@ class Credentials:
         cursor.execute('UPDATE credentials SET name = ?, address = ?, port = ?, password = ? WHERE ROWID = ?',
             (self.name, self.address, self.port, self.password, self.id))
         database.commit()
+    
+    def delete(self):
+        if self.temporary:
+            raise TypeError('These credentials are already unsaved')
+        
+        cursor.execute('DELETE FROM credentials WHERE ROWID = ?', (self.id,))
+        database.commit()
+        self.id = None
 
 @ttl_cache(size=15, seconds=15)
 async def credentials_in_guild_tll(guild_id: int):
