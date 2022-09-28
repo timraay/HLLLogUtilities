@@ -6,7 +6,9 @@ from ipaddress import IPv4Address
 from typing import Optional
 
 from lib.credentials import Credentials, credentials_in_guild_tll
-from discord_utils import CallableButton, get_success_embed, handle_error, CustomException, only_once, View
+from lib.exceptions import HLLAuthError, HLLConnectionError, HLLConnectionRefusedError, HLLError
+from lib.rcon import create_plain_transport
+from discord_utils import CallableButton, get_error_embed, get_success_embed, handle_error, CustomException, only_once, View
 from utils import get_config
 
 MIN_ALLOWED_PORT = 1025
@@ -50,13 +52,44 @@ class RCONCredentialsModal(ui.Modal):
                 "Password must not contain spaces."
             )
 
-        await self._callback(
-            interaction,
-            name=self.name.value,
-            address=address,
-            port=port,
-            password=password
-        )
+        try:
+            transport = await create_plain_transport(
+                host=address,
+                port=port,
+                password=password
+            ).close()
+        except HLLConnectionError as error:
+            if isinstance(error, HLLAuthError):
+                embed = get_error_embed(
+                    title=str(error),
+                    description="Failed to authenticate with RCON. This means that the provided RCON password does not work. Possible solutions are as follows:\n\n• Verify that the password is correct\n\nIf you still wish to continue, press the below button. Otherwise you may dismiss this message."
+                )
+            elif isinstance(error, HLLConnectionRefusedError):
+                embed = get_error_embed(
+                    title=str(error),
+                    description="Failed to connect to your server, because it actively refused connection via specified port. This most likely means that the port is incorrect. Possible solutions are as follows:\n\n• Verify that the port is correct\n\nIf you still wish to continue, press the below button. Otherwise you may dismiss this message."
+                )
+            else:
+                embed = get_error_embed(
+                    title=str(error),
+                    description="Failed to connect to your server, because the address could not be resolved. Possible solutions are as follows:\n\n• Verify that the address is correct\n• Make sure the server is online\n\nIf you still wish to continue, press the below button. Otherwise you may dismiss this message."
+                )
+
+            view = View()
+            view.add_item(CallableButton(finish_callback), label="Ignore & Continue", style=discord.ButtonStyle.gray)
+            
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        else:
+            await finish_callback(interaction)
+
+        async def finish_callback(_interaction):
+            await self._callback(
+                _interaction,
+                name=self.name.value,
+                address=address,
+                port=port,
+                password=password
+            )
     
     async def on_error(self, interaction: Interaction, error: Exception):
         await handle_error(interaction, error)

@@ -9,6 +9,9 @@ class HLLCommandError(HLLError):
 class HLLConnectionError(HLLError):
     """Raised when the source is unable to connect and authenticate."""
 
+class HLLConnectionRefusedError(HLLConnectionError):
+    """Raised when the connection is refused."""
+
 class HLLAuthError(HLLConnectionError):
     """Raised for failed authentication.
     :ivar bool banned: signifies whether the authentication failed due to

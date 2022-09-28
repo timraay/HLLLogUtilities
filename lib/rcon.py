@@ -603,19 +603,12 @@ class HLLRconWorker:
         return bool(self.protocol and self.protocol._transport)
 
     async def _create_connection(self):
-        protocol_factory = lambda: HLLRconProtocol(loop=self.loop, timeout=10)
-
-        try:
-            _, protocol = await asyncio.wait_for(
-                self.loop.create_connection(protocol_factory, host=self.credentials.address, port=self.credentials.port),
-                timeout=3
-            )
-        except asyncio.TimeoutError:
-            raise HLLConnectionError("Address %s could not be resolved" % self.credentials.address)
-        except ConnectionRefusedError:
-            raise HLLConnectionError("The server refused connection over port %s" % self.credentials.port)
-
-        await protocol.authenticate(self.credentials.password)
+        protocol = await create_plain_transport(
+            host=self.credentials.address,
+            port=self.credentials.port,
+            password=self.credentials.password,
+            loop=self.loop
+        )
 
         if self.protocol:
             self.protocol._transport.close()
@@ -632,3 +625,21 @@ class HLLRconWorker:
                     fut.set_exception(exc)
             self.queue.task_done()
 
+
+async def create_plain_transport(host: str, port: int, password: str, loop: asyncio.AbstractEventLoop = None):
+    loop = loop or asyncio.get_event_loop()
+    protocol_factory = lambda: HLLRconProtocol(loop=loop, timeout=10)
+
+    try:
+        _, protocol = await asyncio.wait_for(
+            loop.create_connection(protocol_factory, host=host, port=port),
+            timeout=3
+        )
+    except asyncio.TimeoutError:
+        raise HLLConnectionError("Address %s could not be resolved" % host)
+    except ConnectionRefusedError:
+        raise HLLConnectionError("The server refused connection over port %s" % port)
+
+    await protocol.authenticate(password)
+
+    return protocol
