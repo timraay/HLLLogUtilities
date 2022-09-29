@@ -146,6 +146,7 @@ class HLLCaptureSession:
         self.gatherer.start()
     async def deactivate(self):
         self.gatherer.stop()
+        self.push_to_db()
 
     async def stop(self):
         active = self.active_in()
