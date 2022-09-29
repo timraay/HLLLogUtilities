@@ -160,11 +160,7 @@ class HLLCaptureSession:
             self.save()
         
         await self.deactivate()
-
-        if self._start_task and not self._start_task.done():
-            self._start_task.cancel()
-        if self._stop_task and not self._stop_task.done():
-            self._stop_task.cancel()
+        self._clear_tasks()
 
     @tasks.loop(seconds=5)
     async def gatherer(self):
@@ -186,6 +182,12 @@ class HLLCaptureSession:
     async def after_gatherer_stop(self):
         await self.rcon.stop()
 
+    def _clear_tasks(self):
+        if self._start_task and not self._start_task.done():
+            self._start_task.cancel()
+        if self._stop_task and not self._stop_task.done():
+            self._stop_task.cancel()
+
     
     def push_to_db(self):
         if self._logs:
@@ -193,6 +195,8 @@ class HLLCaptureSession:
         self._logs = list()
 
     def delete(self):
+        self.deactivate()
+        self._clear_tasks()
         delete_logs(sess_id=self.id)
 
         table = Table("sessions")
