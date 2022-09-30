@@ -89,9 +89,6 @@ class LogLine(BaseModel):
             if event.get('new'):
                 payload['new'] = event.new
 
-        if isinstance(event, PlayerDeathEvent) and event.is_teamkill:
-            payload['type'] = 'player_teamkill'
-
         payload.setdefault('type', str(EventTypes(event.__class__)))
         return cls(event_time=event.event_time, **payload)
 

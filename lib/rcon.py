@@ -401,10 +401,11 @@ class HLLRcon:
                     if log.startswith('KILL') or log.startswith('TEAM KILL'):
                         p1_name, p1_team, p1_steamid, p2_name, p2_team, p2_steamid, weapon = re.search(
                             r"KILL: (.+)\((Allies|Axis)\/(\d{17})\) -> (.+)\((Allies|Axis)\/(\d{17})\) with (.+)", log).groups()
-                        self.info.events.add(PlayerDeathEvent(self.info,
+                        e_cls = PlayerTeamkillEvent if log.startswith('TEAM KILL') else PlayerKillEvent
+                        self.info.events.add(e_cls(self.info,
                             event_time=time,
-                            player=Link('players', {'steamid': p2_steamid}),
-                            other=Link('players', {'steamid': p1_steamid}),
+                            player=Link('players', {'steamid': p1_steamid}),
+                            other=Link('players', {'steamid': p2_steamid}),
                             item=weapon
                         ))
                     elif log.startswith('CHAT'):

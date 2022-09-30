@@ -142,15 +142,6 @@ class SquadLeaderChangeEvent(EventModel):
     old: Union[Player, Link, None] = UnsetField
     new: Union[Player, Link, None] = UnsetField
 
-class PlayerSpawnEvent(EventModel):
-    __scope_path__ = 'events.player_spawn'
-    player: Union[Player, Link] = UnsetField
-
-class PlayerRevivedEvent(EventModel):
-    __scope_path__ = 'events.player_revived'
-    player: Union[Player, Link] = UnsetField
-    other: Union[Player, Link, None] = UnsetField
-
 class PlayerChangeRoleEvent(EventModel):
     __scope_path__ = 'events.player_change_role'
     player: Union[Player, Link] = UnsetField
@@ -167,66 +158,22 @@ class PlayerEnterAdminCamEvent(EventModel):
     __scope_path__ = 'events.player_enter_admin_cam'
     player: Union[Player, Link] = UnsetField
 
-class PlayerUseItemEvent(EventModel):
-    __scope_path__ = 'events.player_use_item'
-    player: Union[Player, Link] = UnsetField
-    item: str = UnsetField
-
 class PlayerMessageEvent(EventModel):
     __scope_path__ = 'events.player_message'
     player: Union[Player, Link, str] = UnsetField
     message: str = UnsetField
     channel: Any = UnsetField
 
-class PlayerWoundEvent(EventModel):
-    __scope_path__ = 'events.player_wound'
-    player: Union[Player, Link] = UnsetField
-    other: Union[Player, Link] = UnsetField
-    item: str = UnsetField
-
-class PlayerDownedEvent(EventModel):
-    __scope_path__ = 'events.player_downed'
-    player: Union[Player, Link] = UnsetField
-    other: Union[Player, Link] = UnsetField
-    item: str = UnsetField
-    headshot: bool = UnsetField
-    distance: float = UnsetField
-
-    @property
-    def is_teamkill(self):
-        if self.get('player') and self.get('other'):
-            return self.player.get('team') and self.player.get('team') == self.other.get('team')
-        else:
-            return None
-    
-    @property
-    def is_suicide(self):
-        if self.has('player') and self.has('other'):
-            return self.player == self.other
-        else:
-            return None
-
-class PlayerDeathEvent(EventModel):
-    __scope_path__ = 'events.player_death'
+class PlayerKillEvent(EventModel):
+    __scope_path__ = 'events.player_kill'
     player: Union[Player, Link, str] = UnsetField
     other: Union[Player, Link, None] = UnsetField
     item: str = UnsetField
     headshot: bool = UnsetField
     distance: float = UnsetField
 
-    @property
-    def is_teamkill(self):
-        if self.get('player') and self.get('other'):
-            return self.player.get('team') and self.player.get('team') == self.other.get('team')
-        else:
-            return None
-    
-    @property
-    def is_suicide(self):
-        if self.has('player') and self.has('other'):
-            return self.player == self.other
-        else:
-            return None
+class PlayerTeamkillEvent(PlayerKillEvent):
+    __scope_path__ = 'events.player_teamkill'
 
 class PlayerLevelUpEvent(EventModel):
     __scope_path__ = 'events.player_level_up'
@@ -300,16 +247,12 @@ class EventTypes(Enum):
     player_join_team = PlayerJoinTeamEvent
     player_join_squad = PlayerJoinSquadEvent
     squad_leader_change = SquadLeaderChangeEvent
-    player_spawn = PlayerSpawnEvent
-    player_revived = PlayerRevivedEvent
     player_change_role = PlayerChangeRoleEvent
     player_change_loadout = PlayerChangeLoadoutEvent
     player_enter_admin_cam = PlayerEnterAdminCamEvent
-    player_use_item = PlayerUseItemEvent
     player_message = PlayerMessageEvent
-    player_wound = PlayerWoundEvent
-    player_downed = PlayerDownedEvent
-    player_death = PlayerDeathEvent
+    player_kill = PlayerKillEvent
+    player_teamkill = PlayerTeamkillEvent
     player_level_up = PlayerLevelUpEvent
     player_exit_admin_cam = PlayerExitAdminCamEvent
     player_leave_squad = PlayerLeaveSquadEvent
@@ -344,16 +287,12 @@ class Events(InfoModel):
     player_join_team: List['PlayerJoinTeamEvent'] = UnsetField
     player_join_squad: List['PlayerJoinSquadEvent'] = UnsetField
     squad_leader_change: List['SquadLeaderChangeEvent'] = UnsetField
-    player_spawn: List['PlayerSpawnEvent'] = UnsetField
-    player_revived: List['PlayerRevivedEvent'] = UnsetField
     player_change_role: List['PlayerChangeRoleEvent'] = UnsetField
     player_change_loadout: List['PlayerChangeLoadoutEvent'] = UnsetField
     player_enter_admin_cam: List['PlayerEnterAdminCamEvent'] = UnsetField
-    player_use_item: List['PlayerUseItemEvent'] = UnsetField
     player_message: List['PlayerMessageEvent'] = UnsetField
-    player_wound: List['PlayerWoundEvent'] = UnsetField
-    player_downed: List['PlayerDownedEvent'] = UnsetField
-    player_death: List['PlayerDeathEvent'] = UnsetField
+    player_kill: List['PlayerKillEvent'] = UnsetField
+    player_teamkill: List['PlayerTeamkillEvent'] = UnsetField
     player_level_up: List['PlayerLevelUpEvent'] = UnsetField
     player_exit_admin_cam: List['PlayerExitAdminCamEvent'] = UnsetField
     player_leave_squad: List['PlayerLeaveSquadEvent'] = UnsetField
