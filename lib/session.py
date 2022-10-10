@@ -8,7 +8,7 @@ from lib.rcon import HLLRcon
 from lib.credentials import Credentials
 from lib.storage import LogLine, database, cursor, insert_many_logs, delete_logs
 from lib.exceptions import NotFound, SessionDeletedError, SessionAlreadyRunningError, SessionMissingCredentialsError
-from utils import get_config, schedule_coro
+from utils import get_config, schedule_coro, get_logger
 
 NUM_LOGS_REQUIRED_FOR_INSERT = get_config().getint('Session', 'NumLogsRequiredForInsert')
 DELETE_SESSION_AFTER = timedelta(days=get_config().getint('Session', 'DeleteAfterDays'))
@@ -51,6 +51,8 @@ class HLLCaptureSession:
         else:
             self._start_task = None
             self._stop_task = None
+
+        self.logger = get_logger(self)
 
         SESSIONS[self.id] = self
         
@@ -142,7 +144,7 @@ class HLLCaptureSession:
         if not self.credentials:
             raise SessionMissingCredentialsError(f"Session with ID {self.id} does not have server credentials")
         if self.rcon is None:
-            self.rcon = HLLRcon(credentials=self.credentials, loop=self.loop)
+            self.rcon = HLLRcon(session=self)
         self.gatherer.start()
     async def deactivate(self):
         self.gatherer.stop()

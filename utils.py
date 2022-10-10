@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import asyncio
+from pathlib import Path
 
 def to_timedelta(value):
     if not value:
@@ -116,3 +117,20 @@ async def schedule_coro(dt: datetime, coro): # How do you annotate coroutines???
 
     return await asyncio.create_task(scheduled_coro())
 
+
+import logging
+
+LOGS_FOLDER = Path('logs')
+LOGS_FORMAT = '[%(asctime)s][%(levelname)s][%(module)s.%(funcName)s:%(lineno)s] %(message)s'
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s][%(levelname)s][%(module)s.%(funcName)s:%(lineno)s] %(message)s',
+)
+
+def get_logger(session):
+    logger = logging.getLogger(str(session.id))
+    if not logger.handlers:
+        handler = logging.FileHandler(filename=LOGS_FOLDER / f"sess{session.id}_{session.name}.log")
+        handler.setFormatter(logging.Formatter(LOGS_FORMAT))
+        logger.addHandler(handler)
+    return logger

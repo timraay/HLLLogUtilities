@@ -6,7 +6,7 @@ import re
 from typing import List
 
 from lib.protocol import HLLRconProtocol
-from lib.credentials import Credentials
+from lib.session import HLLCaptureSession
 from lib.exceptions import HLLConnectionError
 from lib.info_types import *
 from utils import to_timedelta, ttl_cache
@@ -72,6 +72,9 @@ def update_method(func):
                 await reconnect()
 
         if self.connected:
+            if not self._missed_gathers and not self.is_connection_okay():
+                await reconnect()
+
             try:
                 res = await asyncio.wait_for(func(self, *args, **kwargs), timeout=10)
             except:
@@ -89,41 +92,49 @@ def update_method(func):
     return wrapper
 
 class HLLRcon:
-    def __init__(self, credentials: Credentials, loop: asyncio.AbstractEventLoop = None):
-        self.credentials = credentials
-        self.loop = loop or asyncio.get_running_loop()
+    def __init__(self, session: HLLCaptureSession):
+        self.session = session
         self.workers: List['HLLRconWorker'] = list()
         self.queue = asyncio.Queue()
-        self._connected = False
+
+    @property
+    def loop(self):
+        return self.session.loop
+    @property
+    def credentials(self):
+        return self.session.credentials
+    @property
+    def logger(self):
+        return self.session.logger
     
     @property
     def connected(self):
-        return self._connected
+        return self.workers and all(worker.connected for worker in self.workers)
     
     @start_method
     async def start(self):
-        for worker in self.workers:
-            await worker.stop()
-            self.logger.warn('Stopped leftover worker %r, possibly the connection was not properly stopped.', worker)
-
-        self.workers = list()
-        for i in range(NUM_WORKERS_PER_INSTANCE):
-            num = i + 1
-            try:
-                worker = HLLRconWorker(parent=self, name=f"Worker #{num}")
-                await worker.start()
-                self.logger.info('Started worker %s', worker.name)
-            except:
-                if i == 0:
-                    raise
-                else:
-                    self.logger.exception('Failed to start worker #%s, skipping...', num)
-            self.workers.append(worker)
+        if self.workers:
+            await self.reconnect()
         
-        self._state = "in_progress"
-        self._map = None
-        self._end_warmup_handle = None
-        self._logs_seen_time = datetime.now()
+        else:
+            self.workers = list()
+            for i in range(NUM_WORKERS_PER_INSTANCE):
+                num = i + 1
+                try:
+                    worker = HLLRconWorker(parent=self, name=f"Worker #{num}")
+                    await worker.start()
+                    self.logger.info('Started worker %s', worker.name)
+                except:
+                    if i == 0:
+                        raise
+                    else:
+                        self.logger.exception('Failed to start worker #%s, skipping...', num)
+                self.workers.append(worker)
+            
+            self._state = "in_progress"
+            self._map = None
+            self._end_warmup_handle = None
+            self._logs_seen_time = datetime.now()
 
     @stop_method
     async def stop(self):
@@ -139,12 +150,6 @@ class HLLRcon:
         self.info = InfoHopper()
         await self._fetch_server_info()
         return self.info
-
-    async def reconnect(self):
-        to_reconnect = [worker for worker in self.workers if not worker.connected]
-        if to_reconnect:
-            await asyncio.gather(*[worker._create_connection() for worker in to_reconnect])
-            return True
 
 
     async def _fetch_server_info(self):
@@ -392,6 +397,9 @@ class HLLRcon:
                 [9.06 sec (1639148961)] Player [\u272a (WTH) Beard (76561197985434745)] Entered Admin Camera
                 [805 ms (1639148969)] Player [\u272a (WTH) Beard (76561197985434745)] Left Admin Camera
                 """
+                if not line:
+                    continue
+
                 try:
                     time, log = re.match(r"\[.*?\((\d+)\)\] (.+)", line).groups()
                     time = datetime.fromtimestamp(int(time))
@@ -595,7 +603,8 @@ class HLLRconWorker:
     
     async def stop(self):
         self.task.cancel()
-        self.protocol._transport.close()
+        if self.protocol._transport:
+            self.protocol._transport.close()
         self.protocol = None
         self.task = None
     
@@ -608,7 +617,8 @@ class HLLRconWorker:
             host=self.credentials.address,
             port=self.credentials.port,
             password=self.credentials.password,
-            loop=self.loop
+            loop=self.loop,
+            logger=self.logger,
         )
 
         if self.protocol:
@@ -627,9 +637,9 @@ class HLLRconWorker:
             self.queue.task_done()
 
 
-async def create_plain_transport(host: str, port: int, password: str, loop: asyncio.AbstractEventLoop = None):
+async def create_plain_transport(host: str, port: int, password: str, loop: asyncio.AbstractEventLoop = None, logger = None):
     loop = loop or asyncio.get_event_loop()
-    protocol_factory = lambda: HLLRconProtocol(loop=loop, timeout=10)
+    protocol_factory = lambda: HLLRconProtocol(loop=loop, timeout=10, logger=logger)
 
     try:
         _, protocol = await asyncio.wait_for(
