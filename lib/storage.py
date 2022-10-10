@@ -14,9 +14,11 @@ class LogLine(BaseModel):
     player_name: str = None
     player_steamid: str = None
     player_team: str = None
+    player_role: str = None
     player2_name: str = None
     player2_steamid: str = None
     player2_team: str = None
+    player2_role: str = None
     weapon: str = None
     old: str = None
     new: str = None
@@ -46,17 +48,20 @@ class LogLine(BaseModel):
                 player_name=event.new.name,
                 player_steamid=event.new.steamid,
                 player_team=event.new.team.name,
+                player_role=event.new.role,
                 player2_name=event.old.name,
                 player2_steamid=event.old.steamid,
                 player2_team=event.old.team.name,
+                player2_role=event.old.role,
                 team_name=event.squad.team.name,
-                squad_name=event.squad.name
+                squad_name=event.squad.name,
             )
         elif isinstance(event, PlayerMessageEvent):
             payload = dict(
                 player_name=event.player.name,
                 player_steamid=event.player.steamid,
                 player_team=event.player.team.name,
+                player_role=event.player.role,
             )
             if isinstance(event.channel, Squad):
                 payload['team_name'] = event.channel.team.name
@@ -71,12 +76,14 @@ class LogLine(BaseModel):
                     player_name=event.player.name,
                     player_steamid=event.player.steamid,
                     player_team=event.player.team.name,
+                    player_role=event.player.role,
                 )}
             if event.get('other'):
                 payload = {**payload, **dict(
                     player2_name=event.other.name,
                     player2_steamid=event.other.steamid,
                     player2_team=event.other.team.name,
+                    player2_role=event.other.role,
                 )}
             if event.get('team'):
                 payload['team_name'] = event.team.name
