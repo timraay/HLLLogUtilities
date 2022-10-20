@@ -95,7 +95,10 @@ async def handle_error(interaction: Interaction, error: Exception):
         except:
             traceback.print_exc()
 
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    if interaction.response.is_done():
+        await interaction.followup.send(embed=embed)
+    else:
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class View(ui.View):
