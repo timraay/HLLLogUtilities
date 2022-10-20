@@ -5,9 +5,11 @@ from discord.utils import escape_markdown as esc_md
 from datetime import datetime, timedelta, timezone
 from dateutil.parser import parse as dt_parse
 from enum import Enum
+from io import StringIO
 
 from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions
 from lib.credentials import Credentials, credentials_in_guild_tll
+from lib.converters import Converter, ExportFormats
 from lib.storage import cursor
 from cogs.credentials import RCONCredentialsModal, SECURITY_URL
 from discord_utils import CallableButton, CustomException, get_success_embed, only_once, View
@@ -275,6 +277,24 @@ class sessions(commands.Cog):
         view.add_item(CallableButton(on_confirm, label="Confirm", style=discord.ButtonStyle.gray))
 
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+    @app_commands.command(name="getlogs", description="Download logs from a session")
+    @app_commands.autocomplete(
+        session=autocomplete_sessions
+    )
+    async def get_logs_from_session(self, interaction: Interaction, session: int, format: ExportFormats = ExportFormats.text):
+        session: HLLCaptureSession = SESSIONS[session]
+        converter: Converter = format.value
+
+        logs = session.get_logs()
+        fp = StringIO(converter.convert_many(logs))
+        file = discord.File(fp, filename=session.name + '.' + converter.ext())
+        
+        await interaction.response.send_message(
+            content=f"Logs for **{esc_md(session.name)}**",
+            file=file
+        )
 
 
 async def setup(bot):

@@ -1,8 +1,16 @@
 from inspect import isfunction
 import json
+from enum import Enum
 from typing import List
 
 from lib.storage import LogLine
+
+__all__ = (
+    'ExportFormats',
+    'TextConverter',
+    'CSVConverter',
+    'JSONConverter',
+)
 
 class Converter:
     player_join_server=...
@@ -32,6 +40,10 @@ class Converter:
             return str(converter.format(**log.dict()))
         else:
             return None
+
+    @staticmethod
+    def ext():
+        return 'txt'
     
     @staticmethod
     def header():
@@ -67,8 +79,8 @@ class TextConverter(Converter):
     squad_created           = "UNIT DISBANDED      \tUnit {squad_name} disbanded on team {team_name}"
     player_change_role      = "ROLE CHANGED        \t{player_name} ({player_team}/{player_steamid}) changed role: {old} -> {new}"
     player_change_loadout   = "LOADOUT CHANGED     \t{player_name} ({player_team}/{player_steamid}) changed loadout: {old} -> {new}"
-    player_enter_admin_cam  = "ADMIN CAM ENTERED   \t{player_name} ({player_team}/{player_steamid}) entered admin cam"
-    player_exit_admin_cam   = "ADMIN CAM EXITED    \t{player_name} ({player_team}/{player_steamid}) exited admin cam"
+    player_enter_admin_cam  = "CAMERA ENTERED      \t{player_name} ({player_team}/{player_steamid}) entered admin cam"
+    player_exit_admin_cam   = "CAMERA EXITED       \t{player_name} ({player_team}/{player_steamid}) exited admin cam"
     player_level_up         = "LEVELUP             \t{player_name} ({player_steamid}) leveled up: {old} -> {new}"
     server_map_changed      = "MAP CHANGED         \tMap changed from {old} to {new}"
     server_state_changed    = "GAME STATE CHANGED  \tGame state changed from {old} to {new}"
@@ -97,14 +109,33 @@ class CSVConverter(Converter):
     @staticmethod
     def header():
         return ",".join(LogLine.__fields__.keys())
+    
+    @staticmethod
+    def ext():
+        return 'csv'
 
 class JSONConverter(Converter):
+    @staticmethod
+    def ext():
+        return 'json'
+
     @classmethod
     def convert(cls, log: 'LogLine'):
         return log.dict()
     
     @classmethod
-    def convert_many(cls, logs: List['LogLine'], include_header=True):
+    def convert_many(cls, logs: List['LogLine']):
         converted = [log for log in [cls.convert(log) for log in logs] if log is not None]
-        obj = dict(logs=converted)
+        obj = dict(
+            start_time=str([converted[0]]) if converted else None,
+            end_time=str([converted[-1]]) if converted else None,
+            logs=converted
+        )
         return json.dumps(obj, indent=2)
+
+
+
+class ExportFormats(Enum):
+    text = TextConverter
+    csv = CSVConverter
+    json = JSONConverter

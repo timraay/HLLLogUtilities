@@ -197,6 +197,17 @@ class HLLCaptureSession:
             insert_many_logs(sess_id=self.id, logs=self._logs)
         self._logs = list()
 
+    def get_logs(self, limit: int = None):
+        sess_name = f"session{self.id}"
+        columns = tuple(LogLine.__fields__)
+
+        query = Table(sess_name).select(*columns)
+        if limit:
+            query = query.limit(limit)
+        
+        cursor.execute(str(query))
+        return [LogLine(**dict(zip(columns, record))) for record in cursor.fetchall()]
+
     def delete(self):
         self.deactivate()
         self._clear_tasks()

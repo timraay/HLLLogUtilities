@@ -3,13 +3,15 @@ from datetime import datetime, timedelta
 from functools import wraps
 import re
 
-from typing import List
+from typing import List, TYPE_CHECKING
 
 from lib.protocol import HLLRconProtocol
-from lib.session import HLLCaptureSession
 from lib.exceptions import HLLConnectionError
 from lib.info_types import *
 from utils import to_timedelta, ttl_cache
+
+if TYPE_CHECKING:
+    from lib.session import HLLCaptureSession
 
 NUM_WORKERS_PER_INSTANCE = 4
 
@@ -92,7 +94,7 @@ def update_method(func):
     return wrapper
 
 class HLLRcon:
-    def __init__(self, session: HLLCaptureSession):
+    def __init__(self, session: 'HLLCaptureSession'):
         self.session = session
         self.workers: List['HLLRconWorker'] = list()
         self.queue = asyncio.Queue()
