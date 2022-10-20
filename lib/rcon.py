@@ -34,9 +34,9 @@ def start_method(func):
             else:
                 return
         
-        self.logger.info('Starting %s...', self.type)
+        self.logger.info('Starting RCON...')
         res = await asyncio.wait_for(func(self, *args, **kwargs), timeout=10)
-        self.logger.info('Started %s!', self.type)
+        self.logger.info('Started RCON!')
         
         self._connected = True
         return res
@@ -48,12 +48,12 @@ def stop_method(func):
         if not self.connected and not force:
             return
         
-        self.logger.info('Stopping %s...', self.type)
+        self.logger.info('Stopping RCON...')
 
         self._connected = False
         res = await func(self, *args, **kwargs)
         
-        self.logger.info('Stopped %s!', self.type)
+        self.logger.info('Stopped RCON!')
         return res
         
     return wrapper
@@ -74,9 +74,6 @@ def update_method(func):
                 await reconnect()
 
         if self.connected:
-            if not self._missed_gathers and not self.is_connection_okay():
-                await reconnect()
-
             try:
                 res = await asyncio.wait_for(func(self, *args, **kwargs), timeout=10)
             except:
@@ -98,6 +95,7 @@ class HLLRcon:
         self.session = session
         self.workers: List['HLLRconWorker'] = list()
         self.queue = asyncio.Queue()
+        self._missed_gathers = 0
 
     @property
     def loop(self):
@@ -115,28 +113,28 @@ class HLLRcon:
     
     @start_method
     async def start(self):
-        if self.workers:
-            await self.reconnect()
+        for worker in self.workers:
+            await worker.stop()
+            self.logger.warn('Stopped leftover worker %r, possibly the source was not properly stopped.', worker)
         
-        else:
-            self.workers = list()
-            for i in range(NUM_WORKERS_PER_INSTANCE):
-                num = i + 1
-                try:
-                    worker = HLLRconWorker(parent=self, name=f"Worker #{num}")
-                    await worker.start()
-                    self.logger.info('Started worker %s', worker.name)
-                except:
-                    if i == 0:
-                        raise
-                    else:
-                        self.logger.exception('Failed to start worker #%s, skipping...', num)
-                self.workers.append(worker)
-            
-            self._state = "in_progress"
-            self._map = None
-            self._end_warmup_handle = None
-            self._logs_seen_time = datetime.now()
+        self.workers = list()
+        for i in range(NUM_WORKERS_PER_INSTANCE):
+            num = i + 1
+            try:
+                worker = HLLRconWorker(parent=self, name=f"Worker #{num}")
+                await worker.start()
+                self.logger.info('Started worker %s', worker.name)
+            except:
+                if i == 0:
+                    raise
+                else:
+                    self.logger.exception('Failed to start worker #%s, skipping...', num)
+            self.workers.append(worker)
+        
+        self._state = "in_progress"
+        self._map = None
+        self._end_warmup_handle = None
+        self._logs_seen_time = datetime.now()
 
     @stop_method
     async def stop(self):
