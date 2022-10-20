@@ -27,7 +27,11 @@ class sessions(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    SessionGroup = app_commands.Group(name="session", description="Manage log records")
+    SessionGroup = app_commands.Group(
+        name="session",
+        description="Manage log records",
+        default_permissions=discord.Permissions(0)
+    )
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -279,7 +283,7 @@ class sessions(commands.Cog):
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
-    @app_commands.command(name="getlogs", description="Download logs from a session")
+    @SessionGroup.command(name="logs", description="Download logs from a session")
     @app_commands.autocomplete(
         session=autocomplete_sessions
     )
