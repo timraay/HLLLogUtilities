@@ -43,16 +43,16 @@ class HLLCaptureSession:
         if self.id in SESSIONS:
             raise SessionAlreadyRunningError("A session with ID %s is already running")
 
+        self.logger = get_logger(self)
+
         self.rcon = None
         
         if self.active_in():
-            self._start_task = self.loop.create_task(schedule_coro(self.start_time, self.activate))
-            self._stop_task = self.loop.create_task(schedule_coro(self.end_time, self.deactivate))
+            self._start_task = schedule_coro(self.start_time, self.activate, error_logger=self.logger)
+            self._stop_task = schedule_coro(self.end_time, self.deactivate, error_logger=self.logger)
         else:
             self._start_task = None
             self._stop_task = None
-
-        self.logger = get_logger(self)
 
         SESSIONS[self.id] = self
         
@@ -180,10 +180,16 @@ class HLLCaptureSession:
 
     @gatherer.before_loop
     async def before_gatherer_start(self):
-        await self.rcon.start()
+        try:
+            await self.rcon.start(force=False)
+        except Exception:
+            self.logger.exception('Failed to start RCON')
     @gatherer.after_loop
     async def after_gatherer_stop(self):
-        await self.rcon.stop()
+        try:
+            await self.rcon.stop(force=True)
+        except Exception:
+            self.logger.exception('Failed to stop RCON')
 
     def _clear_tasks(self):
         if self._start_task and not self._start_task.done():
@@ -209,7 +215,7 @@ class HLLCaptureSession:
         return [LogLine(**dict(zip(columns, record))) for record in cursor.fetchall()]
 
     def delete(self):
-        self.deactivate()
+        schedule_coro(datetime.now(), self.deactivate, error_logger=self.logger())
         self._clear_tasks()
         delete_logs(sess_id=self.id)
 

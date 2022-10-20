@@ -89,7 +89,7 @@ def get_config() -> ConfigParser:
     
 
 _SCHEDULER_TIME_BETWEEN_INTERVAL = timedelta(minutes=3)
-async def schedule_coro(dt: datetime, coro): # How do you annotate coroutines???
+def schedule_coro(dt: datetime, coro_func, *args, error_logger = None): # How do you annotate coroutines???
     """Schedule a coroutine for execution at a specific time.
 
     Time drift will be accounted for.
@@ -105,17 +105,25 @@ async def schedule_coro(dt: datetime, coro): # How do you annotate coroutines???
         time_to_sleep = _SCHEDULER_TIME_BETWEEN_INTERVAL.total_seconds()
 
         time_left = dt - datetime.now(tz=timezone.utc)
-        if time_left < timedelta(0):
-            return await coro
+        if not (time_left < timedelta(0)):
 
-        while time_left > _SCHEDULER_TIME_BETWEEN_INTERVAL:
-            await asyncio.sleep(time_to_sleep)
-            time_left = dt - datetime.now(tz=timezone.utc)
+            while time_left > _SCHEDULER_TIME_BETWEEN_INTERVAL:
+                await asyncio.sleep(time_to_sleep)
+                time_left = dt - datetime.now(tz=timezone.utc)
 
-        await time_left.total_seconds()
-        return await coro
+            await asyncio.sleep(time_left.total_seconds())
 
-    return await asyncio.create_task(scheduled_coro())
+        try:
+            res = await coro_func(*args)
+        except:
+            if error_logger:
+                error_logger.exception('Scheduled coroutine raised an exception')
+            else:
+                raise
+        
+        return res
+
+    return asyncio.create_task(scheduled_coro())
 
 
 import logging
@@ -126,7 +134,8 @@ logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s][%(levelname)s][%(module)s.%(funcName)s:%(lineno)s] %(message)s',
 )
-
+if not LOGS_FOLDER.exists():
+    LOGS_FOLDER.mkdir()
 def get_logger(session):
     logger = logging.getLogger(str(session.id))
     if not logger.handlers:
