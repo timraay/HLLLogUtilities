@@ -115,7 +115,7 @@ class credentials(commands.Cog):
             description="\n".join([
                 f"> • **{esc_md(credentials.name)}**\n> ⤷ {credentials.address}:{credentials.port}"
                 for credentials in all_credentials
-            ]) if credentials else "No credentials are known yet."
+            ]) if all_credentials else "No credentials are known yet."
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
