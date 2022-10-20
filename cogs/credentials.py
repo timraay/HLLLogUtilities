@@ -140,10 +140,10 @@ class credentials(commands.Cog):
         async def on_form_submit(_interaction: Interaction, name: str, address: str, port: int, password: str):
             credentials = Credentials.create_in_db(_interaction.guild_id, name=name, address=address, port=port, password=password)
 
-            await _interaction.response.send_message(embed=get_success_embed(
+            await _interaction.followup.send(embed=get_success_embed(
                 title=f"Added \"{credentials.name}\"!",
                 description=f"⤷ {credentials.address}:{credentials.port}"
-            ), ephemeral=True)
+            ))
     
         embed = discord.Embed(
             title="Before you proceed...",
