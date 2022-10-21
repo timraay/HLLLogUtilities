@@ -30,7 +30,11 @@ class HLLRconProtocol(asyncio.Protocol):
             if self._buffer is not None:
                 self._buffer += data
             else:
-                waiter = self._waiters.pop(0)
+                try:
+                    waiter = self._waiters.pop(0)
+                except:
+                    print('NO WAITER:', data)
+                    raise
                 waiter.set_result(data)
 
     def connection_lost(self, exc):

@@ -405,6 +405,8 @@ class HLLRcon:
                     time = datetime.fromtimestamp(int(time))
                     if time <= self._logs_seen_time:
                         continue
+
+                    print(log)
                     
                     if log.startswith('KILL') or log.startswith('TEAM KILL'):
                         p1_name, p1_team, p1_steamid, p2_name, p2_team, p2_steamid, weapon = re.search(

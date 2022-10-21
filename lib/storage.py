@@ -110,6 +110,7 @@ def insert_many_logs(sess_id: int, logs: Sequence['LogLine']):
     insert_query = table
     for log in logs:
         insert_query.insert(*log.dict().values())
+    print('insert:', str(insert_query))
     cursor.execute(str(insert_query))
     
     database.commit()

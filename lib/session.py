@@ -46,6 +46,7 @@ class HLLCaptureSession:
         self.logger = get_logger(self)
 
         self.rcon = None
+        self.info = None
         
         if self.active_in():
             self._start_task = schedule_coro(self.start_time, self.activate, error_logger=self.logger)
@@ -148,7 +149,7 @@ class HLLCaptureSession:
         self.gatherer.start()
     async def deactivate(self):
         self.gatherer.stop()
-        self.push_to_db()
+        # self.push_to_db()   This is handled by the gather after_loop
 
     async def stop(self):
         active = self.active_in()
@@ -168,12 +169,19 @@ class HLLCaptureSession:
     @tasks.loop(seconds=5)
     async def gatherer(self):
         info = await self.rcon.update()
+        if self.info:
+            info.compare_older(self.info)
+        self.info = info
+        print(info.events.to_dict(exclude_unset=True))
         for event in info.events.flatten():
+            print('E', event)
             try:
                 log = LogLine.from_event(event)
+                print(event.to_dict(exclude_unset=True))
             except:
-                print('boom?', event.to_dict(exclude_unset=True))
-            self._logs.append(log)
+                self.logger.exception('Failed to cast event to log line: %s', event.to_dict(exclude_unset=True))
+            else:
+                self._logs.append(log)
         
         if len(self._logs) > NUM_LOGS_REQUIRED_FOR_INSERT:
             self.push_to_db()
@@ -190,6 +198,7 @@ class HLLCaptureSession:
             await self.rcon.stop(force=True)
         except Exception:
             self.logger.exception('Failed to stop RCON')
+        self.push_to_db()
 
     def _clear_tasks(self):
         if self._start_task and not self._start_task.done():
@@ -199,6 +208,7 @@ class HLLCaptureSession:
 
     
     def push_to_db(self):
+        self.logger.info('Pushing %s logs to the DB', len(self._logs))
         if self._logs:
             insert_many_logs(sess_id=self.id, logs=self._logs)
         self._logs = list()
