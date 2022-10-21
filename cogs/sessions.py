@@ -38,7 +38,8 @@ class sessions(commands.Cog):
         """Initialize all sessions"""
         cursor.execute("SELECT ROWID FROM sessions WHERE deleted = 0")
         for (id_,) in cursor.fetchall():
-            HLLCaptureSession.load_from_db(id_)
+            if id_ not in SESSIONS:
+                HLLCaptureSession.load_from_db(id_)
 
     @tasks.loop(minutes=5)
     async def session_manager(self):
