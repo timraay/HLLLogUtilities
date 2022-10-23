@@ -17,6 +17,10 @@ class _events(commands.Cog):
         async def on_interaction_error(interaction: Interaction, error: Exception):
             await handle_error(interaction, error)
 
+    @commands.Cog.listener()
+    async def on_command_error(self, ctx, error):
+        await handle_error(ctx, error)
+
     @tasks.loop(minutes=15.0)
     async def update_status(self):
 

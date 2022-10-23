@@ -1,6 +1,7 @@
 import discord
 from discord import ui, app_commands, Interaction
 from discord.ext import commands
+from discord.utils import escape_markdown as esc_md
 from datetime import datetime, timedelta
 import traceback
 
@@ -54,10 +55,10 @@ class CustomException(Exception):
 
 
 async def handle_error(interaction: Interaction, error: Exception):
-    if isinstance(error, app_commands.CommandInvokeError):
+    if isinstance(error, (app_commands.CommandInvokeError, commands.CommandInvokeError)):
         error = error.original
 
-    if isinstance(error, app_commands.CommandNotFound):
+    if isinstance(error, (app_commands.CommandNotFound, commands.CommandNotFound)):
         embed = get_error_embed(title='Unknown command!')
 
     elif type(error).__name__ == CustomException.__name__:
@@ -65,7 +66,7 @@ async def handle_error(interaction: Interaction, error: Exception):
     
     elif isinstance(error, ExpiredButtonError):
         embed = get_error_embed(title="This action no longer is available.")
-    elif isinstance(error, app_commands.CommandOnCooldown):
+    elif isinstance(error, (app_commands.CommandOnCooldown, commands.CommandOnCooldown)):
         sec = timedelta(seconds=int(error.retry_after))
         d = datetime(1,1,1) + sec
         output = ("%dh%dm%ds" % (d.hour, d.minute, d.second))
@@ -74,31 +75,34 @@ async def handle_error(interaction: Interaction, error: Exception):
         if output.startswith("0m"):
             output = output.replace("0m", "")
         embed = get_error_embed(title="That command is still on cooldown!", description="Cooldown expires in " + output + ".")
-    elif isinstance(error, app_commands.MissingPermissions):
+    elif isinstance(error, (app_commands.MissingPermissions, commands.MissingPermissions)):
         embed = get_error_embed(title="Missing required permissions to use that command!", description=str(error))
-    elif isinstance(error, app_commands.BotMissingPermissions):
+    elif isinstance(error, (app_commands.BotMissingPermissions, commands.BotMissingPermissions)):
         embed = get_error_embed(title="I am missing required permissions to use that command!", description=str(error))
-    elif isinstance(error, app_commands.CheckFailure):
+    elif isinstance(error, (app_commands.CheckFailure, commands.CheckFailure)):
         embed = get_error_embed(title="Couldn't run that command!", description=None)
-    # elif isinstance(error, app_commands.MissingRequiredArgument):
-    #     embed = get_error_embed(title="Missing required argument(s)!")
-    #     embed.description = str(error)
-    # elif isinstance(error, app_commands.MaxConcurrencyReached):
-    #     embed = get_error_embed(title="You can't do that right now!")
-    #     embed.description = str(error)
+    elif isinstance(error, commands.MissingRequiredArgument):
+        embed = get_error_embed(title="Missing required argument(s)!")
+        embed.description = str(error)
+    elif isinstance(error, commands.MaxConcurrencyReached):
+        embed = get_error_embed(title="You can't do that right now!")
+        embed.description = str(error)
     elif isinstance(error, commands.BadArgument):
-        embed = get_error_embed(title="Invalid argument!", description=str(error))
+        embed = get_error_embed(title="Invalid argument!", description=esc_md(str(error)))
     else:
-        embed = get_error_embed(title="An unexpected error occured!", description=str(error))
+        embed = get_error_embed(title="An unexpected error occured!", description=esc_md(str(error)))
         try:
-            raise
+            raise error
         except:
             traceback.print_exc()
 
-    if interaction.response.is_done():
-        await interaction.followup.send(embed=embed)
+    if isinstance(interaction, Interaction):
+        if interaction.response.is_done():
+            await interaction.followup.send(embed=embed)
+        else:
+            await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.send(embed=embed)
 
 
 class View(ui.View):
