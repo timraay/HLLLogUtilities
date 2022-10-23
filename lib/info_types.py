@@ -168,7 +168,7 @@ class PlayerKillEvent(EventModel):
     __scope_path__ = 'events.player_kill'
     player: Union[Player, Link, str] = UnsetField
     other: Union[Player, Link, None] = UnsetField
-    item: str = UnsetField
+    weapon: str = UnsetField
 
 class PlayerTeamkillEvent(PlayerKillEvent):
     __scope_path__ = 'events.player_teamkill'

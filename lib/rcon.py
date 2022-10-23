@@ -419,7 +419,7 @@ class HLLRcon:
                             event_time=time,
                             player=Link('players', {'steamid': p1_steamid}),
                             other=Link('players', {'steamid': p2_steamid}),
-                            item=weapon
+                            weapon=weapon
                         ))
                         deaths = self._player_deaths.setdefault(p2_steamid, 0)
                         self._player_deaths[p2_steamid] = deaths + 1
