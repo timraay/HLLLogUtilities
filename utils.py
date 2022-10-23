@@ -139,7 +139,8 @@ if not LOGS_FOLDER.exists():
 def get_logger(session):
     logger = logging.getLogger(str(session.id))
     if not logger.handlers:
-        handler = logging.FileHandler(filename=LOGS_FOLDER / f"sess{session.id}_{session.name}.log")
+        name = f"sess{session.id}_{session.name.encode('utf-8', errors='ignore').decode('ascii', errors='ignore').replace(' ', '_')}.log"
+        handler = logging.FileHandler(filename=LOGS_FOLDER / name)
         handler.setFormatter(logging.Formatter(LOGS_FORMAT))
         logger.addHandler(handler)
     return logger
