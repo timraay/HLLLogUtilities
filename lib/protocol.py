@@ -84,7 +84,7 @@ class HLLRconProtocol(asyncio.Protocol):
                 data = b""
                 self._buffer = b""
                 for _ in range(10):
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(1.0)
                     if not self._buffer:
                         break
                     data += self._buffer
