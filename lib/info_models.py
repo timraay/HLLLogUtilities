@@ -412,7 +412,7 @@ class InfoModel(ModelTree):
                 res = super().__getattribute__(name)
 
             if res is Unset:
-                raise AttributeError(name)
+                raise AttributeError(f'"{type(self).__name__}" has no attribute "{name}"')
             return res
         else:
             return super().__getattribute__(name)
