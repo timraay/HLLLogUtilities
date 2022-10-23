@@ -3,6 +3,7 @@ from discord import app_commands, ui, Interaction
 from discord.ext import commands
 from discord.utils import escape_markdown as esc_md
 from ipaddress import IPv4Address
+import asyncio
 from typing import Optional
 
 from lib.credentials import Credentials, credentials_in_guild_tll
@@ -87,8 +88,14 @@ class RCONCredentialsModal(ui.Modal):
                     description="Failed to connect to your server, because the address could not be resolved. Possible solutions are as follows:\n\n• Verify that the address and port are correct\n• Make sure the server is online\n\nIf you still wish to continue, press the below button. Otherwise you may dismiss this message."
                 )
 
+            async def finish_callback_delete(_interaction):
+                await asyncio.gather(
+                    interaction.delete_original_response(),
+                    finish_callback(interaction)
+                )
+
             view = View()
-            view.add_item(CallableButton(finish_callback, label="Ignore & Continue", style=discord.ButtonStyle.gray))
+            view.add_item(CallableButton(finish_callback_delete, label="Ignore & Continue", style=discord.ButtonStyle.gray))
             
             await interaction.followup.send(embed=embed, view=view)
         else:
@@ -140,10 +147,13 @@ class credentials(commands.Cog):
         async def on_form_submit(_interaction: Interaction, name: str, address: str, port: int, password: str):
             credentials = Credentials.create_in_db(_interaction.guild_id, name=name, address=address, port=port, password=password)
 
-            await _interaction.followup.send(embed=get_success_embed(
-                title=f"Added \"{credentials.name}\"!",
-                description=f"⤷ {credentials.address}:{credentials.port}"
-            ))
+            await asyncio.gather(
+                _interaction.followup.send(embed=get_success_embed(
+                    title=f"Added \"{credentials.name}\"!",
+                    description=f"⤷ {credentials.address}:{credentials.port}"
+                ), ephemeral=True),
+                interaction.edit_original_response(view=None)
+            )
     
         embed = discord.Embed(
             title="Before you proceed...",

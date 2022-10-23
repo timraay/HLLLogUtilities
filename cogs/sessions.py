@@ -1,3 +1,4 @@
+import asyncio
 import discord
 from discord import app_commands, ui, Interaction
 from discord.ext import commands, tasks
@@ -6,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 from dateutil.parser import parse as dt_parse
 from enum import Enum
 from io import StringIO
+
+from requests import delete
 
 from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions
 from lib.credentials import Credentials, credentials_in_guild_tll
@@ -120,50 +123,54 @@ class sessions(commands.Cog):
         )
 
         @only_once
-        async def on_confirm(_interaction: Interaction):
+        async def on_confirm(interaction: Interaction):
             if not credentials:
+
+                async def on_form_request(_interaction: Interaction):
+                    modal = RCONCredentialsModal(on_form_submit, title="RCON Credentials Form")
+                    await _interaction.response.send_modal(modal)
+
+                async def on_form_submit(_interaction: Interaction, name: str, address: str, port: int, password: str):
+                    credentials = Credentials.create_temporary(_interaction.guild_id, name=name, address=address, port=port, password=password)
+
+                    @only_once
+                    async def on_save_accept(__interaction: Interaction):
+                        try:
+                            credentials.insert_in_db()
+                        except TypeError:
+                            raise CustomException("Credentials have already been saved!")
+                        
+                        await msg.delete()
+                        await create_session(__interaction, credentials)
+                    
+                    @only_once
+                    async def on_save_decline(__interaction: Interaction):
+                        await msg.delete()
+                        await create_session(__interaction, credentials)
+
+                    embed = discord.Embed(
+                        title="Do you want me to save these credentials?",
+                        description=f"That way you don't have to type 'em in every time, and can I recover your session in case of a restart.",
+                        url=SECURITY_URL
+                    )
+
+                    view = View(timeout=300)
+                    view.add_item(CallableButton(on_save_accept, label="Save", style=discord.ButtonStyle.blurple))
+                    view.add_item(CallableButton(on_save_decline, label="Decline", style=discord.ButtonStyle.gray))
+
+                    await interaction.edit_original_response(view=None)
+                    msg = await interaction.followup.send(embed=embed, view=view, ephemeral=True, wait=True)
+                
                 embed = discord.Embed(
                     description=f"**Important notice!**\nIn order to retrieve logs, RCON access to your server is needed! You shouldn't hand your credentials to any sources you don't trust however. See [what was done to make sharing your password with me as safe as possible :bust_in_silhouette:]({SECURITY_URL}).\n\nPressing the below button will open a form where you can enter the needed information."
                 )
                 view = View(timeout=600)
                 view.add_item(CallableButton(on_form_request, label="Open form", emoji="📝", style=discord.ButtonStyle.gray))
-                await _interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-            
+                await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
             else:
-                await create_session(_interaction, credentials)
+                await create_session(interaction, credentials)
         
-        async def on_form_request(_interaction: Interaction):
-            modal = RCONCredentialsModal(on_form_submit, title="RCON Credentials Form")
-            await _interaction.response.send_modal(modal)
-
-        @only_once
-        async def on_form_submit(_interaction: Interaction, name: str, address: str, port: int, password: str):
-            credentials = Credentials.create_temporary(_interaction.guild_id, name=name, address=address, port=port, password=password)
-
-            @only_once
-            async def on_save_accept(_interaction: Interaction):
-                try:
-                    credentials.insert_in_db()
-                except TypeError:
-                    raise CustomException("Credentials have already been saved!")
-                
-                await create_session(_interaction, credentials)
-            
-            @only_once
-            async def on_save_decline(_interaction: Interaction):
-                await create_session(_interaction, credentials)
-
-            embed = discord.Embed(
-                title="Do you want me to save these credentials?",
-                description=f"That way you don't have to type 'em in every time, and can I recover your session in case of a restart.",
-                url=SECURITY_URL
-            )
-
-            view = View(timeout=300)
-            view.add_item(CallableButton(on_save_accept, label="Save", style=discord.ButtonStyle.blurple))
-            view.add_item(CallableButton(on_save_decline, label="Decline", style=discord.ButtonStyle.gray))
-
-            await _interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
         @only_once
         async def create_session(_interaction: Interaction, credentials: Credentials):
@@ -189,7 +196,7 @@ class sessions(commands.Cog):
                 credentials=credentials
             )
 
-            await _interaction.response.send_message(embed=embed)
+            await interaction.followup.send(embed=embed)
 
         view = View(timeout=300)
         view.add_item(CallableButton(on_confirm, label="Confirm", style=discord.ButtonStyle.green))
