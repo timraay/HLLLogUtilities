@@ -43,61 +43,53 @@ class LogLine(BaseModel):
     
     @classmethod
     def from_event(cls, event: EventModel):
+        player = event.get('player')
+        player2 = event.get('other')
+        squad = event.get('squad') or (player.get('squad') if player else None)
+        team = event.get('team') or (squad.get('team') if squad else None) or (player.get('team') if player else None)
+
         if isinstance(event, SquadLeaderChangeEvent):
-            payload = dict(
-                player_name=event.new.name,
-                player_steamid=event.new.steamid,
-                player_team=event.new.team.name,
-                player_role=event.new.role,
-                player2_name=event.old.name,
-                player2_steamid=event.old.steamid,
-                player2_team=event.old.team.name,
-                player2_role=event.old.role,
-                team_name=event.squad.team.name,
-                squad_name=event.squad.name,
-            )
-        elif isinstance(event, PlayerMessageEvent):
-            payload = dict(
-                player_name=event.player.name,
-                player_steamid=event.player.steamid,
-                player_team=event.player.team.name,
-                player_role=event.player.role,
-            )
-            if isinstance(event.channel, Squad):
-                payload['team_name'] = event.channel.team.name
-                payload['squad_name'] = event.channel.name
-            else:
-                payload['team_name'] = event.channel.name
-        
+            player = event.new
+            player2 = event.old
+            old = None
+            new = None
         else:
-            payload = dict()
-            if event.get('player'):
-                payload = {**payload, **dict(
-                    player_name=event.player.name,
-                    player_steamid=event.player.steamid,
-                    player_team=event.player.team.name,
-                    player_role=event.player.role,
-                )}
-            if event.get('other'):
-                payload = {**payload, **dict(
-                    player2_name=event.other.name,
-                    player2_steamid=event.other.steamid,
-                    player2_team=event.other.team.name,
-                    player2_role=event.other.role,
-                )}
-            if event.get('team'):
-                payload['team_name'] = event.team.name
-            if event.get('squad'):
-                payload['squad_name'] = event.team.name
-            if event.get('item'):
-                payload['weapon'] = event.item
-            if event.get('old'):
-                payload['old'] = event.old
-            if event.get('new'):
-                payload['new'] = event.new
+            old = event.get('old')
+            new = event.get('new')
+        
+        if isinstance(event, PlayerMessageEvent):
+            if isinstance(event.channel, Squad):
+                squad = event.channel
+                team = event.channel.team
+            else:
+                team = event.channel
+        
+        payload = dict()
+        if player:
+            player_team = player.get('team', team)
+            payload.update(
+                player_name=player.name,
+                player_steamid=player.steamid,
+                player_team=player_team.name if player_team else None,
+                player_role=player.get('role'),
+            )
+        if player2:
+            player2_team = player2.get('team')
+            payload.update(
+                player2_name=player2.name,
+                player2_steamid=player2.steamid,
+                player2_team=player2_team.name if player2_team else None,
+                player2_role=player2.get('role'),
+            )
+        if team:
+            payload['team_name'] = team.name
+        if squad:
+            payload['squad_name'] = squad.name
+        payload['old'] = old
+        payload['new'] = new            
 
         payload.setdefault('type', str(EventTypes(event.__class__)))
-        return cls(event_time=event.event_time, **payload)
+        return cls(event_time=event.event_time, **{k: v for k, v in payload.items() if v is not None})
 
 database = sqlite3.connect('sessions.db')
 cursor = database.cursor()
@@ -109,8 +101,7 @@ def insert_many_logs(sess_id: int, logs: Sequence['LogLine']):
     # Insert the logs
     insert_query = table
     for log in logs:
-        insert_query.insert(*log.dict().values())
-    print('insert:', str(insert_query))
+        insert_query = insert_query.insert(*log.dict().values())
     cursor.execute(str(insert_query))
     
     database.commit()
