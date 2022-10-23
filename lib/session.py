@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS "sessions" (
 database.commit()
 
 def get_sessions(guild_id: int):
-    return sorted([sess for sess in SESSIONS.values() if sess.credentials.guild_id == guild_id], key=lambda sess: sess.start_time)
+    return sorted([sess for sess in SESSIONS.values() if sess.guild_id == guild_id], key=lambda sess: sess.start_time)
 
 class HLLCaptureSession:
     def __init__(self, id: int, guild_id: int, name: str, start_time: datetime, end_time: datetime, credentials: Credentials, loop: asyncio.AbstractEventLoop = None):
