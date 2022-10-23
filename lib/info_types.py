@@ -101,7 +101,7 @@ class EventModel(InfoModel):
     
     @pydantic.validator('event_time', pre=True, always=True)
     def set_ts_now(cls, v):
-        return v or datetime.utcnow()
+        return v or datetime.now()
 
 class PlayerJoinServerEvent(EventModel):
     __scope_path__ = 'events.player_join_server'
@@ -400,13 +400,16 @@ class InfoHopper(ModelTree):
             info.merge(other)
         return info
         
-    def compare_older(self, other: 'InfoHopper'):
+    def compare_older(self, other: 'InfoHopper', event_time: datetime = None):
         events = Events(self)
 
         # Since this method should only be used once done with
         # combining data from all sources, and events are never
         # really referenced backwards, it is completely safe to
         # pass objects directly. Much more reliable than Links.
+
+        if not event_time:
+            event_time = datetime.now()
 
         if self.has('players') and other.has('players'):
             others = InfoModelArray(other.players)
@@ -419,19 +422,19 @@ class InfoHopper(ModelTree):
 
                     if player.has('role') and match.has('role'):
                         if player.role != match.role:
-                            events.add(PlayerChangeRoleEvent(self, player=player.create_link(with_fallback=True), old=match.role, new=player.role))
+                            events.add(PlayerChangeRoleEvent(self, event_time=event_time, player=player.create_link(with_fallback=True), old=match.role, new=player.role))
 
                     # Loadout Change Event
 
                     if player.has('loadout') and match.has('loadout'):
                         if player.loadout != match.loadout:
-                            events.add(PlayerChangeLoadoutEvent(self, player=player.create_link(with_fallback=True), old=match.loadout, new=player.loadout))
+                            events.add(PlayerChangeLoadoutEvent(self, event_time=event_time, player=player.create_link(with_fallback=True), old=match.loadout, new=player.loadout))
 
                     # Level Up Event
 
                     if player.has('level') and match.has('level'):
                         if player.level > match.level:
-                            events.add(PlayerLevelUpEvent(self, player=player.create_link(with_fallback=True), old=match.level, new=player.level))
+                            events.add(PlayerLevelUpEvent(self, event_time=event_time, player=player.create_link(with_fallback=True), old=match.level, new=player.level))
 
                 if not player.get('joined_at'):
                     if match:
@@ -440,28 +443,28 @@ class InfoHopper(ModelTree):
                         player.joined_at = player.__created_at__
 
                 if not match:
-                    events.add(PlayerJoinServerEvent(self, player=player.create_link(with_fallback=True)))
+                    events.add(PlayerJoinServerEvent(self, event_time=event_time, player=player.create_link(with_fallback=True)))
                 
                 if player.get('squad'):
                     if not match or ( not match.get('squad') ) or ( player.squad.get_key_attributes() != match.squad.get_key_attributes() ):
-                        events.add(PlayerJoinSquadEvent(self, player=player.create_link(with_fallback=True), squad=player.squad.create_link(with_fallback=True)))
+                        events.add(PlayerJoinSquadEvent(self, event_time=event_time, player=player.create_link(with_fallback=True), squad=player.squad.create_link(with_fallback=True)))
                 if match and match.get('squad'):
                     if ( not player.get('squad') ) or ( player.squad.get_key_attributes() != match.squad.get_key_attributes() ):
-                        events.add(PlayerLeaveSquadEvent(self, player=player.create_link(with_fallback=True), squad=match.squad.create_link(with_fallback=True)))
+                        events.add(PlayerLeaveSquadEvent(self, event_time=event_time, player=player.create_link(with_fallback=True), squad=match.squad.create_link(with_fallback=True)))
                 
                 if player.get('team'):
                     if not match or ( not match.get('team') ) or ( player.team.get_key_attributes() != match.team.get_key_attributes() ):
-                        events.add(PlayerJoinTeamEvent(self, player=player.create_link(with_fallback=True), team=player.team.create_link(with_fallback=True)))
+                        events.add(PlayerJoinTeamEvent(self, event_time=event_time, player=player.create_link(with_fallback=True), team=player.team.create_link(with_fallback=True)))
                 if match and match.get('team'):
                     if ( not player.get('team') ) or ( player.team.get_key_attributes() != match.team.get_key_attributes() ):
-                        events.add(PlayerLeaveTeamEvent(self, player=player.create_link(with_fallback=True), team=match.team.create_link(with_fallback=True)))
+                        events.add(PlayerLeaveTeamEvent(self, event_time=event_time, player=player.create_link(with_fallback=True), team=match.team.create_link(with_fallback=True)))
 
             for player in others:
-                events.add(PlayerLeaveServerEvent(self, player=player.create_link(with_fallback=True)))
+                events.add(PlayerLeaveServerEvent(self, event_time=event_time, player=player.create_link(with_fallback=True)))
                 if player.get('squad'):
-                    events.add(PlayerLeaveSquadEvent(self, player=player.create_link(with_fallback=True), squad=player.squad.create_link(with_fallback=True)))
+                    events.add(PlayerLeaveSquadEvent(self, event_time=event_time, player=player.create_link(with_fallback=True), squad=player.squad.create_link(with_fallback=True)))
                 if player.get('team'):
-                    events.add(PlayerLeaveTeamEvent(self, player=player.create_link(with_fallback=True), team=player.team.create_link(with_fallback=True)))
+                    events.add(PlayerLeaveTeamEvent(self, event_time=event_time, player=player.create_link(with_fallback=True), team=player.team.create_link(with_fallback=True)))
         
         if self.has('squads') and other.has('squads'):
             others = InfoModelArray(other.squads)
@@ -476,7 +479,7 @@ class InfoHopper(ModelTree):
                         if squad.leader != match.leader:
                             old = match.leader.create_link(with_fallback=True) if match.leader else None
                             new = squad.leader.create_link(with_fallback=True) if squad.leader else None
-                            events.add(SquadLeaderChangeEvent(self, squad=squad.create_link(with_fallback=True), old=old, new=new))
+                            events.add(SquadLeaderChangeEvent(self, event_time=event_time, squad=squad.create_link(with_fallback=True), old=old, new=new))
                 
                 if not squad.get('created_at'):
                     if match:
@@ -485,10 +488,10 @@ class InfoHopper(ModelTree):
                         squad.created_at = squad.__created_at__
 
                 if not match:
-                    events.add(SquadCreatedEvent(self, squad=squad.create_link(with_fallback=True)))
+                    events.add(SquadCreatedEvent(self, event_time=event_time, squad=squad.create_link(with_fallback=True)))
             
             for squad in others:
-                events.add(SquadDisbandedEvent(self, squad=squad.create_link(with_fallback=True)))
+                events.add(SquadDisbandedEvent(self, event_time=event_time, squad=squad.create_link(with_fallback=True)))
         
         if self.has('teams') and other.has('teams'):
             others = InfoModelArray(other.teams)
@@ -504,15 +507,15 @@ class InfoHopper(ModelTree):
                         team.created_at = team.__created_at__
 
                 if not match:
-                    events.add(TeamCreatedEvent(self, team=team.create_link(with_fallback=True)))
+                    events.add(TeamCreatedEvent(self, event_time=event_time, team=team.create_link(with_fallback=True)))
             
             for team in others:
-                events.add(TeamDisbandedEvent(self, team=team.create_link(with_fallback=True)))
+                events.add(TeamDisbandedEvent(self, event_time=event_time, team=team.create_link(with_fallback=True)))
 
         self_map = self.server.get('map')
         other_map = other.server.get('map')
         if all([self_map, other_map]) and self_map != other_map:
-            events.add(ServerMapChangedEvent(self, old=other_map, new=self_map))
+            events.add(ServerMapChangedEvent(self, event_time=event_time, old=other_map, new=self_map))
 
         self.events.merge(events)
 
