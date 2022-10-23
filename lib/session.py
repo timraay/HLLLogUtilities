@@ -219,6 +219,8 @@ class HLLCaptureSession:
         self._logs = list()
 
     def get_logs(self, limit: int = None):
+        self.push_to_db()
+
         sess_name = f"session{self.id}"
         columns = tuple(LogLine.__fields__)
 
