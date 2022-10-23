@@ -40,6 +40,9 @@ class sessions(commands.Cog):
         for (id_,) in cursor.fetchall():
             if id_ not in SESSIONS:
                 HLLCaptureSession.load_from_db(id_)
+        
+        if not self.session_manager.is_running():
+            self.session_manager.start()
 
     @tasks.loop(minutes=5)
     async def session_manager(self):
