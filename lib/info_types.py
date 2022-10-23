@@ -169,11 +169,13 @@ class PlayerKillEvent(EventModel):
     player: Union[Player, Link, str] = UnsetField
     other: Union[Player, Link, None] = UnsetField
     item: str = UnsetField
-    headshot: bool = UnsetField
-    distance: float = UnsetField
 
 class PlayerTeamkillEvent(PlayerKillEvent):
     __scope_path__ = 'events.player_teamkill'
+
+class PlayerSuicideEvent(EventModel):
+    __scope_path__ = 'events.player_suicide'
+    player: Union[Player, Link, str] = UnsetField
 
 class PlayerLevelUpEvent(EventModel):
     __scope_path__ = 'events.player_level_up'
@@ -253,6 +255,7 @@ class EventTypes(Enum):
     player_message = PlayerMessageEvent
     player_kill = PlayerKillEvent
     player_teamkill = PlayerTeamkillEvent
+    player_suicide = PlayerSuicideEvent
     player_level_up = PlayerLevelUpEvent
     player_exit_admin_cam = PlayerExitAdminCamEvent
     player_leave_squad = PlayerLeaveSquadEvent
@@ -293,6 +296,7 @@ class Events(InfoModel):
     player_message: List['PlayerMessageEvent'] = UnsetField
     player_kill: List['PlayerKillEvent'] = UnsetField
     player_teamkill: List['PlayerTeamkillEvent'] = UnsetField
+    player_suicide: List['PlayerSuicideEvent'] = UnsetField
     player_level_up: List['PlayerLevelUpEvent'] = UnsetField
     player_exit_admin_cam: List['PlayerExitAdminCamEvent'] = UnsetField
     player_leave_squad: List['PlayerLeaveSquadEvent'] = UnsetField

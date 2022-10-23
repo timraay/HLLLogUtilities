@@ -135,6 +135,7 @@ class HLLRcon:
         self._map = None
         self._end_warmup_handle = None
         self._logs_seen_time = datetime.now()
+        self._player_deaths = dict()
 
     @stop_method
     async def stop(self):
@@ -420,6 +421,8 @@ class HLLRcon:
                             other=Link('players', {'steamid': p2_steamid}),
                             item=weapon
                         ))
+                        deaths = self._player_deaths.setdefault(p2_steamid, 0)
+                        self._player_deaths[p2_steamid] = deaths + 1
                     elif log.startswith('CHAT'):
                         channel, name, team, steamid, message = re.match(r"CHAT\[(Team|Unit)\]\[(.+)\((Allies|Axis)\/(\d{17})\)\]: (.+)", log).groups()
                         player = self.info.find_players(single=True, steamid=steamid)
@@ -465,10 +468,23 @@ class HLLRcon:
 
         if self._end_warmup_handle is True:
             self.info.events.add(
-                ServerStateChangedEvent(self.info, old=self._state, new="in_progress")
+                ServerStateChangedEvent(self.info, event_time=self._logs_seen_time, old=self._state, new="in_progress")
             )
             self._state = "in_progress"
             self._end_warmup_handle = None
+
+        _player_deaths = dict()
+        for player in self.info.players:
+            expected_deaths = self._player_deaths.get(player.steamid)
+            if expected_deaths is not None:
+                if player.deaths > expected_deaths:
+                    self.logger.info("Expected %s deaths but observed %s, player %s must've killed themself", expected_deaths, player.deaths, player.name)
+                    self.info.events.add(
+                        PlayerSuicideEvent(self.info, event_time=self._logs_seen_time, player=player.create_link())
+                    )
+            _player_deaths[player.steamid] = player.deaths
+        self._player_deaths = _player_deaths
+
 
     def __enter_playing_state(self):
         self._end_warmup_handle = True
