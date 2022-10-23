@@ -10,6 +10,7 @@ from lib.storage import LogLine, database, cursor, insert_many_logs, delete_logs
 from lib.exceptions import NotFound, SessionDeletedError, SessionAlreadyRunningError, SessionMissingCredentialsError
 from utils import get_config, schedule_coro, get_logger
 
+SECONDS_BETWEEN_ITERATIONS = get_config().getint('Session', 'SecondsBetweenIterations')
 NUM_LOGS_REQUIRED_FOR_INSERT = get_config().getint('Session', 'NumLogsRequiredForInsert')
 DELETE_SESSION_AFTER = timedelta(days=get_config().getint('Session', 'DeleteAfterDays'))
 SESSIONS: Dict[int, 'HLLCaptureSession'] = dict()
@@ -166,23 +167,27 @@ class HLLCaptureSession:
         await self.deactivate()
         self._clear_tasks()
 
-    @tasks.loop(seconds=5)
+    @tasks.loop(seconds=SECONDS_BETWEEN_ITERATIONS)
     async def gatherer(self):
         info = await self.rcon.update()
+
+        if not info:
+            return
+
         if self.info:
-            info.compare_older(self.info)
+            info.compare_older(self.info, event_time=self.rcon._logs_seen_time)
         self.info = info
-        print(info.events.to_dict(exclude_unset=True))
-        for event in info.events.flatten():
-            print('E', event)
-            try:
-                log = LogLine.from_event(event)
-                print(event.to_dict(exclude_unset=True))
-            except:
-                self.logger.exception('Failed to cast event to log line: %s', event.to_dict(exclude_unset=True))
-            else:
-                self._logs.append(log)
         
+        if info.has('events'):
+            for event in info.events.flatten():
+                try:
+                    log = LogLine.from_event(event)
+                    print(event.to_dict(exclude_unset=True))
+                except:
+                    self.logger.exception('Failed to cast event to log line: %s %s' % (type(event).__name__, event.to_dict(exclude_unset=True)))
+                else:
+                    self._logs.append(log)
+            
         if len(self._logs) > NUM_LOGS_REQUIRED_FOR_INSERT:
             self.push_to_db()
 
@@ -222,10 +227,13 @@ class HLLCaptureSession:
             query = query.limit(limit)
         
         cursor.execute(str(query))
-        return [LogLine(**dict(zip(columns, record))) for record in cursor.fetchall()]
+        return [LogLine(
+            **{k: v for k, v in zip(columns, record) if v is not None}
+        ) for record in cursor.fetchall()]
 
     def delete(self):
-        schedule_coro(datetime.now(), self.deactivate, error_logger=self.logger())
+        self.logger.info('Deleting session...')
+        schedule_coro(datetime.now(tz=timezone.utc), self.deactivate, error_logger=self.logger)
         self._clear_tasks()
         delete_logs(sess_id=self.id)
 

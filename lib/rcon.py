@@ -8,12 +8,12 @@ from typing import List, TYPE_CHECKING
 from lib.protocol import HLLRconProtocol
 from lib.exceptions import HLLConnectionError
 from lib.info_types import *
-from utils import to_timedelta, ttl_cache
+from utils import to_timedelta, ttl_cache, get_config
 
 if TYPE_CHECKING:
     from lib.session import HLLCaptureSession
 
-NUM_WORKERS_PER_INSTANCE = 4
+NUM_WORKERS_PER_INSTANCE = get_config().getint('Session', 'NumRCONWorkers')
 
 SQUAD_LEADER_ROLES = {"Officer", "TankCommander", "Spotter"}
 TEAM_LEADER_ROLES = {"ArmyCommander"}
@@ -309,43 +309,47 @@ class HLLRcon:
             Level: 34
             """
 
-            data["name"] = raw["name"]
-            data["steamid"] = raw["steamid64"]
+            try:
+                data["name"] = raw["name"]
+                data["steamid"] = raw["steamid64"]
 
-            if playerids[num_info] != data["name"]:
-                self.logger.error('Requested playerinfo for %s but got %s', playerids[num_info], data["name"])
-            
-            team = raw.get("team")
-            team_id = 1 if team == "Allies" else 2
-            if team:
-                data["team"] = Link("teams", {'id': team_id})
-                data["role"] = raw.get("role", None)
-                data["loadout"] = raw.get("loadout", None)
-            else:
-                data["team"] = None
-                data["role"] = None
-                data["loadout"] = None
-            
-            squad = raw.get("unit")
-            if squad:
-                squad_id, squad_name = squad.split(' - ', 1)
-                squad_id = int(squad_id)
-                data['squad'] = Link("squads", {'id': squad_id, 'team': {'id': team_id}})
+                if playerids[num_info] != data["name"]:
+                    self.logger.error('Requested playerinfo for %s but got %s', playerids[num_info], data["name"])
                 
-                if team_id == 1:
-                    squads_allies[squad_id] = squad_name
+                team = raw.get("team")
+                team_id = 1 if team == "Allies" else 2
+                if team:
+                    data["team"] = Link("teams", {'id': team_id})
+                    data["role"] = raw.get("role", None)
+                    data["loadout"] = raw.get("loadout", None)
                 else:
-                    squads_axis[squad_id] = squad_name
-            
-            data["kills"], data["deaths"] = raw.get("kills").split(' - Deaths: ') if raw.get("kills") else (0, 0)
-            data["level"] = raw.get("level", None)
+                    data["team"] = None
+                    data["role"] = None
+                    data["loadout"] = None
+                
+                squad = raw.get("unit")
+                if squad:
+                    squad_id, squad_name = squad.split(' - ', 1)
+                    squad_id = int(squad_id)
+                    data['squad'] = Link("squads", {'id': squad_id, 'team': {'id': team_id}})
+                    
+                    if team_id == 1:
+                        squads_allies[squad_id] = squad_name
+                    else:
+                        squads_axis[squad_id] = squad_name
+                
+                data["kills"], data["deaths"] = raw.get("kills").split(' - Deaths: ') if raw.get("kills") else (0, 0)
+                data["level"] = raw.get("level", None)
 
-            scores = dict([score.split(" ", 1) for score in raw.get("score", "C 0, O 0, D 0, S 0").split(", ")])
-            map_score = {"C": "combat", "O": "offense", "D": "defense", "S": "support"}
-            data["score"] = {v: scores.get(k, 0) for k, v in map_score.items()}
-            data["score"]["hopper"] = self.info
+                scores = dict([score.split(" ", 1) for score in raw.get("score", "C 0, O 0, D 0, S 0").split(", ")])
+                map_score = {"C": "combat", "O": "offense", "D": "defense", "S": "support"}
+                data["score"] = {v: scores.get(k, 0) for k, v in map_score.items()}
+                data["score"]["hopper"] = self.info
 
-            players.append(data)
+                players.append(data)
+            except:
+                self.logger.error("Couldn't unpack player data: %s", raw)
+                raise
 
         squads = list()
         for i, squadids in enumerate([squads_allies, squads_axis]):
@@ -383,8 +387,8 @@ class HLLRcon:
 
     def __parse_logs(self, logs: str):
         if logs != 'EMPTY':
-            time = None
             logs = logs.strip('\n').split('\n')
+            time = None
 
             for line in logs:
                 """
@@ -406,8 +410,6 @@ class HLLRcon:
                     if time <= self._logs_seen_time:
                         continue
 
-                    print(log)
-                    
                     if log.startswith('KILL') or log.startswith('TEAM KILL'):
                         p1_name, p1_team, p1_steamid, p2_name, p2_team, p2_steamid, weapon = re.search(
                             r"KILL: (.+)\((Allies|Axis)\/(\d{17})\) -> (.+)\((Allies|Axis)\/(\d{17})\) with (.+)", log).groups()
