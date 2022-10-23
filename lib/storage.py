@@ -89,6 +89,7 @@ class LogLine(BaseModel):
         payload['new'] = new
         
         payload['weapon'] = event.get('weapon')
+        payload['message'] = event.get('message')
 
         payload.setdefault('type', str(EventTypes(event.__class__)))
         return cls(event_time=event.event_time, **{k: v for k, v in payload.items() if v is not None})
