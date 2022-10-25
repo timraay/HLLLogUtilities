@@ -196,7 +196,10 @@ class sessions(commands.Cog):
                 credentials=credentials
             )
 
-            await interaction.followup.send(embed=embed)
+            if interaction.response.is_done():
+                await interaction.followup.send(embed=embed)
+            else:
+                await interaction.response.send_message(embed=embed)
 
         view = View(timeout=300)
         view.add_item(CallableButton(on_confirm, label="Confirm", style=discord.ButtonStyle.green))
