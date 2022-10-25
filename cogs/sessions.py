@@ -141,12 +141,12 @@ class sessions(commands.Cog):
                             raise CustomException("Credentials have already been saved!")
                         
                         await msg.delete()
-                        await create_session(__interaction, credentials)
+                        await create_session(interaction, credentials)
                     
                     @only_once
                     async def on_save_decline(__interaction: Interaction):
                         await msg.delete()
-                        await create_session(__interaction, credentials)
+                        await create_session(interaction, credentials)
 
                     embed = discord.Embed(
                         title="Do you want me to save these credentials?",
@@ -196,10 +196,12 @@ class sessions(commands.Cog):
                 credentials=credentials
             )
 
-            if interaction.response.is_done():
-                await interaction.followup.send(embed=embed)
+            if not _interaction.response.is_done():
+                await _interaction.response.send_message(embed=embed)
             else:
-                await interaction.response.send_message(embed=embed)
+                await _interaction.followup.send(embed=embed)
+            
+            await _interaction.edit_original_response(view=None)
 
         view = View(timeout=300)
         view.add_item(CallableButton(on_confirm, label="Confirm", style=discord.ButtonStyle.green))
