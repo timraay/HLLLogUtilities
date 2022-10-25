@@ -182,7 +182,7 @@ class HLLCaptureSession:
             for event in info.events.flatten():
                 try:
                     log = LogLine.from_event(event)
-                    print(event.to_dict(exclude_unset=True))
+                    # print(event.to_dict(exclude_unset=True))
                 except:
                     self.logger.exception('Failed to cast event to log line: %s %s' % (type(event).__name__, event.to_dict(exclude_unset=True)))
                 else:

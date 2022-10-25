@@ -423,8 +423,13 @@ class HLLRcon:
                             other=Link('players', {'steamid': p2_steamid}),
                             weapon=weapon
                         ))
-                        deaths = self._player_deaths.setdefault(p2_steamid, 0)
-                        self._player_deaths[p2_steamid] = deaths + 1
+                        player = self.info.find_players(single=True, steamid=p2_steamid)
+                        if player:
+                            deaths = self._player_deaths.setdefault(player, 0)
+                            self._player_deaths[player] = deaths + 1
+                            # self.logger.info('{: <25} {} -> {}'.format(player.name, deaths, deaths + 1))
+                        else:
+                            self.logger.warning('Could not find player %s %s', p2_steamid, p2_name)
                     elif log.startswith('CHAT'):
                         channel, name, team, steamid, message = re.match(r"CHAT\[(Team|Unit)\]\[(.+)\((Allies|Axis)\/(\d{17})\)\]: (.+)", log).groups()
                         player = self.info.find_players(single=True, steamid=steamid)
@@ -475,23 +480,35 @@ class HLLRcon:
             self._state = "in_progress"
             self._end_warmup_handle = None
 
-        for player in self.info.players:
-            expected_deaths = self._player_deaths.get(player.steamid)
 
-            if player.steamid not in self._player_suicide_handles:
+
+        for player in self.info.players:
+            expected_deaths = self._player_deaths.get(player)
+
+            if player not in self._player_suicide_handles:
             
                 if (expected_deaths is not None) and (player.deaths - expected_deaths == 1):
-                    handle = self.loop.call_later(7.0, lambda: self.__check_player_suicide(player.steamid, player.deaths))
-                    self._player_suicide_handles[player.steamid] = handle
+                    # self.logger.info('Scheduling for %s: %s - %s == 1', player.name, player.deaths, expected_deaths)
+                    handle = self.loop.call_later(7.0, self.__check_player_suicide, player)
+                    self._player_suicide_handles[player] = handle
 
                 else:
-                    self._player_deaths[player.steamid] = player.deaths
+                    if player.deaths != expected_deaths:
+                        self.logger.warning('Mismatch for %s: Has %s but expected %s', player.name, player.deaths, expected_deaths)
+                    self._player_deaths[player] = player.deaths
 
-        self._player_deaths = {k: v for k, v in self._player_deaths.items() if self.info.find_players(single=True, steamid=k) or (k in self._player_suicide_handles)}
+        # _player_deaths = dict()
+        # for p, v in self._player_deaths.items():
+        #     if (p in self.info.players) or (p in self._player_suicide_handles):
+        #         _player_deaths[p] = v
+        #     else:
+        #         self.logger.info('Disposing %s', p.name)
+        # self._player_deaths = _player_deaths
+        self._player_deaths = {p: v for p, v in self._player_deaths.items() if (p in self.info.players) or (p in self._player_suicide_handles)}
 
-        for steamid in self._player_suicide_queue:
+        for player in self._player_suicide_queue:
             self.info.events.add(
-                PlayerSuicideEvent(self.info, event_time=self._logs_seen_time, player=player.create_link())
+                PlayerSuicideEvent(self.info, event_time=self._logs_seen_time, player=player.create_link(with_fallback=True))
             )
         self._player_suicide_queue.clear()
         
@@ -500,15 +517,20 @@ class HLLRcon:
     def __enter_playing_state(self):
         self._end_warmup_handle = True
     
-    def __check_player_suicide(self, steamid: str, expected: int):
+    def __check_player_suicide(self, player: Player):
         try:
-            expected_deaths = self._player_deaths.get(steamid)
-            if expected_deaths is None or (expected - expected_deaths) == 1:
-                self.logger.info("Expected %s deaths but observed %s, player %s must've killed themself", expected_deaths, expected, steamid)
-                self._player_suicide_queue.add(steamid)
+            expected_deaths = self._player_deaths.get(player)
+            if expected_deaths is None:
+                self.logger.warning('Expected death amount of player %s is unknown', player.name)
+            elif (player.deaths - expected_deaths) == 1:
+                # self.logger.info("Expected %s deaths but observed %s, player %s must've killed themself", expected_deaths, player.deaths, player.name)
+                self._player_suicide_queue.add(player)
+            else:
+                # self.logger.info('Successfully ended check for %s. Expected %s and got %s.', player.name, expected_deaths, player.deaths)
+                pass
         finally:
-            self._player_suicide_handles.pop(steamid, None)
-            self._player_deaths[steamid] = expected
+            self._player_suicide_handles.pop(player, None)
+            self._player_deaths[player] = player.deaths
             
                             
 

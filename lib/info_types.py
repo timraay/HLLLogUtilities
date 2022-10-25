@@ -34,6 +34,15 @@ class Player(InfoModel):
                     return False
         return None
 
+    def __hash__(self):
+        return hash(self.get('steamid') or self.get('name'))
+    
+    def __eq__(self, other):
+        if isinstance(other, Player):
+            return hash(self) == hash(other)
+        else:
+            return super().__eq__(other)
+
 class HLLPlayerScore(InfoModel):
     __scope_path__ = "players.score"
     combat: int = UnsetField
