@@ -15,11 +15,6 @@ bot = commands.Bot(intents=intents, command_prefix=get_config()['Bot']['CommandP
 bot.remove_command('help')
 
 
-@bot.check
-def is_in_guild(ctx):
-    return ctx.guild is not None
-
-
 @bot.group(invoke_without_command=True, aliases=['cog'])
 @commands.is_owner()
 async def module(ctx):
