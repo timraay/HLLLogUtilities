@@ -112,29 +112,33 @@ class ServerMapChangedEvent(EventModel):
     old: str = UnsetField
     new: str = UnsetField
 
-class ServerStateChangedEvent(EventModel):
-    __scope_path__ = 'events.server_state_changed'
-    old: str = UnsetField
-    new: str = UnsetField
-    score: str = UnsetField
+class ServerMatchStarted(EventModel):
+    __scope_path__ = 'events.server_match_started'
+    map: str = UnsetField
+    
+class ServerWarmupEnded(EventModel):
+    __scope_path__ = 'events.server_warmup_ended'
 
-class TeamCreatedEvent(EventModel):
-    __scope_path__ = 'events.team_created'
-    team: Union[Team, Link] = UnsetField
+class ServerMatchEnded(EventModel):
+    __scope_path__ = 'events.server_match_ended'
+    map: str = UnsetField
+    score: str = UnsetField
 
 class SquadCreatedEvent(EventModel):
     __scope_path__ = 'events.squad_created'
     squad: Union[Squad, Link] = UnsetField
 
-class PlayerJoinTeamEvent(EventModel):
-    __scope_path__ = 'events.player_join_team'
+class PlayerSwitchTeamEvent(EventModel):
+    __scope_path__ = 'events.player_switch_team'
     player: Union[Player, Link] = UnsetField
-    team: Union[Team, Link] = UnsetField
+    old: Union[Team, Link, None] = UnsetField
+    new: Union[Team, Link, None] = UnsetField
 
-class PlayerJoinSquadEvent(EventModel):
-    __scope_path__ = 'events.player_join_squad'
+class PlayerSwitchSquadEvent(EventModel):
+    __scope_path__ = 'events.player_switch_squad'
     player: Union[Player, Link] = UnsetField
-    squad: Union[Squad, Link] = UnsetField
+    old: Union[Squad, Link, None] = UnsetField
+    new: Union[Squad, Link, None] = UnsetField
 
 class SquadLeaderChangeEvent(EventModel):
     __scope_path__ = 'events.squad_leader_change'
@@ -187,16 +191,6 @@ class PlayerExitAdminCamEvent(EventModel):
     __scope_path__ = 'events.player_exit_admin_cam'
     player: Union[Player, Link] = UnsetField
 
-class PlayerLeaveSquadEvent(EventModel):
-    __scope_path__ = 'events.player_leave_squad'
-    player: Union[Player, Link] = UnsetField
-    squad: Union[Squad, Link] = UnsetField
-
-class PlayerLeaveTeamEvent(EventModel):
-    __scope_path__ = 'events.player_leave_team'
-    player: Union[Player, Link] = UnsetField
-    team: Union[Team, Link] = UnsetField
-
 class PlayerLeaveServerEvent(EventModel):
     __scope_path__ = 'events.player_leave_server'
     player: Union[Player, Link] = UnsetField
@@ -204,11 +198,6 @@ class PlayerLeaveServerEvent(EventModel):
 class SquadDisbandedEvent(EventModel):
     __scope_path__ = 'events.squad_disbanded'
     squad: Union[Squad, Link] = UnsetField
-
-class TeamDisbandedEvent(EventModel):
-    __scope_path__ = 'events.team_disbanded'
-    team: Union[Team, Link] = UnsetField
-
 
 class PrivateEventModel(EventModel):
     """A special event model that simply flags
@@ -243,11 +232,12 @@ class EventTypes(Enum):
     # In order of evaluation!
     player_join_server = PlayerJoinServerEvent
     server_map_changed = ServerMapChangedEvent
-    server_state_changed = ServerStateChangedEvent
-    team_created = TeamCreatedEvent
+    server_match_started = ServerMatchStarted
+    server_warmup_ended = ServerWarmupEnded
+    server_match_ended = ServerMatchEnded
     squad_created = SquadCreatedEvent
-    player_join_team = PlayerJoinTeamEvent
-    player_join_squad = PlayerJoinSquadEvent
+    player_switch_team = PlayerSwitchTeamEvent
+    player_switch_squad = PlayerSwitchSquadEvent
     squad_leader_change = SquadLeaderChangeEvent
     player_change_role = PlayerChangeRoleEvent
     player_change_loadout = PlayerChangeLoadoutEvent
@@ -258,11 +248,8 @@ class EventTypes(Enum):
     player_suicide = PlayerSuicideEvent
     player_level_up = PlayerLevelUpEvent
     player_exit_admin_cam = PlayerExitAdminCamEvent
-    player_leave_squad = PlayerLeaveSquadEvent
-    player_leave_team = PlayerLeaveTeamEvent
     player_leave_server = PlayerLeaveServerEvent
     squad_disbanded = SquadDisbandedEvent
-    team_disbanded = TeamDisbandedEvent
 
     @classmethod
     def _missing_(cls, value):
@@ -284,11 +271,12 @@ class EventTypes(Enum):
 class Events(InfoModel):
     player_join_server: List['PlayerJoinServerEvent'] = UnsetField
     server_map_changed: List['ServerMapChangedEvent'] = UnsetField
-    server_state_changed: List['ServerStateChangedEvent'] = UnsetField
-    team_created: List['TeamCreatedEvent'] = UnsetField
+    server_match_started: List['ServerMatchStarted'] = UnsetField
+    server_warmup_ended: List['ServerWarmupEnded'] = UnsetField
+    server_match_ended: List['ServerMatchEnded'] = UnsetField
     squad_created: List['SquadCreatedEvent'] = UnsetField
-    player_join_team: List['PlayerJoinTeamEvent'] = UnsetField
-    player_join_squad: List['PlayerJoinSquadEvent'] = UnsetField
+    player_switch_team: List['PlayerSwitchTeamEvent'] = UnsetField
+    player_switch_squad: List['PlayerSwitchSquadEvent'] = UnsetField
     squad_leader_change: List['SquadLeaderChangeEvent'] = UnsetField
     player_change_role: List['PlayerChangeRoleEvent'] = UnsetField
     player_change_loadout: List['PlayerChangeLoadoutEvent'] = UnsetField
@@ -299,11 +287,8 @@ class Events(InfoModel):
     player_suicide: List['PlayerSuicideEvent'] = UnsetField
     player_level_up: List['PlayerLevelUpEvent'] = UnsetField
     player_exit_admin_cam: List['PlayerExitAdminCamEvent'] = UnsetField
-    player_leave_squad: List['PlayerLeaveSquadEvent'] = UnsetField
-    player_leave_team: List['PlayerLeaveTeamEvent'] = UnsetField
     player_leave_server: List['PlayerLeaveServerEvent'] = UnsetField
     squad_disbanded: List['SquadDisbandedEvent'] = UnsetField
-    team_disbanded: List['TeamDisbandedEvent'] = UnsetField
 
     def __getitem__(self, key) -> List[InfoModel]:
         return obj_getattr(self, str(EventTypes(key)))
@@ -430,9 +415,11 @@ class InfoHopper(ModelTree):
 
                     # Loadout Change Event
 
+                    """
                     if player.has('loadout') and match.has('loadout'):
                         if player.loadout != match.loadout:
                             events.add(PlayerChangeLoadoutEvent(self, event_time=event_time, player=player.create_link(with_fallback=True), old=match.loadout, new=player.loadout))
+                    """
 
                     # Level Up Event
 
@@ -449,26 +436,40 @@ class InfoHopper(ModelTree):
                 if not match:
                     events.add(PlayerJoinServerEvent(self, event_time=event_time, player=player.create_link(with_fallback=True)))
                 
-                if player.get('squad'):
-                    if not match or ( not match.get('squad') ) or ( player.squad.get_key_attributes() != match.squad.get_key_attributes() ):
-                        events.add(PlayerJoinSquadEvent(self, event_time=event_time, player=player.create_link(with_fallback=True), squad=player.squad.create_link(with_fallback=True)))
-                if match and match.get('squad'):
-                    if ( not player.get('squad') ) or ( player.squad.get_key_attributes() != match.squad.get_key_attributes() ):
-                        events.add(PlayerLeaveSquadEvent(self, event_time=event_time, player=player.create_link(with_fallback=True), squad=match.squad.create_link(with_fallback=True)))
-                
-                if player.get('team'):
-                    if not match or ( not match.get('team') ) or ( player.team.get_key_attributes() != match.team.get_key_attributes() ):
-                        events.add(PlayerJoinTeamEvent(self, event_time=event_time, player=player.create_link(with_fallback=True), team=player.team.create_link(with_fallback=True)))
-                if match and match.get('team'):
-                    if ( not player.get('team') ) or ( player.team.get_key_attributes() != match.team.get_key_attributes() ):
-                        events.add(PlayerLeaveTeamEvent(self, event_time=event_time, player=player.create_link(with_fallback=True), team=match.team.create_link(with_fallback=True)))
+                p_squad = player.get('squad')
+                m_squad = match.get('squad') if match else None
+                if p_squad != m_squad:
+                    events.add(PlayerSwitchSquadEvent(self, event_time=event_time,
+                        player=player.create_link(with_fallback=True),
+                        old=m_squad.create_link(with_fallback=True) if m_squad else None,
+                        new=p_squad.create_link(with_fallback=True) if p_squad else None,
+                    ))
+                    
+                p_team = player.get('team')
+                m_team = match.get('team') if match else None
+                if p_team != m_team:
+                    events.add(PlayerSwitchTeamEvent(self, event_time=event_time,
+                        player=player.create_link(with_fallback=True),
+                        old=m_team.create_link(with_fallback=True) if m_team else None,
+                        new=p_team.create_link(with_fallback=True) if p_team else None,
+                    ))
 
             for player in others:
-                events.add(PlayerLeaveServerEvent(self, event_time=event_time, player=player.create_link(with_fallback=True)))
+                events.add(PlayerLeaveServerEvent(self, event_time=event_time,
+                    player=player.create_link(with_fallback=True)
+                ))
                 if player.get('squad'):
-                    events.add(PlayerLeaveSquadEvent(self, event_time=event_time, player=player.create_link(with_fallback=True), squad=player.squad.create_link(with_fallback=True)))
+                    events.add(PlayerSwitchSquadEvent(self, event_time=event_time,
+                        player=player.create_link(with_fallback=True),
+                        old=player.squad.create_link(with_fallback=True),
+                        new=None
+                    ))
                 if player.get('team'):
-                    events.add(PlayerLeaveTeamEvent(self, event_time=event_time, player=player.create_link(with_fallback=True), team=player.team.create_link(with_fallback=True)))
+                    events.add(PlayerSwitchTeamEvent(self, event_time=event_time,
+                        player=player.create_link(with_fallback=True),
+                        old=player.team.create_link(with_fallback=True),
+                        new=None
+                    ))
         
         if self.has('squads') and other.has('squads'):
             others = InfoModelArray(other.squads)
@@ -509,12 +510,6 @@ class InfoHopper(ModelTree):
                         team.created_at = match.get('created_at') or team.__created_at__
                     else:
                         team.created_at = team.__created_at__
-
-                if not match:
-                    events.add(TeamCreatedEvent(self, event_time=event_time, team=team.create_link(with_fallback=True)))
-            
-            for team in others:
-                events.add(TeamDisbandedEvent(self, event_time=event_time, team=team.create_link(with_fallback=True)))
 
         self_map = self.server.get('map')
         other_map = other.server.get('map')

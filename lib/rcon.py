@@ -136,6 +136,8 @@ class HLLRcon:
         self._end_warmup_handle = None
         self._logs_seen_time = datetime.now()
         self._player_deaths = dict()
+        self._player_suicide_handles = dict()
+        self._player_suicide_queue = set()
 
     @stop_method
     async def stop(self):
@@ -440,9 +442,9 @@ class HLLRcon:
                         elif action == "Left":
                             self.info.events.add(PlayerExitAdminCamEvent(self.info, event_time=time, player=player))
                     elif log.startswith('MATCH START'):
-                        #map_name = log[12:]
+                        map_name = log[12:]
                         self.info.events.add(
-                            ServerStateChangedEvent(self.info, event_time=time, old=self._state, new="warmup")
+                            ServerMatchStarted(self.info, event_time=time, map=map_name)
                         )
                         self._state = "warmup"
                         if isinstance(self._end_warmup_handle, asyncio.TimerHandle):
@@ -451,7 +453,7 @@ class HLLRcon:
                     elif log.startswith('MATCH ENDED'):
                         map_name, score = re.match(r'MATCH ENDED `(.+)` ALLIED \((.+)\) AXIS', log).groups()
                         self.info.events.add(
-                            ServerStateChangedEvent(self.info, event_time=time, old=self._state, new="end_of_round", score=score)
+                            ServerMatchEnded(self.info, event_time=time, map=map_name, score=score)
                         )
                         self._state = "end_of_round"
                         if isinstance(self._end_warmup_handle, asyncio.TimerHandle):
@@ -468,26 +470,47 @@ class HLLRcon:
 
         if self._end_warmup_handle is True:
             self.info.events.add(
-                ServerStateChangedEvent(self.info, event_time=self._logs_seen_time, old=self._state, new="in_progress")
+                ServerWarmupEnded(self.info, event_time=self._logs_seen_time)
             )
             self._state = "in_progress"
             self._end_warmup_handle = None
 
-        _player_deaths = dict()
         for player in self.info.players:
             expected_deaths = self._player_deaths.get(player.steamid)
-            if expected_deaths is not None:
-                if player.deaths > expected_deaths:
-                    self.logger.info("Expected %s deaths but observed %s, player %s must've killed themself", expected_deaths, player.deaths, player.name)
-                    self.info.events.add(
-                        PlayerSuicideEvent(self.info, event_time=self._logs_seen_time, player=player.create_link())
-                    )
-            _player_deaths[player.steamid] = player.deaths
-        self._player_deaths = _player_deaths
+
+            if player.steamid not in self._player_suicide_handles:
+            
+                if (expected_deaths is not None) and (player.deaths - expected_deaths == 1):
+                    handle = self.loop.call_later(7.0, lambda: self.__check_player_suicide(player.steamid, player.deaths))
+                    self._player_suicide_handles[player.steamid] = handle
+
+                else:
+                    self._player_deaths[player.steamid] = player.deaths
+
+        self._player_deaths = {k: v for k, v in self._player_deaths.items() if self.info.find_players(single=True, steamid=k) or (k in self._player_suicide_handles)}
+
+        for steamid in self._player_suicide_queue:
+            self.info.events.add(
+                PlayerSuicideEvent(self.info, event_time=self._logs_seen_time, player=player.create_link())
+            )
+        self._player_suicide_queue.clear()
+        
 
 
     def __enter_playing_state(self):
         self._end_warmup_handle = True
+    
+    def __check_player_suicide(self, steamid: str, expected: int):
+        try:
+            expected_deaths = self._player_deaths.get(steamid)
+            if expected_deaths is None or (expected - expected_deaths) == 1:
+                self.logger.info("Expected %s deaths but observed %s, player %s must've killed themself", expected_deaths, expected, steamid)
+                self._player_suicide_queue.add(steamid)
+        finally:
+            self._player_suicide_handles.pop(steamid, None)
+            self._player_deaths[steamid] = expected
+            
+                            
 
     async def kick_player(self, player: Player, reason: str = ""):
         await self.exec_command(f'kick "{player.name}" "{reason}"')

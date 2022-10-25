@@ -75,12 +75,9 @@ class TextConverter(Converter):
     player_kill             = "KILL                \t{player_name} ({player_team}/{player_steamid}) -> {player2_name} ({player2_team}/{player2_steamid}) with {weapon}"
     player_teamkill         = "TEAM KILL           \t{player_name} ({player_team}/{player_steamid}) -> {player2_name} ({player2_team}/{player2_steamid}) with {weapon}"
     player_suicide          = "SUICIDE             \t{player_name} ({player_team}/{player_steamid})"
-    player_join_team        = "TEAM JOINED         \t{player_name} ({player_steamid}) joined team {team_name}"
-    player_leave_team       = "TEAM LEFT           \t{player_name} ({player_steamid}) left team {team_name}"
+    player_switch_team      = "TEAM SWITCHED       \t{player_name} ({player_steamid}): {old} -> {new}"
     squad_created           = "UNIT CREATED        \tUnit {squad_name} created on team {team_name}"
-    player_join_squad       = "UNIT JOINED         \t{player_name} ({player_team}/{player_steamid}) joined unit {squad_name}"
-    player_leave_squad      = "UNIT LEFT           \t{player_name} ({player_team}/{player_steamid}) left unit {squad_name}"
-    squad_leader_change     = "OFFICER CHANGED     \tOfficer for {squad_name}: {player_name} -> {player2_name} ({team_name})"
+    player_switch_squad     = "UNIT SWITCHED       \t{player_name} ({team_name}/{player_steamid}): {old} -> {new}"
     squad_disbanded         = "UNIT DISBANDED      \tUnit {squad_name} disbanded on team {team_name}"
     player_change_role      = "ROLE CHANGED        \t{player_name} ({player_team}/{player_steamid}) changed role: {old} -> {new}"
     player_change_loadout   = "LOADOUT CHANGED     \t{player_name} ({player_team}/{player_steamid}) changed loadout: {old} -> {new}"
@@ -88,7 +85,9 @@ class TextConverter(Converter):
     player_exit_admin_cam   = "CAMERA EXITED       \t{player_name} ({player_team}/{player_steamid}) exited admin cam"
     player_level_up         = "LEVELUP             \t{player_name} ({player_steamid}) leveled up: {old} -> {new}"
     server_map_changed      = "MAP CHANGED         \tMap changed from {old} to {new}"
-    server_state_changed    = "GAME STATE CHANGED  \tGame state changed from {old} to {new}"
+    server_match_started    = "MATCH START         \tMATCH START {new}"
+    server_match_ended      = "MATCH ENDED         \tMATCH ENDED `{new}` ALLIED ({message}) AXIS"
+    server_warmup_ended     = "WARMUP ENDED        \tWARMUP ENDED"
 
     @staticmethod
     def player_message(log: 'LogLine'):

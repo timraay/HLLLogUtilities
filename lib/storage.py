@@ -53,9 +53,12 @@ class LogLine(BaseModel):
             player2 = event.old
             old = None
             new = None
+        elif isinstance(event, (PlayerSwitchSquadEvent, PlayerSwitchTeamEvent)):
+            old = event.old.name if event.old else None
+            new = event.new.name if event.new else None
         else:
             old = event.get('old')
-            new = event.get('new')
+            new = event.get('new') or event.get('map')
         
         if isinstance(event, PlayerMessageEvent):
             if isinstance(event.channel, Squad):
@@ -88,8 +91,8 @@ class LogLine(BaseModel):
         payload['old'] = old
         payload['new'] = new
         
+        payload['message'] = event.score if isinstance(event, ServerMatchEnded) else event.get('message')
         payload['weapon'] = event.get('weapon')
-        payload['message'] = event.get('message')
 
         payload.setdefault('type', str(EventTypes(event.__class__)))
         return cls(event_time=event.event_time, **{k: v for k, v in payload.items() if v is not None})
