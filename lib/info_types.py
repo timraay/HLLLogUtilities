@@ -424,7 +424,9 @@ class InfoHopper(ModelTree):
                     # Level Up Event
 
                     if player.has('level') and match.has('level'):
-                        if player.level > match.level:
+                        # Sometimes it takes the server a little to load the player's actual level. Here's an attempt
+                        # to prevent a levelup event from occurring during those instances.
+                        if player.level > match.level and not (match.level == 1 and player.level - match.level > 1):
                             events.add(PlayerLevelUpEvent(self, event_time=event_time, player=player.create_link(with_fallback=True), old=match.level, new=player.level))
 
                 if not player.get('joined_at'):
