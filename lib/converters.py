@@ -100,7 +100,7 @@ class TextConverter(Converter):
     def squad_leader_change(log: 'LogLine'):
         p1 = f"{log.player_name} ({log.player_steamid})" if log.player_name is not None else "None"
         p2 = f"{log.player2_name} ({log.player2_steamid})" if log.player2_name is not None else "None"
-        return "OFFICER CHANGED".ljust(20) + f"\tOfficer for {log.squad_name}: {p1} -> {p2} ({log.team_name})"
+        return "OFFICER CHANGED".ljust(20) + f"\tOfficer for {log.squad_name} ({log.team_name}): {p2} -> {p1}"
 
     
     @classmethod
