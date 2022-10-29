@@ -56,6 +56,8 @@ Your session is now scheduled! Now, let's wait for it to gather some logs and th
 
 And that's everything! You can see all of your sessions with the `/session list` command. Just note that they'll be deleted after 14 days. To manage your server credentials, use the `/credentials` command.
 
+> **NOTE:** All commands require **Administrator permissions**. You can add exceptions for specific roles, channels and/or users under *Server Settings > Integrations > HLL Log Utilities*.
+
 # Setup Guide
 
 ### Prerequisites
