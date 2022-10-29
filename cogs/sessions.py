@@ -8,8 +8,6 @@ from dateutil.parser import parse as dt_parse
 from enum import Enum
 from io import StringIO
 
-from requests import delete
-
 from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions
 from lib.credentials import Credentials, credentials_in_guild_tll
 from lib.converters import Converter, ExportFormats
@@ -72,6 +70,12 @@ class sessions(commands.Cog):
         return choices
 
     @SessionGroup.command(name="new", description="Start recording server logs at specified time")
+    @app_commands.describe(
+        name="A name to later identify your session with",
+        start_time="The time when to start recording, in UTC. Can be \"now\" as well.",
+        end_time="The time when to stop recording, in UTC.",
+        server="The HLL server to record logs from"
+    )
     @app_commands.autocomplete(
         server=autocomplete_credentials
     )
@@ -209,6 +213,9 @@ class sessions(commands.Cog):
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     @SessionGroup.command(name="list", description="View all available sessions")
+    @app_commands.describe(
+        filter="Filter shown session by their state"
+    )
     async def list_all_sessions(self, interaction: Interaction, filter: SessionFilters = SessionFilters.all):
         all_sessions = get_sessions(interaction.guild_id)
         count = 0
@@ -246,6 +253,9 @@ class sessions(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
     
     @SessionGroup.command(name="stop", description="Stop a session pre-emptively")
+    @app_commands.describe(
+        session="An ongoing log capture session"
+    )
     @app_commands.autocomplete(
         session=autocomplete_active_sessions
     )
@@ -275,6 +285,9 @@ class sessions(commands.Cog):
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
     
     @SessionGroup.command(name="delete", description="Delete a session and its records")
+    @app_commands.describe(
+        session="A log capture session"
+    )
     @app_commands.autocomplete(
         session=autocomplete_sessions
     )
@@ -300,6 +313,10 @@ class sessions(commands.Cog):
 
 
     @SessionGroup.command(name="logs", description="Download logs from a session")
+    @app_commands.describe(
+        session="A log capture session",
+        format="The format the logs should be exported in"
+    )
     @app_commands.autocomplete(
         session=autocomplete_sessions
     )

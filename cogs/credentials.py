@@ -127,6 +127,9 @@ class credentials(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @Group.command(name="remove", description="Remove credentials")
+    @app_commands.describe(
+        credentials="Credentials for RCON access"
+    )
     @app_commands.autocomplete(
         credentials=autocomplete_credentials
     )
@@ -164,6 +167,9 @@ class credentials(commands.Cog):
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
         
     @Group.command(name="edit", description="Edit existing credentials")
+    @app_commands.describe(
+        credentials="Credentials for RCON access"
+    )
     @app_commands.autocomplete(
         credentials=autocomplete_credentials
     )
@@ -177,7 +183,7 @@ class credentials(commands.Cog):
             credentials.password = password
             credentials.save()
 
-            await _interaction.response.send_message(embed=get_success_embed(
+            await _interaction.followup.send(embed=get_success_embed(
                 title=f"Edited \"{credentials.name}\"!",
                 description=f"⤷ {credentials.address}:{credentials.port}"
             ), ephemeral=True)
