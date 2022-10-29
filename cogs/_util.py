@@ -27,7 +27,7 @@ class _util(commands.Cog):
     def __init__(self, bot):
         self.bot: commands.Bot = bot
 
-    @app_commands.command(name="view", description="View the bot's current latency")
+    @app_commands.command(name="ping", description="View the bot's current latency")
     async def ping(self, interaction: Interaction):
         latency = self.bot.latency * 1000
         color = discord.Color.dark_green()
@@ -38,8 +38,12 @@ class _util(commands.Cog):
         if latency > 1000: color = discord.Color(1)
         embed = discord.Embed(description=f'🏓 Pong! {round(latency, 1)}ms', color=color)
         await interaction.response.send_message(embed=embed)
-
-
+    
+    @app_commands.command(name="invite", description="Get an invite link to add me to your server")
+    async def invite(self, interaction: Interaction):
+        oauth = discord.utils.oauth_url(self.bot.user.id, permissions=discord.Permissions(permissions=35840))
+        await interaction.response.send_message(content=f"You can invite me to your server by [clicking here]({oauth})!", ephemeral=True)
+    
     @commands.command(description="Evaluate a python variable or expression", usage="r!eval <cmd>", hidden=True)
     @commands.is_owner()
     async def eval(self, ctx, *, cmd):
