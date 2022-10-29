@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import Interaction, app_commands
 import ast
 
 
@@ -24,17 +25,10 @@ class _util(commands.Cog):
     """Utility commands to get help, stats, links and more"""
 
     def __init__(self, bot):
-        self.bot = bot
+        self.bot: commands.Bot = bot
 
-    @commands.command()
-    @commands.is_owner()
-    async def invite(self, ctx):
-        oauth = discord.utils.oauth_url(self.bot.user.id, permissions=discord.Permissions(permissions=8))
-        embed = discord.Embed(description=f"[☺️ Click here for an invite link!]({oauth})")
-        await ctx.send(embed=embed)
-
-    @commands.command(description="View my current latency", usage="r!ping")
-    async def ping(self, ctx):
+    @app_commands.command(name="view", description="View the bot's current latency")
+    async def ping(self, interaction: Interaction):
         latency = self.bot.latency * 1000
         color = discord.Color.dark_green()
         if latency > 150: color = discord.Color.green()
@@ -43,7 +37,7 @@ class _util(commands.Cog):
         if latency > 500: color = discord.Color.red()
         if latency > 1000: color = discord.Color(1)
         embed = discord.Embed(description=f'🏓 Pong! {round(latency, 1)}ms', color=color)
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
 
     @commands.command(description="Evaluate a python variable or expression", usage="r!eval <cmd>", hidden=True)
@@ -98,35 +92,6 @@ class _util(commands.Cog):
             await ctx.send(result)
         except discord.HTTPException:
             pass
-
-    @commands.command(description="Send a DM to all instance owners", usage="r!dm_all_owners <message>", hidden=True)
-    @commands.is_owner()
-    async def dm_all_owners(self, ctx, *, text: str):
-
-        msg = await ctx.send(text + "\n\nAre you sure you want to send this message?")
-        await msg.add_reaction("<:yes:809149148356018256>")
-
-        def check_reaction(reaction, user):
-            return str(reaction.emoji) == "<:yes:809149148356018256>" and user == ctx.author and reaction.message == msg
-        try: reaction, user = await self.bot.wait_for('reaction_add', timeout=60, check=check_reaction)
-        except: await msg.clear_reactions()
-        else:
-            await msg.delete()
-
-            import sqlite3
-            db = sqlite3.connect('instances.db')
-            cur = db.cursor()
-            cur.execute('SELECT DISTINCT owner_id FROM instances')
-            owner_ids = [owner_id[0] for owner_id in cur.fetchall()]
-            for owner_id in owner_ids:
-                try:
-                    user = self.bot.get_user(owner_id)
-                    await user.send(text)
-                except Exception as e:
-                    print(e)
-                    pass
-            await ctx.send("DMs sent")
-
 
 async def setup(bot):
     await bot.add_cog(_util(bot))

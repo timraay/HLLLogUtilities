@@ -9,7 +9,7 @@ from pathlib import Path
 
 from utils import get_config
 
-intents = discord.Intents.all()
+intents = discord.Intents.all() if get_config().getboolean('Bot', 'UnlockDeveloperCommands') else discord.Intents.default()
 
 bot = commands.Bot(intents=intents, command_prefix=get_config()['Bot']['CommandPrefix'], case_insensitive=True)
 bot.remove_command('help')
