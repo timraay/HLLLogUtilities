@@ -1,6 +1,8 @@
 token.txt
 sessions.db
 
+icon.xcf
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
