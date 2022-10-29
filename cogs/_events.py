@@ -5,6 +5,7 @@ import random
 from datetime import datetime, timedelta
 
 from discord_utils import handle_error
+from lib.session import SESSIONS
 
 class _events(commands.Cog):
     """A class with most events in it"""
@@ -21,32 +22,9 @@ class _events(commands.Cog):
     async def on_command_error(self, ctx, error):
         await handle_error(ctx, error)
 
-    @tasks.loop(minutes=15.0)
+    @tasks.loop(minutes=5.0)
     async def update_status(self):
-
-        statuses = [
-            {"type": "listening", "message": "meta discussions"},
-            {"type": "watching", "message": "the latest dev brief"},
-            {"type": "listening", "message": "The Recapping"},
-            {"type": "watching", "message": "the finals for the 7th time"},
-            {"type": "watching", "message": "everyone getting blown up by arty"},
-            {"type": "playing", "message": "in Seasonal"},
-            {"type": "listening", "message": "the community"},
-            {"type": "playing", "message": "mind games"},
-            {"type": "playing", "message": "with Alty's wheel"},
-            {"type": "watching", "message": "rockets fly across the map"},
-            {"type": "listening", "message": "the endless complaints"},
-        ]
-        status = random.choice(statuses)
-        message = status["message"]
-        activity = status["type"]
-        if activity == "playing": activity = discord.ActivityType.playing
-        elif activity == "streaming": activity = discord.ActivityType.streaming
-        elif activity == "listening": activity = discord.ActivityType.listening
-        elif activity == "watching": activity = discord.ActivityType.watching
-        else: activity = discord.ActivityType.playing
-
-        await self.bot.change_presence(activity=discord.Activity(name=message, type=activity))
+        await self.bot.change_presence(activity=discord.Activity(name=f"over {len(SESSIONS)} sessions", type=discord.ActivityType.watching))
     @update_status.before_loop
     async def before_status(self):
         await self.bot.wait_until_ready()
