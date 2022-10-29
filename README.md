@@ -1,4 +1,6 @@
-# HLLLogUtilities
+# HLLLogUtilities ![GitHub release (latest by date)](https://img.shields.io/github/v/release/timraay/HLLLogUtilities)
+
+<img align="right" width="250" height="250" src="icon.png">
 
 > For any issues or feature requests, please [open an Issue](https://github.com/timraay/HLLLogUtilities/issues) here on GitHub.
 
@@ -109,3 +111,9 @@ python bot.py
 ```
 
 Note that the bot will shut down whenever you close this terminal.
+
+<div align=center>
+    
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/abusify)
+
+</div>
