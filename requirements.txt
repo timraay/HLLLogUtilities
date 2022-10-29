@@ -2,3 +2,4 @@ discord.py>=2.0.1
 pypika
 pydantic
 cachetools
+python-dateutil
