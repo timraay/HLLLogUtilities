@@ -85,7 +85,7 @@ class RCONCredentialsModal(ui.Modal):
             else:
                 embed = get_error_embed(
                     title=str(error),
-                    description="Failed to connect to your server, because the address could not be resolved. Possible solutions are as follows:\n\n• Verify that the address and port are correct\n• Make sure the server is online\n\nIf you still wish to continue, press the below button. Otherwise you may dismiss this message."
+                    description="Failed to connect to your server, because the address could not be resolved or the connection was refused. Possible solutions are as follows:\n\n• Verify that the address and port are correct\n• Make sure the server is online\n\nIf you still wish to continue, press the below button. Otherwise you may dismiss this message."
                 )
 
             async def finish_callback_delete(_interaction):
