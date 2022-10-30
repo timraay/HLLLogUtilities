@@ -1,4 +1,6 @@
 import asyncio
+from typing import Optional
+
 import discord
 from discord import app_commands, ui, Interaction
 from discord.ext import commands, tasks
@@ -111,13 +113,16 @@ class sessions(commands.Cog):
         if diff.total_seconds() > MAX_SESSION_DURATION.total_seconds():
             raise CustomException("Invalid dates provided!", f"The duration of the session exceeds the upper limit of {minutes} minutes.")
 
+        icon_url: Optional[str] = None
+        if interaction.guild.icon is not None:
+            icon_url = interaction.guild.icon.url
         embed = discord.Embed(
             title="Scheduling a new session...",
             description="Please verify that all the information is correct. This can not be changed later.",
             colour=discord.Colour(16746296)
         ).set_author(
             name=f"{credentials.name} - {credentials.address}:{credentials.port}" if credentials else "Custom server",
-            icon_url=interaction.guild.icon.url
+            icon_url=icon_url
         ).add_field(
             name="From",
             value=f"<t:{int(start_time.timestamp())}:f>\n:watch: <t:{int(start_time.timestamp())}:R>"
