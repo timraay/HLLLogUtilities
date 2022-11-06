@@ -493,7 +493,7 @@ class HLLRcon:
                     self._player_suicide_handles[player] = handle
 
                 else:
-                    if player.deaths != expected_deaths:
+                    if (expected_deaths is not None) and (player.deaths != 0) and (player.deaths != expected_deaths):
                         self.logger.warning('Mismatch for %s: Has %s but expected %s', player.name, player.deaths, expected_deaths)
                     self._player_deaths[player] = player.deaths
 
