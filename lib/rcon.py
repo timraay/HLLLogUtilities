@@ -410,7 +410,7 @@ class HLLRcon:
                 try:
                     time, log = re.match(r"\[.*?\((\d+)\)\] (.+)", line).groups()
                     time = datetime.fromtimestamp(int(time))
-                    if time <= self._logs_seen_time:
+                    if time < self._logs_seen_time:
                         continue
 
                     if log.startswith('KILL') or log.startswith('TEAM KILL'):
