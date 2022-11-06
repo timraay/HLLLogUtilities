@@ -5,6 +5,7 @@ from discord.utils import escape_markdown as esc_md
 from ipaddress import IPv4Address
 import asyncio
 from typing import Optional
+import logging
 
 from lib.credentials import Credentials, credentials_in_guild_tll
 from lib.exceptions import HLLAuthError, HLLConnectionError, HLLConnectionRefusedError, HLLError
@@ -62,6 +63,7 @@ class RCONCredentialsModal(ui.Modal):
                 password=password
             )
 
+        logging.info('Attempting connection to %s:%s (GID: %s)', address, port, interaction.guild_id)
         await interaction.response.defer(ephemeral=True, thinking=True)
 
         try:
@@ -72,6 +74,7 @@ class RCONCredentialsModal(ui.Modal):
             )
             transport._transport.close()
         except HLLConnectionError as error:
+            logging.error('Failed connection to %s:%s (GID: %s) - %s: %s', address, port, interaction.guild_id, type(error).__name__, str(error))
             if isinstance(error, HLLAuthError):
                 embed = get_error_embed(
                     title=str(error),
@@ -89,16 +92,15 @@ class RCONCredentialsModal(ui.Modal):
                 )
 
             async def finish_callback_delete(_interaction):
-                await asyncio.gather(
-                    interaction.delete_original_response(),
-                    finish_callback(interaction)
-                )
+                await interaction.delete_original_response()
+                await finish_callback(interaction)
 
             view = View()
             view.add_item(CallableButton(finish_callback_delete, label="Ignore & Continue", style=discord.ButtonStyle.gray))
             
             await interaction.followup.send(embed=embed, view=view)
         else:
+            logging.info('Successfully opened connection with %s:%s (GID: %s)', address, port, interaction.guild_id)
             await finish_callback(interaction)
     
     async def on_error(self, interaction: Interaction, error: Exception):
