@@ -135,6 +135,7 @@ class HLLRcon:
         self._map = None
         self._end_warmup_handle = None
         self._logs_seen_time = datetime.now()
+        self._logs_last_recorded = None
         self._player_deaths = dict()
         self._player_suicide_handles = dict()
         self._player_suicide_queue = set()
@@ -391,6 +392,7 @@ class HLLRcon:
     def __parse_logs(self, logs: str):
         if logs != 'EMPTY':
             logs = logs.strip('\n').split('\n')
+            skip = True
             time = None
 
             for line in logs:
@@ -410,8 +412,16 @@ class HLLRcon:
                 try:
                     time, log = re.match(r"\[.*?\((\d+)\)\] (.+)", line).groups()
                     time = datetime.fromtimestamp(int(time))
-                    if time < self._logs_seen_time:
-                        continue
+
+                    if skip:
+                        # Avoid duplicates
+                        if self._logs_seen_time > time:
+                            continue
+                        elif self._logs_seen_time == time:
+                            if self._logs_last_recorded == log:
+                                skip = False
+                            continue
+                    skip = False
 
                     if log.startswith('KILL') or log.startswith('TEAM KILL'):
                         p1_name, p1_team, p1_steamid, p2_name, p2_team, p2_steamid, weapon = re.search(
@@ -472,6 +482,7 @@ class HLLRcon:
 
             if time:
                 self._logs_seen_time = time
+                self._logs_last_recorded = log
 
         if self._end_warmup_handle is True:
             self.info.events.add(
