@@ -1,0 +1,11 @@
+version: '2.4'
+
+services:
+  hlllogutilities:
+    mem_limit: 256m
+    restart: unless-stopped
+    build: .
+    volumes:
+      - ./config.ini:/code/config.ini
+      # TODO: Sessions is not created before started first (unless done manually)
+      - ./sessions.db:/code/sessions.db
