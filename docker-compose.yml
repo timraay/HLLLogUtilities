@@ -2,7 +2,7 @@ version: '2.4'
 
 services:
   hlllogutilities:
-    mem_limit: 256m
+    mem_limit: 512m
     restart: unless-stopped
     build: .
     volumes:
