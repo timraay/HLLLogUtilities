@@ -26,6 +26,11 @@ class SessionFilters(Enum):
     ongoing = "ongoing"
     finished = "finished"
 
+
+def utc_future_time(d: timedelta):
+    return (datetime.now() + d).astimezone(timezone.utc).isoformat()
+
+
 class sessions(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -43,7 +48,7 @@ class sessions(commands.Cog):
         for (id_,) in cursor.fetchall():
             if id_ not in SESSIONS:
                 HLLCaptureSession.load_from_db(id_)
-        
+
         if not self.session_manager.is_running():
             self.session_manager.start()
 
@@ -59,7 +64,31 @@ class sessions(commands.Cog):
             for credentials in await credentials_in_guild_tll(interaction.guild_id) if current.lower() in str(credentials).lower()]
         choices.append(app_commands.Choice(name="Custom", value=0))
         return choices
-    
+
+    async def autocomplete_end_time(self, _: Interaction, current: str):
+        if current != "":
+            return [
+                app_commands.Choice(name=current, value=current)
+            ]
+
+        choices = []
+        candidates = [
+            [1, 40],
+            [2, 0],
+            [3, 0],
+            [4, 0],
+        ]
+        for candidate in candidates:
+            d = timedelta(hours=candidate[0], minutes=candidate[1])
+            if d > MAX_SESSION_DURATION:
+                continue
+            choices.append(app_commands.Choice(
+                name=format('In {:02}:{:02}h'.format(candidate[0], candidate[1])),
+                value=utc_future_time(d))
+            )
+
+        return choices
+
     async def autocomplete_sessions(self, interaction: Interaction, current: str):
         choices = [app_commands.Choice(name=str(session), value=session.id)
             for session in get_sessions(interaction.guild_id)
@@ -79,7 +108,8 @@ class sessions(commands.Cog):
         server="The HLL server to record logs from"
     )
     @app_commands.autocomplete(
-        server=autocomplete_credentials
+        server=autocomplete_credentials,
+        end_time=autocomplete_end_time
     )
     async def create_new_session(self, interaction: Interaction, name: str, start_time: str, end_time: str, server: int):
         try:
@@ -89,7 +119,7 @@ class sessions(commands.Cog):
                 start_time = dt_parse(start_time, fuzzy=True, dayfirst=True)
         except:
             raise CustomException("Couldn't interpret start time!", "A few examples of what works:\n• `1/10/42 18:30`\n• `January 10 2042 6:30pm`\n• `6:30pm, 10th day of Jan, 2042`\n• `Now`")
-        
+
         try:
             end_time = dt_parse(end_time, fuzzy=True, dayfirst=True)
         except:
@@ -97,7 +127,7 @@ class sessions(commands.Cog):
 
         start_time = start_time.replace(tzinfo=start_time.tzinfo or timezone.utc)
         end_time = end_time.replace(tzinfo=end_time.tzinfo or timezone.utc)
-        
+
         if server:
             credentials = Credentials.load_from_db(server)
         else:
@@ -107,7 +137,7 @@ class sessions(commands.Cog):
             raise CustomException("Invalid end time!", "It can't be past the end time yet.")
         if start_time > end_time:
             raise CustomException("Invalid dates provided!", "The start time can't be later than the end time.")
-        
+
         diff = end_time - start_time
         minutes = int(diff.total_seconds() / 60 + 0.5)
         if diff.total_seconds() > MAX_SESSION_DURATION.total_seconds():
@@ -148,10 +178,10 @@ class sessions(commands.Cog):
                             credentials.insert_in_db()
                         except TypeError:
                             raise CustomException("Credentials have already been saved!")
-                        
+
                         await msg.delete()
                         await create_session(interaction, credentials)
-                    
+
                     @only_once
                     async def on_save_decline(__interaction: Interaction):
                         await msg.delete()
@@ -169,7 +199,7 @@ class sessions(commands.Cog):
 
                     await interaction.edit_original_response(view=None)
                     msg = await interaction.followup.send(embed=embed, view=view, ephemeral=True, wait=True)
-                
+
                 embed = discord.Embed(
                     description=f"**Important notice!**\nIn order to retrieve logs, RCON access to your server is needed! You shouldn't hand your credentials to any sources you don't trust however. See [what was done to make sharing your password with me as safe as possible :bust_in_silhouette:]({SECURITY_URL}).\n\nPressing the below button will open a form where you can enter the needed information."
                 )
@@ -179,7 +209,7 @@ class sessions(commands.Cog):
 
             else:
                 await create_session(interaction, credentials)
-        
+
 
         @only_once
         async def create_session(_interaction: Interaction, credentials: Credentials):
@@ -209,12 +239,12 @@ class sessions(commands.Cog):
                 await _interaction.response.send_message(embed=embed)
             else:
                 await _interaction.followup.send(embed=embed)
-            
+
             await _interaction.edit_original_response(view=None)
 
         view = View(timeout=300)
         view.add_item(CallableButton(on_confirm, label="Confirm", style=discord.ButtonStyle.green))
-        
+
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     @SessionGroup.command(name="list", description="View all available sessions")
@@ -256,7 +286,7 @@ class sessions(commands.Cog):
         )
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
-    
+
     @SessionGroup.command(name="stop", description="Stop a session pre-emptively")
     @app_commands.describe(
         session="An ongoing log capture session"
@@ -271,7 +301,7 @@ class sessions(commands.Cog):
                 "Invalid session!",
                 "Session has already ended and no longer needs to be stopped."
             )
-        
+
         @only_once
         async def on_confirm(_interaction: Interaction):
             await session.stop()
@@ -288,7 +318,7 @@ class sessions(commands.Cog):
         view.add_item(CallableButton(on_confirm, label="Confirm", style=discord.ButtonStyle.gray))
 
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-    
+
     @SessionGroup.command(name="delete", description="Delete a session and its records")
     @app_commands.describe(
         session="A log capture session"
@@ -305,7 +335,7 @@ class sessions(commands.Cog):
             await _interaction.response.send_message(embed=get_success_embed(
                 f"Deleted \"{session.name}\"!"
             ), ephemeral=True)
-        
+
         embed = discord.Embed(
             title="Are you sure you want to delete this session?",
             description="This will also remove all the associated records. This cannot be reverted."
@@ -332,7 +362,7 @@ class sessions(commands.Cog):
         logs = session.get_logs()
         fp = StringIO(converter.convert_many(logs))
         file = discord.File(fp, filename=session.name + '.' + converter.ext())
-        
+
         await interaction.response.send_message(
             content=f"Logs for **{esc_md(session.name)}**",
             file=file
