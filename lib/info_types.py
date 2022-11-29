@@ -18,6 +18,7 @@ class Player(InfoModel):
     kills: int = UnsetField
     deaths: int = UnsetField
     alive: bool = UnsetField
+    is_vip: bool = UnsetField
     joined_at: datetime = UnsetField
     is_spectator: bool = UnsetField
     score: 'HLLPlayerScore' = UnsetField

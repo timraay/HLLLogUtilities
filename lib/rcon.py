@@ -162,6 +162,7 @@ class HLLRcon:
             self.__fetch_persistent_server_info(),
             self.__fetch_server_settings(),
             self.__fetch_current_server_info(),
+            # self.__fetch_player_roles(),
             self.exec_command('showlog 1', multipart=True)
         )
         logs = res.pop(-1)
@@ -197,8 +198,8 @@ class HLLRcon:
         )
         self.info.set_server(server)
 
-        self.info.add_players(*[Player(self.info, **p)
-                                for p in data['players']])
+        # self.info.add_players(*[Player(self.info, is_vip=p["steamid"] in self._vips, **p) for p in data['players']])
+        self.info.add_players(*[Player(self.info, **p) for p in data['players']])
         self.info.add_squads(*[Squad(self.info, **sq) for sq in data['squads']])
         self.info.add_teams(
             Team(self.info, id=1, name="Allies", squads=Link('squads', {'team': {'id': 1}}, multiple=True), players=Link('players', {'team': {'id': 1}}, multiple=True)),
@@ -381,6 +382,12 @@ class HLLRcon:
         templogs = {ban.split(' : ', 1)[0]: ban for ban in tempbans}
         permalogs = {ban.split(' : ', 1)[0]: ban for ban in permabans}
         return templogs, permalogs
+        
+    @ttl_cache(1, 60*11) # 11 minutes
+    async def __fetch_player_roles(self):
+        # Not used: 'tempbans', 'permabans', 'admingroups', 'adminids'
+        data = await self.exec_command('get vipids', unpack_array=True, multipart=True)
+        self._vips = [entry.split(' ', 1)[0] for entry in data if entry]
 
     def __parse_logs(self, logs: str):
         if logs != 'EMPTY':
