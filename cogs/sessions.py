@@ -71,20 +71,29 @@ class sessions(commands.Cog):
                 app_commands.Choice(name=current, value=current)
             ]
 
-        choices = []
-        candidates = [
-            [1, 40],
-            [2, 0],
-            [3, 0],
-            [4, 0],
-        ]
-        for candidate in candidates:
-            d = timedelta(hours=candidate[0], minutes=candidate[1])
-            if d > MAX_SESSION_DURATION:
+        choices = list()
+        candidates = (
+            (0, 15),
+            (0, 30),
+            (1, 0),
+            (1, 30),
+            (1, 45),
+            (2, 0),
+            (2, 30),
+            (3, 0),
+            (4, 0),
+            (5, 0),
+        )
+        for hrs, mins in candidates:
+            if timedelta(hours=hrs, minutes=mins) > MAX_SESSION_DURATION:
                 continue
+            
+            total_minutes = hrs*60 + mins
+            value = f"{total_minutes} min"
+
             choices.append(app_commands.Choice(
-                name=format('In {:02}:{:02}h'.format(candidate[0], candidate[1])),
-                value=utc_future_time(d))
+                name=format('After {} minutes ({:02}:{:02}h)'.format(total_minutes, hrs, mins)),
+                value=value)
             )
 
         return choices
@@ -118,15 +127,38 @@ class sessions(commands.Cog):
             else:
                 start_time = dt_parse(start_time, fuzzy=True, dayfirst=True)
         except:
-            raise CustomException("Couldn't interpret start time!", "A few examples of what works:\n• `1/10/42 18:30`\n• `January 10 2042 6:30pm`\n• `6:30pm, 10th day of Jan, 2042`\n• `Now`")
+            raise CustomException(
+                "Couldn't interpret start time!",
+                "A few examples of what works:\n• `1/10/42 18:30`\n• `January 10 2042 6:30pm`\n• `6:30pm, 10th day of Jan, 2042`\n• `Now`"
+            )
 
-        try:
-            end_time = dt_parse(end_time, fuzzy=True, dayfirst=True)
-        except:
-            raise CustomException("Couldn't interpret end time!", "A few examples of what works:\n• `1/10/42 20:30`\n• `January 10 2042 8:30pm`\n• `8:30pm, 10th day of Jan, 2042`\n• `Now`")
+        if end_time.lower().endswith(" min"):
+            try:
+                stripped_num = end_time.lower().rsplit(" min", 1)[0].strip()
+                minutes = int(stripped_num) # Raises ValueError if invalid
 
-        start_time = start_time.replace(tzinfo=start_time.tzinfo or timezone.utc)
-        end_time = end_time.replace(tzinfo=end_time.tzinfo or timezone.utc)
+                if minutes <= 0:
+                    raise ValueError('Time is not greater than 0 minutes')
+                
+                duration = timedelta(minutes=minutes)
+                end_time = start_time + duration
+
+            except ValueError:
+                raise CustomException(
+                    "Couldn't interpret end time!",
+                    f"Format must be `X min`, with `X` being a whole, positive number in minutes, not `{stripped_num}`"
+                )
+        else:
+            try:
+                end_time = dt_parse(end_time, fuzzy=True, dayfirst=True)
+            except:
+                raise CustomException(
+                    "Couldn't interpret end time!",
+                    "A few examples of what works:\n• `1/10/42 20:30`\n• `January 10 2042 8:30pm`\n• `8:30pm, 10th day of Jan, 2042`\n• `Now`"
+                )
+
+        start_time = start_time.replace(microsecond=0, tzinfo=start_time.tzinfo or timezone.utc)
+        end_time = end_time.replace(microsecond=0, tzinfo=end_time.tzinfo or timezone.utc)
 
         if server:
             credentials = Credentials.load_from_db(server)
@@ -134,21 +166,31 @@ class sessions(commands.Cog):
             credentials = None
 
         if datetime.now(tz=timezone.utc) > end_time:
-            raise CustomException("Invalid end time!", "It can't be past the end time yet.")
+            raise CustomException(
+                "Invalid end time!",
+                f"It can't be past the end time yet.\n\n• Current time: `{datetime.now(tz=timezone.utc).replace(microsecond=0)}`\n• End time: `{end_time}`"
+            )
         if start_time > end_time:
-            raise CustomException("Invalid dates provided!", "The start time can't be later than the end time.")
+            raise CustomException(
+                "Invalid dates provided!",
+                f"The start time can't be later than the end time.\n\n• Start time: `{start_time}`\n• End time: `{end_time}`"
+            )
 
         diff = end_time - start_time
         minutes = int(diff.total_seconds() / 60 + 0.5)
-        if diff.total_seconds() > MAX_SESSION_DURATION.total_seconds():
-            raise CustomException("Invalid dates provided!", f"The duration of the session exceeds the upper limit of {minutes} minutes.")
+        if diff > MAX_SESSION_DURATION:
+            max_minutes = int(MAX_SESSION_DURATION.total_seconds() / 60 + 0.5)
+            raise CustomException(
+                "Invalid dates provided!",
+                f"The duration of the session exceeds the upper limit of {max_minutes} minutes.\n\n• Start time: `{start_time}`\n• End time: `{end_time}`\n• Duration: {minutes} minutes"
+            )
 
         icon_url: Optional[str] = None
         if interaction.guild.icon is not None:
             icon_url = interaction.guild.icon.url
         embed = discord.Embed(
             title="Scheduling a new session...",
-            description="Please verify that all the information is correct. This can not be changed later.",
+            description="Please verify that all the information is correct. This cannot be changed later.",
             colour=discord.Colour(16746296)
         ).set_author(
             name=f"{credentials.name} - {credentials.address}:{credentials.port}" if credentials else "Custom server",
