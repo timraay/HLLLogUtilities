@@ -301,6 +301,7 @@ class HLLRcon:
         playerinfos = await asyncio.gather(*[self.exec_command('playerinfo %s' % playerid, can_fail=True) for playerid in playerids_normal.values()])
         for playerinfo in playerinfos:
             if not playerinfo:
+                # The command (most likely) failed
                 continue
 
             raw = dict()
@@ -310,6 +311,7 @@ class HLLRcon:
                 loadout=None
             )
 
+            # Unpack response into a dict
             for line in playerinfo.strip('\n').split("\n"):
                 if ": " not in line:
                     self.logger.warning("Invalid info line: %s", line)
@@ -379,6 +381,7 @@ class HLLRcon:
             players.append(data)
 
         squads = list()
+        # Compile teams and squads based off of the player info we have
         for i, squadids in enumerate([squads_allies, squads_axis]):
             team_id = i + 1
             for squad_id, squad_name in squadids.items():
@@ -456,6 +459,8 @@ class HLLRcon:
                             other=Link('players', {'steamid': p2_steamid}),
                             weapon=weapon
                         ))
+
+                        # Count the amount of deaths of a player
                         player = self.info.find_players(single=True, steamid=p2_steamid)
                         if player:
                             deaths = self._player_deaths.setdefault(player, 0)
@@ -463,6 +468,7 @@ class HLLRcon:
                             # self.logger.info('{: <25} {} -> {}'.format(player.name, deaths, deaths + 1))
                         else:
                             self.logger.warning('Could not find player %s %s', p2_steamid, p2_name)
+
                     elif log.startswith('CHAT'):
                         channel, name, team, steamid, message = re.match(r"CHAT\[(Team|Unit)\]\[(.+)\((Allies|Axis)\/(\d{17})\)\]: (.+)", log).groups()
                         player = self.info.find_players(single=True, steamid=steamid)
@@ -472,6 +478,7 @@ class HLLRcon:
                             message=message,
                             channel=player.team.create_link() if channel == 'Team' else player.squad.create_link()
                         ))
+
                     elif log.startswith('Player'):
                         name, steamid, action = re.match(r"Player \[(.+) \((\d{17})\)\] (Left|Entered) Admin Camera", log).groups()
                         player = Link('players', {'steamid': steamid})
@@ -479,6 +486,7 @@ class HLLRcon:
                             self.info.events.add(PlayerEnterAdminCamEvent(self.info, event_time=time, player=player))
                         elif action == "Left":
                             self.info.events.add(PlayerExitAdminCamEvent(self.info, event_time=time, player=player))
+
                     elif log.startswith('MATCH START'):
                         map_name = log[12:]
                         self.info.events.add(
@@ -488,18 +496,23 @@ class HLLRcon:
                         if isinstance(self._end_warmup_handle, asyncio.TimerHandle):
                             self._end_warmup_handle.cancel()
                         self._end_warmup_handle = self.loop.call_later(180, self.__enter_playing_state)
+
                     elif log.startswith('MATCH ENDED'):
                         map_name, score = re.match(r'MATCH ENDED `(.+)` ALLIED \((.+)\) AXIS', log).groups()
                         self.info.events.add(
                             ServerMatchEnded(self.info, event_time=time, map=map_name, score=score)
                         )
                         self._state = "end_of_round"
+
+                        # Cancel the timer responsible for triggering the Warmup Ended event
                         if isinstance(self._end_warmup_handle, asyncio.TimerHandle):
                             self._end_warmup_handle.cancel()
                         self._end_warmup_handle = None
+
                     elif log.split(' ', 1)[0] in {'CONNECTED', 'DISCONNECTED', 'TEAMSWITCH', 'KICK:', 'BAN:', 'VOTESYS:'}:
                         # Suppress error logs
                         pass
+
                 except:
                     self.logger.exception("Failed to parse log line: %s", line)
 
@@ -507,6 +520,8 @@ class HLLRcon:
                 self._logs_seen_time = time
                 self._logs_last_recorded = log
 
+
+        # -- Warmup ended events
         if self._end_warmup_handle is True:
             self.info.events.add(
                 ServerWarmupEnded(self.info, event_time=self._logs_seen_time)
@@ -515,33 +530,38 @@ class HLLRcon:
             self._end_warmup_handle = None
 
 
-
+        # -- Player suicide events
         for player in self.info.players:
             if not player.has('deaths'):
                 continue
-            
+
+            # By comparing the player's deaths as per the playerinfo response with the
+            # amount of kill logs we received, we can track player suicides. This is
+            # slightly easier said than done however, as we need to account for a slight
+            # delay between the playerinfo response updating and receiving the kill log.
+
+            # The number of deaths expected as per the kill logs
             expected_deaths = self._player_deaths.get(player)
 
             if player not in self._player_suicide_handles:
             
                 if (expected_deaths is not None) and (player.deaths - expected_deaths == 1):
-                    # self.logger.info('Scheduling for %s: %s - %s == 1', player.name, player.deaths, expected_deaths)
+                    # The player may have redeployed. Let's wait a bit and check again.
                     handle = self.loop.call_later(7.0, self.__check_player_suicide, player)
                     self._player_suicide_handles[player] = handle
 
                 else:
+                    # Everything looks fine.
                     if (expected_deaths is not None) and (player.deaths != 0) and (player.deaths != expected_deaths):
+                        # Okay, maybe not entirely.
                         self.logger.warning('Mismatch for %s: Has %s but expected %s', player.name, player.deaths, expected_deaths)
+                    # Update our expected value
                     self._player_deaths[player] = player.deaths
 
-        # _player_deaths = dict()
-        # for p, v in self._player_deaths.items():
-        #     if (p in self.info.players) or (p in self._player_suicide_handles):
-        #         _player_deaths[p] = v
-        #     else:
-        #         self.logger.info('Disposing %s', p.name)
-        # self._player_deaths = _player_deaths
-        self._player_deaths = {p: v for p, v in self._player_deaths.items() if (p in self.info.players) or (p in self._player_suicide_handles)}
+        # Remove any expected values for players that have gone offline. This is important to
+        # prevent memory usage from building up.
+        self._player_deaths = {p: v for p, v in self._player_deaths.items()
+                                if (p in self.info.players) or (p in self._player_suicide_handles)}
 
         for player in self._player_suicide_queue:
             self.info.events.add(
@@ -549,8 +569,6 @@ class HLLRcon:
             )
         self._player_suicide_queue.clear()
         
-
-
     def __enter_playing_state(self):
         self._end_warmup_handle = True
     
@@ -560,10 +578,8 @@ class HLLRcon:
             if expected_deaths is None:
                 self.logger.warning('Expected death amount of player %s is unknown', player.name)
             elif (player.deaths - expected_deaths) == 1:
-                # self.logger.info("Expected %s deaths but observed %s, player %s must've killed themself", expected_deaths, player.deaths, player.name)
                 self._player_suicide_queue.add(player)
             else:
-                # self.logger.info('Successfully ended check for %s. Expected %s and got %s.', player.name, expected_deaths, player.deaths)
                 pass
         finally:
             self._player_suicide_handles.pop(player, None)
