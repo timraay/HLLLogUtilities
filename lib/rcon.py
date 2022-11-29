@@ -159,8 +159,8 @@ class HLLRcon:
     async def _fetch_server_info(self):
         data = dict()
         res = await asyncio.gather(
-            self.__fetch_persistent_server_info(),
-            self.__fetch_server_settings(),
+            # self.__fetch_persistent_server_info(),
+            # self.__fetch_server_settings(),
             self.__fetch_current_server_info(),
             # self.__fetch_player_roles(),
             self.exec_command('showlog 1', multipart=True)
@@ -178,23 +178,23 @@ class HLLRcon:
         self.info.events.add(ServerMapChangedEvent)
         clean_map = map.replace('_RESTART', '')
 
-        rotation = [m for m in data['rotation'] if m]
+        # rotation = [m for m in data['rotation'] if m]
         
         server = Server(self.info,
-            name = data['name'],
+            # name = data['name'],
             map = clean_map,
-            settings = ServerSettings(self.info,
-                rotation = rotation,
-                max_players = int(data['slots'].split('/')[0]),
-                max_queue_length = int(data['maxqueuedplayers']),
-                max_vip_slots = int(data['numvipslots']),
-                idle_kick_time = timedelta(minutes=int(data['idletime'])),
-                max_allowed_ping = int(data['highping']),
-                team_switch_cooldown = timedelta(minutes=int(data['teamswitchcooldown'])),
-                auto_balance = int(data['autobalancethreshold']) if data['autobalanceenabled'] == "on" else False,
-                #vote_kick = timedelta(minutes=int(data['votekickthreshold'])) if data['votekickenabled'] == "on" else False,
-                chat_filter = data['profanity']
-            )
+            # settings = ServerSettings(self.info,
+            #     rotation = rotation,
+            #     max_players = int(data['slots'].split('/')[0]),
+            #     max_queue_length = int(data['maxqueuedplayers']),
+            #     max_vip_slots = int(data['numvipslots']),
+            #     idle_kick_time = timedelta(minutes=int(data['idletime'])),
+            #     max_allowed_ping = int(data['highping']),
+            #     team_switch_cooldown = timedelta(minutes=int(data['teamswitchcooldown'])),
+            #     auto_balance = int(data['autobalancethreshold']) if data['autobalanceenabled'] == "on" else False,
+            #     #vote_kick = timedelta(minutes=int(data['votekickthreshold'])) if data['votekickenabled'] == "on" else False,
+            #     chat_filter = data['profanity']
+            # )
         )
         self.info.set_server(server)
 
@@ -206,10 +206,10 @@ class HLLRcon:
             Team(self.info, id=2, name="Axis",   squads=Link('squads', {'team': {'id': 2}}, multiple=True), players=Link('players', {'team': {'id': 2}}, multiple=True)),
         )
 
-        if clean_map in rotation:
-            next_i = rotation.index(clean_map) + 1
-            next_map = rotation[next_i] if next_i < len(rotation) else rotation[0]
-            self.info.server.next_map = next_map
+        # if clean_map in rotation:
+        #     next_i = rotation.index(clean_map) + 1
+        #     next_map = rotation[next_i] if next_i < len(rotation) else rotation[0]
+        #     self.info.server.next_map = next_map
 
         for squad in self.info.squads:
             players = squad.players
@@ -272,12 +272,12 @@ class HLLRcon:
         return dict(zip(types+['profanity'], data))
 
     async def __fetch_current_server_info(self):
-        map, rotation, playerids = await asyncio.gather(
+        map, playerids = await asyncio.gather(
             self.exec_command("get map"),
-            self.exec_command("rotlist"),
+            # self.exec_command("rotlist"),
             self.exec_command("get players", unpack_array=True)
         )
-        rotation = rotation.split('\n')
+        # rotation = rotation.split('\n')
 
         players = list()
         squads_allies = dict()
@@ -368,7 +368,7 @@ class HLLRcon:
 
         return dict(
             map=map,
-            rotation=rotation,
+            # rotation=rotation,
             players=players,
             squads=squads
         )
