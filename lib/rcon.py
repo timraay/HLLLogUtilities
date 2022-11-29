@@ -275,7 +275,7 @@ class HLLRcon:
         map, playerids = await asyncio.gather(
             self.exec_command("get map"),
             # self.exec_command("rotlist"),
-            self.exec_command("get players", unpack_array=True)
+            self.exec_command("get playerids", unpack_array=True)
         )
         # rotation = rotation.split('\n')
 
@@ -283,10 +283,26 @@ class HLLRcon:
         squads_allies = dict()
         squads_axis = dict()
 
-        playerinfos = await asyncio.gather(*[self.exec_command('playerinfo %s' % playerid, can_fail=True) for playerid in playerids])
-        for num_info, playerinfo in enumerate(playerinfos):
+        playerids_normal = dict()
+        playerids_problematic = dict()
+        for playerid in playerids:
+            """
+            HLL truncates names on the 20th character. If that 20th character happens to be a space, the truncated
+            name can no longer be used to find players via RCON. Since the playerinfo command does not accept
+            steam IDs and we don't have any way of knowing the full name, the best we can do is skip the playerinfo
+            command completely, and work with what we've got. #9
+            """
+            name, steamid = playerid.rsplit(' : ', 1)
+            if name.endswith(' '):
+                playerids_problematic[steamid] = name
+            else:
+                playerids_normal[steamid] = name
+
+        playerinfos = await asyncio.gather(*[self.exec_command('playerinfo %s' % playerid, can_fail=True) for playerid in playerids_normal.values()])
+        for playerinfo in playerinfos:
             if not playerinfo:
                 continue
+
             raw = dict()
             data = dict(
                 team=None,
@@ -314,11 +330,11 @@ class HLLRcon:
             """
 
             try:
-                data["name"] = raw["name"]
-                data["steamid"] = raw["steamid64"]
+                name = data["name"] = raw["name"]
+                steamid = data["steamid"] = raw["steamid64"]
 
-                if playerids[num_info] != data["name"]:
-                    self.logger.error('Requested playerinfo for %s but got %s', playerids[num_info], data["name"])
+                if playerids_normal[steamid] != steamid:
+                    self.logger.error('Requested playerinfo for %s but got %s', playerids_normal[steamid], name)
                 
                 team = raw.get("team")
                 team_id = 1 if team == "Allies" else 2
@@ -354,6 +370,13 @@ class HLLRcon:
             except:
                 self.logger.error("Couldn't unpack player data: %s", raw)
                 raise
+
+        for steamid, name in playerids_problematic.items():
+            data = dict(
+                name=name,
+                steamid=steamid
+            )
+            players.append(data)
 
         squads = list()
         for i, squadids in enumerate([squads_allies, squads_axis]):
@@ -494,6 +517,9 @@ class HLLRcon:
 
 
         for player in self.info.players:
+            if not player.has('deaths'):
+                continue
+            
             expected_deaths = self._player_deaths.get(player)
 
             if player not in self._player_suicide_handles:
