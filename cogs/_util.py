@@ -119,9 +119,10 @@ class _util(commands.Cog):
             channels = list()
 
             for guild in self.bot.guilds:
-                channel = guild.public_updates_channel or guild.system_channel
-                if channel:
-                    channels.append(channel)
+                if guild.public_updates_channel and guild.public_updates_channel.permissions_for(self.bot.user).send_messages:
+                    channels.append(guild.public_updates_channel)
+                elif guild.system_channel and guild.system_channel.permissions_for(self.bot.user).send_messages:
+                    channels.append(guild.system_channel)
             
             if channels:
                 print('Forwarding to following guilds:')
