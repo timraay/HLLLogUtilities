@@ -8,6 +8,7 @@ from lib.rcon import HLLRcon
 from lib.credentials import Credentials
 from lib.storage import LogLine, database, cursor, insert_many_logs, delete_logs
 from lib.exceptions import NotFound, SessionDeletedError, SessionAlreadyRunningError, SessionMissingCredentialsError
+from lib.info_types import EventFlags
 from utils import get_config, schedule_coro, get_logger
 
 SECONDS_BETWEEN_ITERATIONS = get_config().getint('Session', 'SecondsBetweenIterations')
@@ -218,13 +219,21 @@ class HLLCaptureSession:
             insert_many_logs(sess_id=self.id, logs=self._logs)
         self._logs = list()
 
-    def get_logs(self, limit: int = None):
+    def get_logs(self, from_: datetime = None, to: datetime = None, filter: EventFlags = None, limit: int = None):
         self.push_to_db()
 
         sess_name = f"session{self.id}"
         columns = tuple(LogLine.__fields__)
 
-        query = Table(sess_name).select(*columns)
+        table = Table(sess_name)
+        query = table.select(*columns)
+
+        if from_:
+            query = query.where(table.event_time >= from_)
+        if to:
+            query = query.where(table.event_time < to)
+        if filter is not None:
+            query = query.where(table.type.isin([k for k, v in filter if v]))
         if limit:
             query = query.limit(limit)
         

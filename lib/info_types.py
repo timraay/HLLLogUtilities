@@ -4,6 +4,9 @@ from inspect import isclass
 
 from lib.info_models import *
 
+if TYPE_CHECKING:
+    from lib.storage import LogLine
+
 class Player(InfoModel):
     __key_fields__ = ("steamid", "id", "name",)
     __scope_path__ = "players"
@@ -269,7 +272,7 @@ class EventTypes(Enum):
     
     @classmethod
     def all(cls):
-        """An iterator containing all events, excluding private ones."""
+        """An iterator containing all events, including private ones."""
         return (cls._member_map_[name] for name in cls._member_names_)
     @classmethod
     def public(cls):
@@ -529,3 +532,207 @@ class InfoHopper(ModelTree):
 
         self.events.merge(events)
 
+
+from functools import reduce
+from types import MethodType
+from discord.flags import BaseFlags, flag_value, fill_with_flags
+# discord.py provides some nice tools for making flags. We have to be
+# careful for breaking changes however.
+
+@fill_with_flags()
+class EventFlags(BaseFlags):
+    __slots__ = ()
+
+    def __init__(self, value: int = 0, **kwargs: bool) -> None:
+        self.value: int = value
+        for key, value in kwargs.items():
+            if key not in self.VALID_FLAGS:
+                raise TypeError(f'{key!r} is not a valid flag name.')
+            setattr(self, key, value)
+
+    def is_subset(self, other: 'EventFlags') -> bool:
+        """Returns ``True`` if self has the same or fewer permissions as other."""
+        if isinstance(other, EventFlags):
+            return (self.value & other.value) == self.value
+        else:
+            raise TypeError(f"cannot compare {self.__class__.__name__} with {other.__class__.__name__}")
+
+    def is_superset(self, other: 'EventFlags') -> bool:
+        """Returns ``True`` if self has the same or more permissions as other."""
+        if isinstance(other, EventFlags):
+            return (self.value | other.value) == self.value
+        else:
+            raise TypeError(f"cannot compare {self.__class__.__name__} with {other.__class__.__name__}")
+
+    def is_strict_subset(self, other: 'EventFlags') -> bool:
+        """Returns ``True`` if the permissions on other are a strict subset of those on self."""
+        return self.is_subset(other) and self != other
+
+    def is_strict_superset(self, other: 'EventFlags') -> bool:
+        """Returns ``True`` if the permissions on other are a strict superset of those on self."""
+        return self.is_superset(other) and self != other
+
+    __le__ = is_subset
+    __ge__ = is_superset
+    __lt__ = is_strict_subset
+    __gt__ = is_strict_superset
+
+    @classmethod
+    def all(cls: Type['EventFlags']) -> 'EventFlags':
+        value = reduce(lambda a, b: a | b, cls.VALID_FLAGS.values())
+        self = cls.__new__(cls)
+        self.value = value
+        return self
+
+    @classmethod
+    def none(cls: Type['EventFlags']) -> 'EventFlags':
+        self = cls.__new__(cls)
+        self.value = self.DEFAULT_VALUE
+        return self
+    
+    @classmethod
+    def connections(cls: Type['EventFlags']) -> 'EventFlags':
+        self = cls.none()
+        self.player_join_server = True
+        self.player_leave_server = True
+        return self
+
+    @classmethod
+    def game_states(cls: Type['EventFlags']) -> 'EventFlags':
+        self = cls.none()
+        self.server_map_changed = True
+        self.server_match_started = True
+        self.server_warmup_ended = True
+        self.server_match_ended = True
+        return self
+    
+    @classmethod
+    def teams(cls: Type['EventFlags']) -> 'EventFlags':
+        self = cls.none()
+        self.player_switch_team = True
+        return self
+    
+    @classmethod
+    def squads(cls: Type['EventFlags']) -> 'EventFlags':
+        self = cls.none()
+        self.player_switch_squad = True
+        self.squad_created = True
+        self.squad_disbanded = True
+        self.squad_leader_change = True
+        return self
+    
+    @classmethod
+    def deaths(cls: Type['EventFlags']) -> 'EventFlags':
+        self = cls.none()
+        self.player_kill = True
+        self.player_teamkill = True
+        self.player_suicide = True
+        return self
+    
+    @classmethod
+    def messages(cls: Type['EventFlags']) -> 'EventFlags':
+        self = cls.none()
+        self.player_message = True
+        return self
+    
+    @classmethod
+    def admin_cam(cls: Type['EventFlags']) -> 'EventFlags':
+        self = cls.none()
+        self.player_enter_admin_cam = True
+        self.player_exit_admin_cam = True
+        return self
+    
+    @classmethod
+    def roles(cls: Type['EventFlags']) -> 'EventFlags':
+        self = cls.none()
+        self.player_change_role = True
+        self.player_change_loadout = True
+        self.player_level_up = True
+        return self
+    
+
+    @flag_value
+    def player_join_server(self):
+        return 1 << 0
+
+    @flag_value
+    def server_map_changed(self):
+        return 1 << 1
+
+    @flag_value
+    def server_match_started(self):
+        return 1 << 2
+
+    @flag_value
+    def server_warmup_ended(self):
+        return 1 << 3
+
+    @flag_value
+    def server_match_ended(self):
+        return 1 << 4
+
+    @flag_value
+    def squad_created(self):
+        return 1 << 5
+
+    @flag_value
+    def player_switch_team(self):
+        return 1 << 6
+
+    @flag_value
+    def player_switch_squad(self):
+        return 1 << 7
+
+    @flag_value
+    def squad_leader_change(self):
+        return 1 << 8
+
+    @flag_value
+    def player_change_role(self):
+        return 1 << 9
+
+    @flag_value
+    def player_change_loadout(self):
+        return 1 << 10
+
+    @flag_value
+    def player_enter_admin_cam(self):
+        return 1 << 11
+
+    @flag_value
+    def player_message(self):
+        return 1 << 12
+
+    @flag_value
+    def player_kill(self):
+        return 1 << 13
+
+    @flag_value
+    def player_teamkill(self):
+        return 1 << 14
+
+    @flag_value
+    def player_suicide(self):
+        return 1 << 15
+
+    @flag_value
+    def player_level_up(self):
+        return 1 << 16
+
+    @flag_value
+    def player_exit_admin_cam(self):
+        return 1 << 17
+
+    @flag_value
+    def player_leave_server(self):
+        return 1 << 18
+
+    @flag_value
+    def squad_disbanded(self):
+        return 1 << 19
+
+    def filter_logs(self, logs: Sequence['LogLine']):
+        allowed_types = {type_ for type_, allowed in self if allowed}
+        for log in logs:
+            if log.type in allowed_types:
+                yield log
