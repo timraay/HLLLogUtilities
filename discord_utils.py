@@ -1,25 +1,69 @@
 import discord
-from discord import ui, app_commands, Interaction
+from discord import ui, app_commands, Interaction, ButtonStyle, Emoji, PartialEmoji, SelectOption
 from discord.ext import commands
-from discord.utils import escape_markdown as esc_md
+from discord.utils import escape_markdown as esc_md, MISSING
 from datetime import datetime, timedelta
 import traceback
 
-from typing import Callable
+from typing import Callable, Optional, Union, List, Any
 
 class CallableButton(ui.Button):
-    def __init__(self, callback: Callable, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self,
+        callback: Callable,
+        *args: Any,
+        style: ButtonStyle = ButtonStyle.secondary,
+        label: Optional[str] = None,
+        disabled: bool = False,
+        custom_id: Optional[str] = None,
+        url: Optional[str] = None,
+        emoji: Optional[Union[str, Emoji, PartialEmoji]] = None,
+        row: Optional[int] = None,
+        **kwargs: Any
+    ):
+        super().__init__(
+            style=style,
+            label=label,
+            disabled=disabled,
+            custom_id=custom_id,
+            url=url,
+            emoji=emoji,
+            row=row
+        )
         self._callback = callback
+        self._args = args
+        self._kwargs = kwargs
+
     async def callback(self, interaction: Interaction):
-        await self._callback(interaction)
+        await self._callback(interaction, *self._args, **self._kwargs)
 
 class CallableSelect(ui.Select):
-    def __init__(self, callback: Callable, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self,
+        callback: Callable,
+        *args,
+        custom_id: str = MISSING,
+        placeholder: Optional[str] = None,
+        min_values: int = 1,
+        max_values: int = 1,
+        options: List[SelectOption] = MISSING,
+        disabled: bool = False,
+        row: Optional[int] = None,
+        **kwargs
+    ):
+        super().__init__(
+            custom_id=custom_id,
+            placeholder=placeholder,
+            min_values=min_values,
+            max_values=max_values,
+            options=options,
+            disabled=disabled,
+            row=row
+        )
         self._callback = callback
+        self._args = args
+        self._kwargs = kwargs
+
     async def callback(self, interaction: Interaction):
-        await self._callback(interaction, self.values)
+        await self._callback(interaction, self.values, *self._args, **self._kwargs)
 
 
 def get_error_embed(title: str, description: str = None):
