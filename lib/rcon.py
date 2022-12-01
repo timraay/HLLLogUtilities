@@ -334,9 +334,6 @@ class HLLRcon:
             try:
                 name = data["name"] = raw["name"]
                 steamid = data["steamid"] = raw["steamid64"]
-
-                if playerids_normal[steamid] != steamid:
-                    self.logger.error('Requested playerinfo for %s but got %s', playerids_normal[steamid], name)
                 
                 team = raw.get("team")
                 team_id = 1 if team == "Allies" else 2
