@@ -27,9 +27,56 @@ class SessionFilters(Enum):
     finished = "finished"
 
 
-def utc_future_time(d: timedelta):
-    return (datetime.now() + d).astimezone(timezone.utc).isoformat()
+async def autocomplete_credentials(interaction: Interaction, current: str):
+    choices = [app_commands.Choice(name=str(credentials), value=credentials.id)
+        for credentials in await credentials_in_guild_tll(interaction.guild_id) if current.lower() in str(credentials).lower()]
+    choices.append(app_commands.Choice(name="Custom", value=0))
+    return choices
 
+async def autocomplete_end_time(_: Interaction, current: str):
+    if current != "":
+        return [
+            app_commands.Choice(name=current, value=current)
+        ]
+
+    choices = list()
+    candidates = (
+        (0, 15),
+        (0, 30),
+        (1, 0),
+        (1, 30),
+        (1, 45),
+        (2, 0),
+        (2, 30),
+        (3, 0),
+        (4, 0),
+        (5, 0),
+    )
+    for hrs, mins in candidates:
+        if timedelta(hours=hrs, minutes=mins) > MAX_SESSION_DURATION:
+            continue
+        
+        total_minutes = hrs*60 + mins
+        value = f"{total_minutes} min"
+
+        choices.append(app_commands.Choice(
+            name=format('After {} minutes ({:02}:{:02}h)'.format(total_minutes, hrs, mins)),
+            value=value)
+        )
+
+    return choices
+
+async def autocomplete_sessions(interaction: Interaction, current: str):
+    choices = [app_commands.Choice(name=str(session), value=session.id)
+        for session in get_sessions(interaction.guild_id)
+        if current.lower() in str(session).lower()]
+    return choices
+
+async def autocomplete_active_sessions(interaction: Interaction, current: str):
+    choices = [app_commands.Choice(name=str(session), value=session.id)
+        for session in get_sessions(interaction.guild_id)
+        if session.active_in() and current.lower() in str(session).lower()]
+    return choices
 
 class sessions(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -58,56 +105,6 @@ class sessions(commands.Cog):
         for sess in tuple(SESSIONS.values()):
             if sess.should_delete():
                 sess.delete()
-
-    async def autocomplete_credentials(self, interaction: Interaction, current: str):
-        choices = [app_commands.Choice(name=str(credentials), value=credentials.id)
-            for credentials in await credentials_in_guild_tll(interaction.guild_id) if current.lower() in str(credentials).lower()]
-        choices.append(app_commands.Choice(name="Custom", value=0))
-        return choices
-
-    async def autocomplete_end_time(self, _: Interaction, current: str):
-        if current != "":
-            return [
-                app_commands.Choice(name=current, value=current)
-            ]
-
-        choices = list()
-        candidates = (
-            (0, 15),
-            (0, 30),
-            (1, 0),
-            (1, 30),
-            (1, 45),
-            (2, 0),
-            (2, 30),
-            (3, 0),
-            (4, 0),
-            (5, 0),
-        )
-        for hrs, mins in candidates:
-            if timedelta(hours=hrs, minutes=mins) > MAX_SESSION_DURATION:
-                continue
-            
-            total_minutes = hrs*60 + mins
-            value = f"{total_minutes} min"
-
-            choices.append(app_commands.Choice(
-                name=format('After {} minutes ({:02}:{:02}h)'.format(total_minutes, hrs, mins)),
-                value=value)
-            )
-
-        return choices
-
-    async def autocomplete_sessions(self, interaction: Interaction, current: str):
-        choices = [app_commands.Choice(name=str(session), value=session.id)
-            for session in get_sessions(interaction.guild_id)
-            if current.lower() in str(session).lower()]
-        return choices
-    async def autocomplete_active_sessions(self, interaction: Interaction, current: str):
-        choices = [app_commands.Choice(name=str(session), value=session.id)
-            for session in get_sessions(interaction.guild_id)
-            if session.active_in() and current.lower() in str(session).lower()]
-        return choices
 
     @SessionGroup.command(name="new", description="Start recording server logs at specified time")
     @app_commands.describe(
