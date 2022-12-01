@@ -100,9 +100,12 @@ class LogLine(BaseModel):
 database = sqlite3.connect('sessions.db')
 cursor = database.cursor()
 
-def insert_many_logs(sess_id: int, logs: Sequence['LogLine']):
+def insert_many_logs(sess_id: int, logs: Sequence['LogLine'], sort: bool = True):
     sess_name = f"session{int(sess_id)}"
     table = Table(sess_name)
+
+    if sort:
+        logs = sorted(logs, key=lambda l: l.event_time)
 
     # Insert the logs
     insert_query = table
