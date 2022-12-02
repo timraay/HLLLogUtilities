@@ -144,3 +144,63 @@ def get_logger(session):
         handler.setFormatter(logging.Formatter(LOGS_FORMAT))
         logger.addHandler(handler)
     return logger
+
+
+
+def toTable(rows, spacing=2, title=None, just=None, rotate=False, rstrip=True):
+    rowlen = len(rows[0])
+    for row in rows:
+        if len(row) != rowlen:
+            raise ValueError('Not all rows are of equal length')
+
+    if rotate:
+        cols = rows
+        rows = list(zip(*rows))
+    else:
+        cols = list(zip(*rows))
+    
+    if not just:
+        just = 'l' * len(cols)
+    elif len(just) != len(cols):
+        raise ValueError('Justify setting is of incorrect length')
+    
+    sizes = [max([len(str(value)) for value in col]) for col in cols]
+
+    output = list()
+    space = " " * spacing
+    justs = {
+        'l': lambda i, val: str(val).ljust(sizes[i]),
+        'c': lambda i, val: str(val).center(sizes[i]),
+        'r': lambda i, val: str(val).rjust(sizes[i]),
+    }
+    for row in rows:
+        line = space.join([justs[just[i]](i, value) for i, value in enumerate(row)])
+        if rstrip:
+            line = line.rstrip()
+        output.append(line)
+    
+    if title:
+        maxsize = max([len(line) for line in output])
+        title = (" " + str(title) + " ").center(maxsize, "#")
+        output.insert(0, title)
+
+    return "\n".join(output)
+
+
+def side_by_side(text1, *others, spacing=5):
+    others = list(others)
+    while others:
+        text2 = others.pop(0)
+        lines1 = text1.split('\n')
+        lines2 = text2.split('\n')
+        ljust = max([len(line) for line in lines1]) + spacing
+        output = list()
+        while lines1 or lines2:
+            line1 = lines1.pop(0) if lines1 else ''
+            if lines2:
+                line2 = lines2.pop(0)
+                output.append(line1.ljust(ljust) + line2)
+            else:
+                output.append(line1)
+        text1 = "\n".join(output)
+    return text1
