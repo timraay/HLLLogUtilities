@@ -51,6 +51,9 @@ async def autocomplete_end_time(_: Interaction, current: str):
         (3, 0),
         (4, 0),
         (5, 0),
+        (6, 0),
+        (7, 0),
+        (8, 0),
     )
     for hrs, mins in candidates:
         if timedelta(hours=hrs, minutes=mins) > MAX_SESSION_DURATION:
