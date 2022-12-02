@@ -133,6 +133,8 @@ class _util(commands.Cog):
     @tasks.loop(minutes=15)
     async def get_github_releases(self):
         res = await self.get_latest_release()
+        if res["id"] != self.last_release_id and self.last_release_id is None:
+            print('Loading release:', res["tag_name"])
         if res["id"] != self.last_release_id and self.last_release_id is not None:
             print('New release:', res["tag_name"])
             channels = list()
