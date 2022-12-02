@@ -106,7 +106,7 @@ class ExportRangeSelectView(ui.View):
                 description = description + range.end_time.strftime(range.end_time.strftime('%H:%Mh'))
 
             options.append(SelectOption(
-                label=range.map_name,
+                label=range.map_name or "Unknown",
                 description=description,
                 emoji="🔸",
                 value=str(i + 1)
