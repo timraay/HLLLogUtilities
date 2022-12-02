@@ -84,10 +84,10 @@ class ExportRangeSelectView(ui.View):
             log_type = EventTypes(log.type)
             
             if log_type == EventTypes.server_match_ended:
-                self.ranges[-1].end_time = log.event_time
                 self.ranges[-1].map_name = " ".join(get_map_and_mode(log.new))
 
             elif log_type == EventTypes.server_match_started:
+                self.ranges[-1].end_time = log.event_time
                 self.ranges.append(ExportRange(
                     start_time=log.event_time,
                     map_name=" ".join(get_map_and_mode(log.new))
