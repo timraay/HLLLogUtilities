@@ -1,11 +1,30 @@
 import discord
 from discord.ext import commands, tasks
 from discord import Interaction, app_commands
+from discord.utils import get as utils_get
 import asyncio
 import aiohttp
 import ast
+import logging
+from typing import List
+
+from utils import get_config
 
 REPO_AUTHOR_NAME = "timraay/HLLLogUtilities"
+
+UPDATE_CHANNEL_OVERRIDES: List[int] = list()
+for channel in get_config().get('Updates', 'UpdateChannelOverrides').split(','):
+    channel = channel.strip()
+
+    if not channel:
+        continue
+    
+    try:
+        channel = int(channel)
+    except ValueError:
+        logging.error('Failed to interpret %s as a guild ID', channel)
+    else:
+        UPDATE_CHANNEL_OVERRIDES.append(channel)
 
 
 def insert_returns(body):
@@ -119,7 +138,13 @@ class _util(commands.Cog):
             channels = list()
 
             for guild in self.bot.guilds:
-                if guild.public_updates_channel and guild.public_updates_channel.permissions_for(self.bot.user).send_messages:
+                overrides = [channel for channel in guild.text_channels
+                            if channel.id in UPDATE_CHANNEL_OVERRIDES
+                            and channel.permissions_for(self.bot.user).send_messages]
+
+                if overrides:
+                    channels += overrides
+                elif guild.public_updates_channel and guild.public_updates_channel.permissions_for(self.bot.user).send_messages:
                     channels.append(guild.public_updates_channel)
                 elif guild.system_channel and guild.system_channel.permissions_for(self.bot.user).send_messages:
                     channels.append(guild.system_channel)
