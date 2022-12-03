@@ -142,13 +142,13 @@ class _util(commands.Cog):
             for guild in self.bot.guilds:
                 overrides = [channel for channel in guild.text_channels
                             if channel.id in UPDATE_CHANNEL_OVERRIDES
-                            and channel.permissions_for(self.bot.user).send_messages]
+                            and channel.permissions_for(guild.me).send_messages]
 
                 if overrides:
                     channels += overrides
-                elif guild.public_updates_channel and guild.public_updates_channel.permissions_for(self.bot.user).send_messages:
+                elif guild.public_updates_channel and guild.public_updates_channel.permissions_for(guild.me).send_messages:
                     channels.append(guild.public_updates_channel)
-                elif guild.system_channel and guild.system_channel.permissions_for(self.bot.user).send_messages:
+                elif guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
                     channels.append(guild.system_channel)
             
             if channels:
