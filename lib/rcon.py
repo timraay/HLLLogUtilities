@@ -717,8 +717,9 @@ class HLLRconWorker:
         self.task = self.loop.create_task(self._worker())
     
     async def stop(self):
-        self.task.cancel()
-        if self.protocol._transport:
+        if self.task:
+            self.task.cancel()
+        if self.protocol and self.protocol._transport:
             self.protocol._transport.close()
         self.protocol = None
         self.task = None
