@@ -7,7 +7,8 @@ from lib.exceptions import *
 class HLLRconProtocol(asyncio.Protocol):
     def __init__(self, loop: asyncio.AbstractEventLoop, timeout=None, logger=None):
         self._transport = None
-        self._waiters = list()
+        self._waiter = loop.create_future()
+        self._queue = list()
 
         self._loop = loop
         self.timeout = timeout
@@ -26,12 +27,10 @@ class HLLRconProtocol(asyncio.Protocol):
             self.xorkey = data
             self.has_key.set_result(True)
         else:
-            try:
-                waiter = self._waiters.pop(0)
-            except:
-                if self.logger:
-                    self.logger.warning('Received data but there are no waiters: %s', self._xor(data))
-            waiter.set_result(data)
+            self._waiter.set_result(data)
+            self._waiter = self._loop.create_future()
+            if self.logger and not self._queue:
+                self.logger.warning('Received data but there are no waiters: `%s`', self._xor(data))
 
     def connection_lost(self, exc):
         self._transport = None
@@ -63,19 +62,28 @@ class HLLRconProtocol(asyncio.Protocol):
     
     async def write(self, message):
         waiter = self._loop.create_future()
-        self._waiters.append(waiter)
-        while len(self._waiters) > 1: # Wait for previous request to finish
-            await self._waiters[len(self._waiters) - 2]
-            await asyncio.sleep(0.01)
+        self._queue.append(waiter)
 
-        if self.logger: self.logger.debug('Writing: %s', message)
+        if len(self._queue) > 1: # Wait for previous request to finish
+            await self._queue[len(self._queue) - 2]
+        
+        if self.logger:
+            self.logger.debug('Writing: %s', message)
         xored = self._xor(message)
         self._transport.write(xored)
 
         return waiter
     
     async def receive(self, waiter, decode=False, is_array=False, multipart=False):
-        data = await waiter
+        if self.logger:
+            self.logger.debug('Receiving! %s is_array=%s multipart=%s', self._waiter, is_array, multipart)
+
+        if self._waiter.cancelled():
+            self._waiter = self._loop.create_future()
+            if self.logger:
+                self.logger.warning('Waiter was cancelled, replacing.')
+        
+        data = await self._waiter
 
         if multipart:
             do_loop = True
@@ -87,31 +95,43 @@ class HLLRconProtocol(asyncio.Protocol):
                 except HLLUnpackError:
                     # Response is incomplete
                     do_loop = True
-                
-        for _ in range(10):
+        
+        i_max = 10
+        for i in range(i_max):
             if not do_loop:
                 break
 
-            waiter = self._loop.create_future()
-            self._waiters.insert(0, waiter)
+            if self.logger:
+                self.logger.debug('Waiting for more packets to arrive...')
             
             try:
-                data += await asyncio.wait_for(waiter, 1.0)
+                data += await asyncio.wait_for(self._waiter, 1.0)
 
             except asyncio.TimeoutError:
+                self._waiter = self._loop.create_future()
                 do_loop = False
+                if self.logger:
+                    self.logger.debug('Timed out, exiting loop.')
 
             else:
                 if is_array:
                     try:
                         # Response is complete!
                         self.unpack_array(self._xor(data))
+                        if self.logger:
+                            self.logger.debug('Array response complete, exiting loop.')
                     except HLLUnpackError:
                         do_loop = True
+
+        if i == i_max - 1 and self.logger:
+            self.logger.debug('Completed all %s multipart cycles', i_max)
+        
 
         res = self._xor(data, decode=decode)
         if self.logger:
             self.logger.debug('Response: %s', res[:200].replace('\n', '\\n')+'...' if len(res) > 200 else res.replace('\n', '\\n'))
+        
+        waiter.set_result(res)
 
         return res
 
@@ -135,7 +155,8 @@ class HLLRconProtocol(asyncio.Protocol):
     
     @staticmethod
     def unpack_array(string: str):
-        res = string.split('\t')
+        sep = b'\t' if isinstance(string, bytes) else '\t'
+        res = string.split(sep)[:-1]
         arr_size = int(res.pop(0))
         if arr_size != len(res):
             raise HLLUnpackError("Expected array size %s but got %s", arr_size, len(res))
