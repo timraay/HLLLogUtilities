@@ -14,7 +14,7 @@ It takes only a few clicks to create a capture session and start recording logs.
 
 ## Super-detailed logs!
 
-HLU makes great use of its asynchronous backend by opening up multiple connections, that way it can poll player information it a blazing-fast rate. It is capable of computing all sorts of events no other tool has been capable of so far, such as players changing roles, players redeploying, players joining, leaving or creating units, and more!
+HLU makes great use of its asynchronous backend by opening up multiple connections, that way it can poll player information at a blazing-fast rate. It is capable of computing all sorts of events no other tool has been capable of so far, such as players changing roles, players redeploying, players joining, leaving or creating units, and more!
 
 # Planned features
 
