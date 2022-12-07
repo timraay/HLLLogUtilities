@@ -183,17 +183,24 @@ class HLLRcon:
         server = Server(self.info,
             # name = data['name'],
             map = clean_map,
+            next_map = data['next_map'].replace('_RESTART', ''),
             # settings = ServerSettings(self.info,
             #     rotation = rotation,
             #     max_players = int(data['slots'].split('/')[0]),
             #     max_queue_length = int(data['maxqueuedplayers']),
             #     max_vip_slots = int(data['numvipslots']),
-            #     idle_kick_time = timedelta(minutes=int(data['idletime'])),
-            #     max_allowed_ping = int(data['highping']),
-            #     team_switch_cooldown = timedelta(minutes=int(data['teamswitchcooldown'])),
-            #     auto_balance = int(data['autobalancethreshold']) if data['autobalanceenabled'] == "on" else False,
-            #     #vote_kick = timedelta(minutes=int(data['votekickthreshold'])) if data['votekickenabled'] == "on" else False,
-            #     chat_filter = data['profanity']
+            #     idle_kick_time = idle_kick_time,
+            #     idle_kick_enabled = bool(idle_kick_time),
+            #     ping_threshold = ping_threshold,
+            #     ping_threshold_enabled = bool(ping_threshold),
+            #     team_switch_cooldown = team_switch_cooldown,
+            #     team_switch_cooldown_enabled = bool(team_switch_cooldown),
+            #     auto_balance_threshold = int(data['autobalancethreshold']),
+            #     auto_balance_enabled = True if data['autobalanceenabled'] == "on" else False,
+            #     # vote_kick_threshold = data['votekickthreshold']
+            #     vote_kick_enabled = True if data['votekickenabled'] == "on" else False,
+            #     chat_filter = data['profanity'],
+            #     chat_filter_enabled = True,
             # )
         )
         self.info.set_server(server)
@@ -242,6 +249,11 @@ class HLLRcon:
                     leader = player.create_link()
                     break
             team.leader = leader
+
+            if team.id == 1:
+                team.score = int(data['team1_score'])
+            elif team.id == 2:
+                team.score = int(data['team2_score'])
         
         self.__parse_logs(logs)
         self.info.server.state = self._state
@@ -251,7 +263,11 @@ class HLLRcon:
         fut = self.loop.create_future()
         cmd_pack = (fut, cmd, kwargs)
         self.queue.put_nowait(cmd_pack)
-        res = await fut
+        try:
+            res = await fut
+        except asyncio.CancelledError:
+            self.logger.error('Command execution error: `%s`', cmd)
+            raise
         self.logger.debug('`%s` -> `%s`', cmd, str(res)[:200].replace('\n', '\\n')+'...' if len(str(res)) > 200 else str(res).replace('\n', '\\n'))
         return res
 
@@ -272,10 +288,10 @@ class HLLRcon:
         return dict(zip(types+['profanity'], data))
 
     async def __fetch_current_server_info(self):
-        map, playerids = await asyncio.gather(
-            self.exec_command("get map"),
+        playerids, gamestate = await asyncio.gather(
             # self.exec_command("rotlist"),
-            self.exec_command("get playerids", unpack_array=True)
+            self.exec_command("get playerids", unpack_array=True),
+            self.exec_command("get gamestate")
         )
         # rotation = rotation.split('\n')
 
@@ -389,11 +405,26 @@ class HLLRcon:
                     players=Link("players", {'squad': {'id': squad_id}, 'team': {'id': team_id}}, multiple=True)
                 ))
 
+        """
+        Players: Allied: 0 - Axis: 1
+        Score: Allied: 2 - Axis: 2
+        Remaining Time: 0:11:51
+        Map: foy_warfare
+        Next Map: stmariedumont_warfare
+        """
+        gamestate_data = dict(zip(
+            ["team1_score", "team2_score", "time_h", "time_m", "time_s", "map", "next_map"],
+            re.match(
+                r"Players: Allied: \d+ - Axis: \d+\nScore: Allied: (\d+) - Axis: (\d+)\nRemaining Time: (\d+):(\d+):(\d+)\nMap: (.*)\nNext Map: (.*)",
+                gamestate
+            ).groups()
+        ))
+
         return dict(
-            map=map,
             # rotation=rotation,
             players=players,
-            squads=squads
+            squads=squads,
+            **gamestate_data
         )
     
     @ttl_cache(1, 10) # 10 seconds
@@ -428,6 +459,7 @@ class HLLRcon:
                 [53:15 min (1639145775)] CHAT[Unit][Schuby(Axis/76561198023348032)]: sec my voice com is dead
                 [9.06 sec (1639148961)] Player [\u272a (WTH) Beard (76561197985434745)] Entered Admin Camera
                 [805 ms (1639148969)] Player [\u272a (WTH) Beard (76561197985434745)] Left Admin Camera
+                [9.71 sec (1670339867)] MESSAGE: player [squiddsTV(76561198370630324)], content [don't mind me just testing stuff]
                 """
                 if not line:
                     continue
@@ -506,7 +538,7 @@ class HLLRcon:
                             self._end_warmup_handle.cancel()
                         self._end_warmup_handle = None
 
-                    elif log.split(' ', 1)[0] in {'CONNECTED', 'DISCONNECTED', 'TEAMSWITCH', 'KICK:', 'BAN:', 'VOTESYS:'}:
+                    elif log.split(' ', 1)[0] in {'CONNECTED', 'DISCONNECTED', 'TEAMSWITCH', 'KICK:', 'BAN:', 'VOTESYS:', 'MESSAGE:'}:
                         # Suppress error logs
                         pass
 

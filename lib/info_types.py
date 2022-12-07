@@ -10,23 +10,66 @@ if TYPE_CHECKING:
 class Player(InfoModel):
     __key_fields__ = ("steamid", "id", "name",)
     __scope_path__ = "players"
-    steamid: str = UnsetField
-    name: str = UnsetField
-    id: Union[int, str] = UnsetField
-    team: Union["Team", Link, None] = UnsetField
-    squad: Union["Squad", Link, None] = UnsetField
-    role: Union[str, None] = UnsetField
-    loadout: Union[str, None] = UnsetField
-    level: int = UnsetField
-    kills: int = UnsetField
-    deaths: int = UnsetField
-    alive: bool = UnsetField
-    is_vip: bool = UnsetField
-    joined_at: datetime = UnsetField
-    is_spectator: bool = UnsetField
-    score: 'HLLPlayerScore' = UnsetField
 
-    def is_squad_leader(self):
+    steamid: str = UnsetField
+    """The Steam64 ID of the player"""
+
+    name: str = UnsetField
+    """The name of the player"""
+
+    id: Union[int, str] = UnsetField
+    """An ID unique to the player"""
+
+    ip: Union[str, None] = UnsetField
+    """The IP address of the player"""
+
+    team: Union["Team", Link, None] = UnsetField
+    """The team the player is a part of"""
+
+    squad: Union["Squad", Link, None] = UnsetField
+    """The squad this player is a part of"""
+
+    role: Union[str, None] = UnsetField
+    """The role (often referred to as class) the player is using"""
+
+    loadout: Union[str, None] = UnsetField
+    """The loadout the player is using"""
+
+    level: int = UnsetField
+    """The level of the player"""
+
+    kills: int = UnsetField
+    """The number of kills the player has"""
+
+    deaths: int = UnsetField
+    """The number of deaths the player has"""
+
+    assists: int = UnsetField
+    """The number of assists the player has"""
+
+    alive: bool = UnsetField
+    """Whether the player is currently alive"""
+    
+    score: 'HLLPlayerScore' = UnsetField
+    """The score of the player"""
+
+    location: Any = UnsetField
+    """The location of the player"""
+
+    ping: int = UnsetField
+    """The latency of the player in milliseconds"""
+
+    is_vip: bool = UnsetField
+    """Whether the player is a VIP"""
+
+    joined_at: datetime = UnsetField
+    """The time the player joined the server at"""
+
+    is_spectator: bool = UnsetField
+    """Whether the player is currently spectating"""
+
+    def is_squad_leader(self) -> Union[bool, None]:
+        """Whether the player is a squad leader, or None if not part of a squad"""
         squad = self.get('squad')
         if squad:
             leader = squad.get('leader')
@@ -47,61 +90,185 @@ class Player(InfoModel):
             return super().__eq__(other)
 
 class HLLPlayerScore(InfoModel):
-    __scope_path__ = "players.score"
+    __scope_path__ = "players.hll_score"
+
     combat: int = UnsetField
+    """The player's combat score"""
+    
     offense: int = UnsetField
+    """The player's offense score"""
+    
     defense: int = UnsetField
+    """The player's defense score"""
+    
     support: int = UnsetField
+    """The player's support score"""
 
 class Squad(InfoModel):
     __key_fields__ = ("id", "name", "team")
     __scope_path__ = "squads"
+
     id: Union[int, str] = UnsetField
+    """An ID unique to the squad"""
+
     leader: Union["Player", Link, None] = UnsetField
+    """The leader of the squad"""
+
     creator: Union["Player", Link, None] = UnsetField
+    """The creator of the squad"""
+
     name: str = UnsetField
+    """The name of the squad"""
+
     type: str = UnsetField
+    """The type of the squad"""
+
+    private: bool = UnsetField
+    """Whether the squad is private, commonly referred to as "locked" or "invite only\""""
+
     team: Union["Team", Link, None] = UnsetField
+    """The team the squad belongs to"""
+
     players: Union[Sequence["Player"], Link] = UnsetField
+    """All players part of the squad"""
+
     created_at: datetime = UnsetField
+    """The time the squad was created at"""
 
 class Team(InfoModel):
     __key_fields__ = ("id", "name",)
     __scope_path__ = "teams"
+    
     id: Union[int, str] = UnsetField
+    """An ID unique to the team"""
+
     leader: Union["Player", Link, None] = UnsetField
+    """The leader of the team"""
+
     name: str = UnsetField
+    """The name of the team"""
+
     squads: Union[Sequence["Squad"], Link] = UnsetField
+    """All squads part of the team"""
+    
     players: Union[Sequence["Player"], Link] = UnsetField
+    """All players part of the team"""
+
+    lives: int = UnsetField
+    """The amount of lives (often referred to as tickets) left for this team"""
+
+    score: int = UnsetField
+    """The score of the team"""
+
     created_at: datetime = UnsetField
+    """The time the team was created at"""
 
     def get_unassigned_players(self) -> Sequence["Player"]:
+        """Get a list of players part of this team that are not part of a squad"""
         return [player for player in self.players if player.has('squad') and not player.squad]
 
 class Server(InfoModel):
     __key_fields__ = ("name",)
     __scope_path__ = "server"
+
     name: str = UnsetField
+    """The name of the server"""
+
     map: str = UnsetField
+    """The name of the current map"""
+
     gamemode: str = UnsetField
+    """The current gamemode"""
+
     next_map: str = UnsetField
+    """The name of the upcoming map"""
+
     next_gamemode: str = UnsetField
+    """The upcoming gamemode"""
+
     round_start: datetime = UnsetField
+    """The time the current round started at"""
+
+    round_end: datetime = UnsetField
+    """The time the current round is estimated to end at"""
+
     state: str = UnsetField
+    """The current gameplay state of the server, such as "end_of_round" or "warmup\""""
+
+    queue_length: int = UnsetField
+    """The amount of people currently waiting in queue"""
+
+    ranked: bool = UnsetField
+    """Whether the server is ranked or not"""
+
+    vac_enabled: bool = UnsetField # Valve Anti Cheat
+    """Whether the server utilises Valve Anti-Cheat"""
+
+    pb_enabled: bool = UnsetField # Punkbuster
+    """Whether the server utilises Punkbuster Anti-Cheat"""
+
+    location: Any = UnsetField
+    """The location of the server"""
+
+    tickrate: float = UnsetField
+    """The current tickrate of the server"""
+
+    online_since: datetime = UnsetField
+    """The time the server went online"""
+
     settings: 'ServerSettings' = UnsetField
+    """The server's settings"""
 
 class ServerSettings(InfoModel):
     __scope_path__ = "server.settings"
-    rotation: List = UnsetField
+
+    rotation: Union[List[str], List[Any]] = UnsetField
+    """A list of maps/layers currently in rotation"""
+
+    require_password: bool = UnsetField
+    """Whether the server requires a password to enter"""
+    password: str = UnsetField
+    """The password required to enter the server"""
+    
     max_players: int = UnsetField
+    """The maximum amount of players that can be on the server at once"""
+
     max_queue_length: int = UnsetField
+    """The maximum amount of players that can be waiting in queue to enter the server at once"""
+    
     max_vip_slots: int = UnsetField
+    """The number of slots that the server holds reserved for VIPs"""
+    
+    time_dilation: float = UnsetField
+    """The time dilation of the server"""
+    
     idle_kick_time: timedelta = UnsetField
-    max_allowed_ping: int = UnsetField
-    team_switch_cooldown: timedelta = UnsetField
-    auto_balance: Union[int, bool] = UnsetField
+    """The time players can stay idle until kicked"""
+    idle_kick_enabled: bool = UnsetField
+    """Whether players get kicked for staying idle too long"""
+
+    ping_threshold: Union[int, None] = UnsetField
+    """The latency threshold in milliseconds past which players get kicked for a poor connection"""
+    ping_threshold_enabled: bool = UnsetField
+    """Whether players can get kicked for having a poor latency"""
+    
+    team_switch_cooldown: Union[timedelta, None] = UnsetField
+    """The time players have to wait between switching teams"""
+    team_switch_cooldown_enabled: bool = UnsetField
+    """Whether there is a cooldown preventing teams from switching teams too quickly"""
+    
+    auto_balance_threshold: int = UnsetField
+    """The difference in amount of players per team required for auto balance measures to be put in place"""
+    auto_balance_enabled: bool = UnsetField
+    """Whether the server will apply auto balance measures if necessary"""
+    
     vote_kick_enabled: bool = UnsetField
+    """Whether the server allows vote kicking"""
+    
     chat_filter: set = UnsetField
+    """The list of words that will get flagged by the server's chat filter"""
+    chat_filter_enabled: bool = UnsetField
+    """Whether the server has a chat filter enabled"""
 
 #####################################
 #              EVENTS               #
@@ -193,6 +360,11 @@ class PlayerSuicideEvent(EventModel):
     __scope_path__ = 'events.player_suicide'
     player: Union[Player, Link, str] = UnsetField
 
+class ObjectiveCaptureEvent(EventModel):
+    __scope_path__ = 'events.objective_capture'
+    team: Union[Team, Link] = UnsetField
+    score: str = UnsetField
+
 class PlayerLevelUpEvent(EventModel):
     __scope_path__ = 'events.player_level_up'
     player: Union[Player, Link] = UnsetField
@@ -258,6 +430,7 @@ class EventTypes(Enum):
     player_kill = PlayerKillEvent
     player_teamkill = PlayerTeamkillEvent
     player_suicide = PlayerSuicideEvent
+    objective_capture = ObjectiveCaptureEvent
     player_level_up = PlayerLevelUpEvent
     player_exit_admin_cam = PlayerExitAdminCamEvent
     player_leave_server = PlayerLeaveServerEvent
@@ -297,6 +470,7 @@ class Events(InfoModel):
     player_kill: List['PlayerKillEvent'] = UnsetField
     player_teamkill: List['PlayerTeamkillEvent'] = UnsetField
     player_suicide: List['PlayerSuicideEvent'] = UnsetField
+    objective_capture: List['ObjectiveCaptureEvent'] = UnsetField
     player_level_up: List['PlayerLevelUpEvent'] = UnsetField
     player_exit_admin_cam: List['PlayerExitAdminCamEvent'] = UnsetField
     player_leave_server: List['PlayerLeaveServerEvent'] = UnsetField
@@ -519,6 +693,16 @@ class InfoHopper(ModelTree):
                 if match:
                     del others[others.index(match)]
                 
+                # Objective Capture Event
+
+                if team.has('score') and match.has('score'):
+                    if team.score > match.score:
+                        if team.id == 1:
+                            message = f"{team.score} - {5 - team.score}"
+                        else:
+                            message = f"{5 - team.score} - {team.score}"
+                        events.add(ObjectiveCaptureEvent(self, event_time=event_time, team=team.create_link(with_fallback=True), score=message))
+                
                 if not team.get('created_at'):
                     if match:
                         team.created_at = match.get('created_at') or team.__created_at__
@@ -604,6 +788,7 @@ class EventFlags(BaseFlags):
         self.server_match_started = True
         self.server_warmup_ended = True
         self.server_match_ended = True
+        self.objective_capture = True
         return self
     
     @classmethod
@@ -730,6 +915,10 @@ class EventFlags(BaseFlags):
     @flag_value
     def squad_disbanded(self):
         return 1 << 19
+
+    @flag_value
+    def objective_capture(self):
+        return 1 << 20
 
     def filter_logs(self, logs: Sequence['LogLine']):
         allowed_types = {type_ for type_, allowed in self if allowed}

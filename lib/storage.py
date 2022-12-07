@@ -91,7 +91,7 @@ class LogLine(BaseModel):
         payload['old'] = old
         payload['new'] = new
         
-        payload['message'] = event.score if isinstance(event, ServerMatchEnded) else event.get('message')
+        payload['message'] = event.score if isinstance(event, (ServerMatchEnded, ObjectiveCaptureEvent)) else event.get('message')
         payload['weapon'] = event.get('weapon')
 
         payload.setdefault('type', str(EventTypes(event.__class__)))
