@@ -20,8 +20,8 @@ HLU makes great use of its asynchronous backend by opening up multiple connectio
 
 This is a non-exhaustive list in no particular order of everything I *may* add one day, whenever I feel like it.
 
-- [ ] Exporting a single match from a session
-- [ ] Exporting statistics from a session or match
+- [x] Exporting a single match from a session
+- [x] Exporting statistics from a session or match
 - [ ] Replace the info model core for more precise logs
 - [ ] Uploading and converting existing logs
 - [ ] Add timezone settings
