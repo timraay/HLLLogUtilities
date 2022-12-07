@@ -12,7 +12,7 @@ MAP_NAMES = {
     "KURSK": "Kursk",
     "STALINGRAD": "Stalingrad",
     "REMAGEN": "Remagen",
-    "KHARKOV": "Kharkov"
+    "Kharkov": "Kharkov"
 }
 
 GAMEMODE_NAMES = {
