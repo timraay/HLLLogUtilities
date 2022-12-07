@@ -129,7 +129,7 @@ WEAPONS = {
     "76MM M1 GUN [Sherman M4A3E2(76)]": "US Tank Cannon [Sherman 76mm]",
     "COAXIAL M1919 [Sherman M4A3E2(76)]": "US Tank Coaxial [Sherman 76mm]",
     "HULL M1919 [Sherman M4A3E2(76)]": "US Tank Hull MG [Sherman 76mm]",
-    "BROWNING M1919 [M3 Half-track]": "US Half-track MG [US Half-track]",
+    "M2 Browning [M3 Half-track]": "US Half-track MG [US Half-track]",
     "KARABINER 98K": "Kar98k",
     "GEWEHR 43": "G43",
     "STG44": "STG44",
