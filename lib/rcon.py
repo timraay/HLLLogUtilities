@@ -445,28 +445,28 @@ class HLLRcon:
 
     def __parse_logs(self, logs: str):
         if logs != 'EMPTY':
-            logs = logs.strip('\n').split('\n')
+            logs = logs.strip('\n')
+            logs = re.split(r"^\[.+? \((\d+)\)\] ", logs, flags=re.M)
+            logs = zip(logs[1::2], logs[2::2])
             skip = True
             time = None
 
-            for line in logs:
+            for timestamp, log in logs:
                 """
-                [11:51:58 hours (1639106251)] CONNECTED (WTH) Duba
-                [7:18:50 hours (1639122640)] DISCONNECTED Saunders University 
+                [11:51:58 hours (1639106251)] CONNECTED (WTH) Duba (76561198018628685)
+                [7:18:50 hours (1639122640)] DISCONNECTED Saunders University (76561198018628685)
                 [1:30:15 hours (1639143555)] KILL: I.N.D.I.G.O.(Axis/76561198018628685) -> (WTH) vendrup0105(Allies/76561199089119792) with MP40
                 [1:21:37 hours (1639144073)] TEAM KILL: (WTH) Xcessive(Allies/76561198017923783) -> Sheer_Luck96(Allies/76561198180120693) with M1918A2_BAR
                 [1:20:52 hours (1639144118)] CHAT[Team][jameswstubbs(Allies/76561198251795176)]: My comms have gone
                 [53:15 min (1639145775)] CHAT[Unit][Schuby(Axis/76561198023348032)]: sec my voice com is dead
                 [9.06 sec (1639148961)] Player [\u272a (WTH) Beard (76561197985434745)] Entered Admin Camera
                 [805 ms (1639148969)] Player [\u272a (WTH) Beard (76561197985434745)] Left Admin Camera
-                [9.71 sec (1670339867)] MESSAGE: player [squiddsTV(76561198370630324)], content [don't mind me just testing stuff]
+                [7:04 min (1670430337)] KICK: [Wasp recruit] has been kicked. [YOU WERE KICKED FOR BEING IDLE]
+                [3:39 min (1670430542)] MESSAGE: player [(WTH) Froontan(76561197968167746)], content [You killed (WTH) Oskar]
                 """
-                if not line:
-                    continue
-
                 try:
-                    time, log = re.match(r"\[.*?\((\d+)\)\] (.+)", line).groups()
-                    time = datetime.fromtimestamp(int(time))
+                    timestamp = int(timestamp)
+                    time = datetime.fromtimestamp(timestamp)
 
                     if skip:
                         # Avoid duplicates
@@ -543,7 +543,7 @@ class HLLRcon:
                         pass
 
                 except:
-                    self.logger.exception("Failed to parse log line: %s", line)
+                    self.logger.exception("Failed to parse log line: [... (%s)] %s", timestamp, log)
 
             if time:
                 self._logs_seen_time = time
