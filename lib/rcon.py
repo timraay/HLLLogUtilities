@@ -171,7 +171,7 @@ class HLLRcon:
                 data.update(d)
 
         map = data['map']
-        if map == "Loading ''":
+        if map == "Loading ''" or map.startswith("Untitled"):
             map = self._map
         elif self._map and map != self._map:
             self.info.events.add(ServerMapChangedEvent(self.info, old=self._map.replace('_RESTART', ''), new=map.replace('_RESTART', '')))
