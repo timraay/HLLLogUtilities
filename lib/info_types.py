@@ -695,7 +695,7 @@ class InfoHopper(ModelTree):
                 
                 # Objective Capture Event
 
-                if team.has('score') and match.has('score'):
+                if team.has('score') and match.has('score') and self.server.get('state') != 'warmup':
                     if team.score > match.score:
                         if team.id == 1:
                             message = f"{team.score} - {5 - team.score}"
