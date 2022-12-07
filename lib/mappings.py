@@ -98,6 +98,7 @@ WEAPONS = {
     "M3 KNIFE": "US Melee",
     "SATCHEL": "Satchel Charge",
     "MK2 GRENADE": "US Grenade",
+    "M2 FLAMETHROWER": "US Flamethrower",
     "BAZOOKA": "Bazooka",
     "M2 AP MINE": "US AP Mine",
     "M1A1 AT MINE": "US AT Mine",
@@ -112,6 +113,7 @@ WEAPONS = {
     "GMC CCKW 353 (Supply)": "US Roadkill [US Supply Truck]",
     "GMC CCKW 353 (Transport)": "US Roadkill [US Transport Truck]",
     "M3 Half-track": "US Roadkill [US Half-track]",
+    "Jeep Willys": "US Roadkill [US Jeep]",
     "M6 37mm [M8 Greyhound]": "US Tank Cannon [M8 Greyhound]",
     "COAXIAL M1919 [M8 Greyhound]": "US Tank Coaxial [M8 Greyhound]",
     "37MM CANNON [Stuart M5A1]": "US Tank Cannon [Stuart M5A1]",
@@ -137,6 +139,7 @@ WEAPONS = {
     "MP40": "MP40",
     "MG34": "MG34",
     "MG42": "MG42",
+    "FLAMMENWERFER 41": "GER Flamethrower",
     "KARABINER 98K x8": "Kar98k (8x)",
     "FG42 x4": "FG42 (4x)",
     "LUGER P08": "Luger P08",
@@ -157,6 +160,7 @@ WEAPONS = {
     "Opel Blitz (Supply)": "GER Roadkill [GER Supply Truck]",
     "Opel Blitz (Transport)": "GER Roadkill [GER Transport Truck]",
     "Sd.Kfz 251 Half-track": "GER Roadkill [GER Half-track]",
+    "Kubelwagen": "GER Roadkill [GER Jeep]",
     "50mm KwK 39/1 [Sd.Kfz.234 Puma]": "GER Tank Cannon [Puma]",
     "COAXIAL MG34 [Sd.Kfz.234 Puma]": "GER Tank Coaxial [Puma]",
     "20MM KWK 30 [Sd.Kfz.121 Luchs]": "GER Tank Cannon [Luchs]",
@@ -185,6 +189,7 @@ WEAPONS = {
     "MPL-50 SPADE": "RUS Melee",
     "SATCHEL CHARGE": "Satchel Charge",
     "RG-42 GRENADE": "RUS Grenade",
+    "MOLOTOV": "Molotov",
     "PTRS-41": "PTRS-41",
     "POMZ AP MINE": "RUS AP Mine",
     "TM-35 AT MINE": "RUS AT Mine",
@@ -196,6 +201,7 @@ WEAPONS = {
     "ZIS-5 (Supply)": "RUS Roadkill [RUS Supply Truck]",
     "ZIS-5 (Transport)": "RUS Roadkill [RUS Transport Truck]",
     "M3 Half-track": "RUS Roadkill [RUS Half-track]",
+    "GAZ-67": "RUS Roadkill [RUS Jeep]",
     "19-K 45MM [BA-10]": "RUS Tank Cannon [BA-10]",
     "COAXIAL DT [BA-10]": "RUS Tank Coaxial [BA-10]",
     "76MM ZiS-5 [T34/76]": "RUS Tank Cannon [T34/76]",
@@ -204,7 +210,7 @@ WEAPONS = {
     "D-5T 85MM [IS-1]": "RUS Tank Cannon [IS-1]",
     "COAXIAL DT [IS-1]": "RUS Tank Coaxial [IS-1]",
     "HULL DT [IS-1]": "RUS Tank Hull MG [IS-1]",
-    # "BROWNING M1919 [M3 Half-track]": "RUS Half-track MG [RUS Halftrack]",
+    # "M2 Browning [M3 Half-track]": "RUS Half-track MG [RUS Halftrack]",
     "UNKNOWN": "Unknown",
     "BOMBING RUN": "Bombing Run",
     "STRAFING RUN": "Strafing Run",
@@ -222,6 +228,7 @@ BASIC_CATEGORIES_ALLIES = {value: cat for cat, values in {
     "Machine Gun": [ "M1919 Browning", "DP-27" ],
     "Pistol": [ "Colt M1911", "Nagant M1895", "Tokarev TT33" ],
     "Melee": ["US Melee", "RUS Melee"],
+    "Flamethrower": [ "US Flamethrower" ],
     "Artillery": ["US Artillery", "RUS Artillery"],
     "Vehicle": [
         "US Roadkill [M8 Greyhound]",
@@ -233,6 +240,7 @@ BASIC_CATEGORIES_ALLIES = {value: cat for cat, values in {
         "US Roadkill [US Supply Truck]",
         "US Roadkill [US Transport Truck]",
         "US Roadkill [US Half-track]",
+        "US Roadkill [US Jeep]",
         "US Tank Cannon [M8 Greyhound]",
         "US Tank Coaxial [M8 Greyhound]",
         "US Tank Cannon [Stuart M5A1]",
@@ -254,6 +262,7 @@ BASIC_CATEGORIES_ALLIES = {value: cat for cat, values in {
         "RUS Roadkill [RUS Supply Truck]",
         "RUS Roadkill [RUS Transport Truck]",
         "RUS Roadkill [RUS Half-track]",
+        "RUS Roadkill [RUS Jeep]",
         "RUS Tank Cannon [BA-10]",
         "RUS Tank Coaxial [BA-10]",
         "RUS Tank Cannon [T34/76]",
@@ -267,6 +276,7 @@ BASIC_CATEGORIES_ALLIES = {value: cat for cat, values in {
     "Grenade": [
         "US Grenade", "RUS Grenade",
         "US AP Mine", "RUS AP Mine",
+        "Molotov"
     ],
     "Anti-Tank": [
         "US AT Gun", "RUS AT Gun",
@@ -283,6 +293,7 @@ BASIC_CATEGORIES_AXIS = {value: cat for cat, values in {
     "Sniper Rifle": [ "Kar98k (8x)", "FG42 (4x)" ],
     "Machine Gun": [ "MG34", "MG42" ],
     "Pistol": [ "Luger P08", "Walther P38" ],
+    "Flamethrower": [ "GER Flamethrower" ],
     "Melee": [ "GER Melee" ],
     "Artillery": [ "GER Artillery" ],
     "Vehicle": [
@@ -294,6 +305,7 @@ BASIC_CATEGORIES_AXIS = {value: cat for cat, values in {
         "GER Roadkill [GER Supply Truck]",
         "GER Roadkill [GER Transport Truck]",
         "GER Roadkill [GER Half-track]",
+        "GER Roadkill [GER Jeep]",
         "GER Tank Cannon [Puma]",
         "GER Tank Coaxial [Puma]",
         "GER Tank Cannon [Luchs]",
@@ -316,6 +328,7 @@ BASIC_CATEGORIES_AXIS = {value: cat for cat, values in {
 BASIC_CATEGORIES = {**BASIC_CATEGORIES_ALLIES, **BASIC_CATEGORIES_AXIS}
 
 _VEHICLE_CLASSES = {vehicle: _class for _class, vehicles in {
+    "Jeep": ["US Jeep", "GER Jeep", "RUS Jeep"],
     "Half-track": ["US Half-track", "GER Half-track", "RUS Half-track"],
     "Recon Vehicle": [ "M8 Greyhound", "Puma", "BA-10" ],
     "Light Tank": [ "Stuart M5A1", "Luchs" ],
