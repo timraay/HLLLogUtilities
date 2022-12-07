@@ -458,7 +458,6 @@ class Events(InfoModel):
     server_map_changed: List['ServerMapChangedEvent'] = UnsetField
     server_match_started: List['ServerMatchStarted'] = UnsetField
     server_warmup_ended: List['ServerWarmupEnded'] = UnsetField
-    server_match_ended: List['ServerMatchEnded'] = UnsetField
     squad_created: List['SquadCreatedEvent'] = UnsetField
     player_switch_team: List['PlayerSwitchTeamEvent'] = UnsetField
     player_switch_squad: List['PlayerSwitchSquadEvent'] = UnsetField
@@ -471,6 +470,7 @@ class Events(InfoModel):
     player_teamkill: List['PlayerTeamkillEvent'] = UnsetField
     player_suicide: List['PlayerSuicideEvent'] = UnsetField
     objective_capture: List['ObjectiveCaptureEvent'] = UnsetField
+    server_match_ended: List['ServerMatchEnded'] = UnsetField
     player_level_up: List['PlayerLevelUpEvent'] = UnsetField
     player_exit_admin_cam: List['PlayerExitAdminCamEvent'] = UnsetField
     player_leave_server: List['PlayerLeaveServerEvent'] = UnsetField
