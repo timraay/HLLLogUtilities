@@ -62,26 +62,44 @@ And that's everything! You can see all of your sessions with the `/session list`
 
 # Setup Guide
 
-### Prerequisites
+## Prerequisites
 - A machine to host on, such as a VPS, dedicated server or your own PC
-- [Python](https://www.python.org/downloads) 3.7 or above
 - [Git](https://git-scm.com/downloads)
+- (optional) [Python](https://www.python.org/downloads) 3.7 or above, only required when running from source
+- (optional) [Docker](https://docs.docker.com/get-docker/), only required when running with docker
+- (optional) [SQLite3](https://www.sqlite.org/download.html), only required when running with docker
 
-### Guide
+## Guide
+
+### Discord setup
+
+The bot integrates using Discord slash/application commands, which requires a discord application created in Discord's developer portal:
+
+1. Go to the [Discord developer portal](https://discord.com/developers/applications) and create a new application.
+2. Go to the "Bot" tab and add a bot.
+3. (optional) Add a profile picture
+4. (optional) Disable the "Public Bot" setting
+5. Click on the "Reset Token" button and copy your token.
+6. The bot token will be put into the `config.ini` file later. Make sure there's no trailing spaces.
+
+### Cloning the code
 
 To host your own instance of HLU, there's a few steps you have to follow. Let's start off by cloning the code from GitHub. For this you need to have Git installed.
 
 1. Open a command terminal in the parent directory you want the files to be saaved. In here, we will later create a directory containing all the files.
 2. Run the following command to download the files from GitHub:
-```sh
+```shell
 git clone https://github.com/timraay/HLLLogUtilities.git
 ```
 3. Go into the directory we just made:
-```sh
+```shell
 cd HLLLogUtilities
 ```
-4. Install all needed Python libraries.
-```sh
+
+### Hosting from source
+
+1. Install all needed Python libraries.
+```shell
 pip install -r requirements.txt
 ```
 
@@ -91,26 +109,34 @@ pip install -r requirements.txt
 > 3. Under "Invidivual components", select most relevant versions of both "C++ x64/x86 build tools" and "Windows SDK"
 > 4. Install everything
 
-Great, that's everything installed. Now we create our bot account over on Discord's developer portal.
-
-5. Go to the [Discord developer portal](https://discord.com/developers/applications) and create a new application.
-6. Go to the "Bot" tab and add a bot.
-7. (optional) Add a profile picture
-8. (optional) Disable the "Public Bot" setting
-
-We've just prepared our application. Now we need to share it with our code.
-
-9. Click on the "Reset Token" button and copy your token.
-10. Open the "config.ini" file and fill in the token you've just copied. Make sure there's no trailing spaces.
+5. Put the discord bot token into the `config.ini` file.
 
 And that's everything! Now we just need to run it.
 
-11. Start the bot!
-```sh
+6. Start the bot!
+```shell
 python bot.py
 ```
 
 Note that the bot will shut down whenever you close this terminal.
+
+### Hosting using docker
+
+You can run HLU in a docker container to simplify the setup.
+
+1. You need create an empty database file, first, you need `sqlite3` installed for that:
+```shell
+sqlite3 sessions.db "VACUUM;"
+```
+2. Start the container:
+```shell
+docker-compose up -d
+```
+
+The container will run in the background, to stop the bot run:
+```shell
+docker-compose down
+```
 
 <div align=center>
     
