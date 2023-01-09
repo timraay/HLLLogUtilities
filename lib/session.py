@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from discord.ext import tasks
 from pypika import Query, Table, Column
 from typing import Union, Dict
+import re
 
 from lib.rcon import HLLRcon
 from lib.credentials import Credentials
@@ -28,6 +29,9 @@ CREATE TABLE IF NOT EXISTS "sessions" (
 );""")
 database.commit()
 
+def assert_name(name: str):
+    return re.sub(r"[^\w\(\)_\-,\.]", "_", name)
+
 def get_sessions(guild_id: int):
     return sorted([sess for sess in SESSIONS.values() if sess.guild_id == guild_id], key=lambda sess: sess.start_time)
 
@@ -35,7 +39,7 @@ class HLLCaptureSession:
     def __init__(self, id: int, guild_id: int, name: str, start_time: datetime, end_time: datetime, credentials: Credentials, loop: asyncio.AbstractEventLoop = None):
         self.id = id
         self.guild_id = guild_id
-        self.name = name
+        self.name = assert_name(name)
         self.start_time = start_time
         self.end_time = end_time
         self.credentials = credentials
@@ -90,6 +94,8 @@ class HLLCaptureSession:
     def create_in_db(cls, guild_id: int, name: str, start_time: datetime, end_time: datetime, credentials: Credentials):
         if datetime.now(tz=timezone.utc) > end_time:
             raise ValueError('This capture session would have already ended')
+
+        name = assert_name(name)
 
         cursor.execute('INSERT INTO sessions (guild_id, name, start_time, end_time, credentials_id) VALUES (?,?,?,?,?)', (guild_id, name, start_time, end_time, credentials.id))
         id_ = cursor.lastrowid

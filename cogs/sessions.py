@@ -10,7 +10,7 @@ from dateutil.parser import parse as dt_parse
 from enum import Enum
 from io import StringIO
 
-from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions
+from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions, assert_name
 from lib.credentials import Credentials, credentials_in_guild_tll
 from lib.converters import Converter, ExportFormats
 from lib.storage import cursor
@@ -184,6 +184,8 @@ class sessions(commands.Cog):
                 "Invalid dates provided!",
                 f"The duration of the session exceeds the upper limit of {max_minutes} minutes.\n\n• Start time: `{start_time}`\n• End time: `{end_time}`\n• Duration: {minutes} minutes"
             )
+
+        name = assert_name(name)
 
         icon_url: Optional[str] = None
         if interaction.guild.icon is not None:
