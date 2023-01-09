@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from dateutil.parser import parse as dt_parse
 from enum import Enum
 from io import StringIO
+from traceback import print_exc
 
 from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions, assert_name
 from lib.credentials import Credentials, credentials_in_guild_tll
@@ -97,7 +98,11 @@ class sessions(commands.Cog):
         cursor.execute("SELECT ROWID FROM sessions WHERE deleted = 0")
         for (id_,) in cursor.fetchall():
             if id_ not in SESSIONS:
-                HLLCaptureSession.load_from_db(id_)
+                try:
+                    HLLCaptureSession.load_from_db(id_)
+                except:
+                    print('Failed to load session', id_)
+                    print_exc()
 
         if not self.session_manager.is_running():
             self.session_manager.start()
