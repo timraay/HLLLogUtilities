@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum, unique
 from inspect import isclass
 
@@ -280,7 +280,7 @@ class EventModel(InfoModel):
     
     @pydantic.validator('event_time', pre=True, always=True)
     def set_ts_now(cls, v):
-        return v or datetime.now()
+        return v or datetime.now(tz=timezone.utc)
 
 class PlayerJoinServerEvent(EventModel):
     __scope_path__ = 'events.player_join_server'
@@ -584,7 +584,7 @@ class InfoHopper(ModelTree):
         # pass objects directly. Much more reliable than Links.
 
         if not event_time:
-            event_time = datetime.now()
+            event_time = datetime.now(tz=timezone.utc)
 
         if self.has('players') and other.has('players'):
             others = InfoModelArray(other.players)

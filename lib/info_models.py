@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import contextmanager
 import pydantic
 from typing import *
@@ -386,7 +386,7 @@ class InfoModel(ModelTree):
 
         obj_setattr(self, '__hopper__', hopper)
         obj_setattr(self, '__links__', links)
-        obj_setattr(self, '__created_at__', datetime.utcnow())
+        obj_setattr(self, '__created_at__', datetime.now(tz=timezone.utc))
 
     def __validate_values(self, values, _flat=None):
         for val in values:

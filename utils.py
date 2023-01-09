@@ -8,7 +8,7 @@ def to_timedelta(value):
     elif isinstance(value, int):
         return timedelta(seconds=value)
     elif isinstance(value, datetime):
-        return value - datetime.utcnow()
+        return value - datetime.now(tz=timezone.utc)
     elif isinstance(value, timedelta):
         return value
     else:

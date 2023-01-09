@@ -134,7 +134,7 @@ class HLLRcon:
         self._state = "in_progress"
         self._map = None
         self._end_warmup_handle = None
-        self._logs_seen_time = datetime.now()
+        self._logs_seen_time = datetime.now(tz=timezone.utc)
         self._logs_last_recorded = None
         self._player_deaths = dict()
         self._player_suicide_handles = dict()
@@ -350,28 +350,26 @@ class HLLRcon:
             try:
                 name = data["name"] = raw["name"]
                 steamid = data["steamid"] = raw["steamid64"]
-                
+                data["team"] = None
+                data["squad"] = None
+                data["role"] = raw.get("role", None)
+                data["loadout"] = raw.get("loadout", None)
+
                 team = raw.get("team")
-                team_id = 1 if team == "Allies" else 2
                 if team:
+                    team_id = 1 if team == "Allies" else 2
                     data["team"] = Link("teams", {'id': team_id})
-                    data["role"] = raw.get("role", None)
-                    data["loadout"] = raw.get("loadout", None)
-                else:
-                    data["team"] = None
-                    data["role"] = None
-                    data["loadout"] = None
                 
-                squad = raw.get("unit")
-                if squad:
-                    squad_id, squad_name = squad.split(' - ', 1)
-                    squad_id = int(squad_id)
-                    data['squad'] = Link("squads", {'id': squad_id, 'team': {'id': team_id}})
-                    
-                    if team_id == 1:
-                        squads_allies[squad_id] = squad_name
-                    else:
-                        squads_axis[squad_id] = squad_name
+                    squad = raw.get("unit")
+                    if squad:
+                        squad_id, squad_name = squad.split(' - ', 1)
+                        squad_id = int(squad_id)
+                        data['squad'] = Link("squads", {'id': squad_id, 'team': {'id': team_id}})
+                        
+                        if team_id == 1:
+                            squads_allies[squad_id] = squad_name
+                        else:
+                            squads_axis[squad_id] = squad_name
                 
                 data["kills"], data["deaths"] = raw.get("kills").split(' - Deaths: ') if raw.get("kills") else (0, 0)
                 data["level"] = raw.get("level", None)
@@ -466,7 +464,7 @@ class HLLRcon:
                 """
                 try:
                     timestamp = int(timestamp)
-                    time = datetime.fromtimestamp(timestamp)
+                    time = datetime.fromtimestamp(timestamp).astimezone(timezone.utc)
 
                     if skip:
                         # Avoid duplicates
