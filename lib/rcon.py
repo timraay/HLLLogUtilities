@@ -333,7 +333,7 @@ class HLLRcon:
                     self.logger.warning("Invalid info line: %s", line)
                     continue
                 key, val = line.split(": ", 1)
-                raw[key.lower()] = val
+                raw[key.lower()] = val if val != "None" or key == "Name" else None
             
             """
             Name: T17 Scott
