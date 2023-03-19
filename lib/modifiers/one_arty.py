@@ -59,7 +59,6 @@ class OneArtyModifier(Modifier):
     async def initialize(self, event: ActivationEvent):
         self.dap: Dict[int, Union[str, None]] = {1: None, 2: None}
         self.expire_tasks: Dict[int, Union[asyncio.Task, None]] = {1: None, 2: None}
-        print("\nEnabled!\n")
 
     def is_dap(self, player: Player):
         return player.team and (self.dap[player.team.id] == player.steamid)
