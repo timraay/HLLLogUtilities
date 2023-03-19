@@ -176,7 +176,7 @@ class OneArtyModifier(Modifier):
         player = event.player
         team_id = self.get_dap_team_id(player)
         if team_id and not self.expire_tasks[team_id]:
-            await self.expire_dap_after_cooldown(player, team_id)
+            asyncio.create_task(self.expire_dap_after_cooldown(player, team_id))
 
             team = event.root.find_teams(single=True, id=team_id)
             payload = get_log_payload(player)
@@ -235,9 +235,13 @@ class OneArtyModifier(Modifier):
             if commander:
                 message = "Your artillery player has been offline for 5 minutes. His role is now free for someone else to take."
                 await self.rcon.send_direct_message(message=message, target=commander)
+        
+        except Exception:
+            self.logger.exception("Failed to properly unassign arty player after cooldown")
                 
         finally:
             self.expire_tasks[team_id] = None
+            self.dap[team_id] = None
     
     # --- Punish killing the DAP
 
