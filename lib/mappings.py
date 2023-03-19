@@ -39,6 +39,14 @@ def get_map_and_mode(layer_name: str):
     map, mode = layer_name.rsplit(' ', 1)
     return LONG_MAP_NAMES.get(map, map), GAMEMODE_NAMES.get(mode, mode)
 
+SQUAD_LEADER_ROLES = {"Officer", "TankCommander", "Spotter"}
+TEAM_LEADER_ROLES = {"ArmyCommander"}
+
+INFANTRY_ROLES = {"Officer", "Assault", "AutomaticRifleman", "Medic", "Support",
+                  "HeavyMachineGunner", "AntiTank", "Engineer", "Rifleman"}
+TANK_ROLES = {"TankCommander", "Crewman"}
+RECON_ROLES = {"Spotter", "Sniper"}
+
 WEAPONS = {
     "Garand": "M1 Garand",
     "G43": "G43",

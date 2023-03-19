@@ -2,11 +2,12 @@ from pydantic import BaseModel, validator
 from datetime import datetime, timedelta
 from pypika import Table, Query
 import sqlite3
+import logging
 
-from typing import Union
+from lib.info.models import *
 
-from lib.info_types import *
-
+DB_VERSION = 2
+HLU_VERSION = "v1.4.0"
 
 class LogLine(BaseModel):
     event_time: datetime = None
@@ -99,6 +100,58 @@ class LogLine(BaseModel):
 
 database = sqlite3.connect('sessions.db')
 cursor = database.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS "db_version" (
+	"format_version"	INTEGER DEFAULT 1 NOT NULL
+);
+""")
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS "credentials" (
+	"guild_id"	VARCHAR(18) NOT NULL,
+	"name"	VARCHAR(80) NOT NULL,
+	"address"	VARCHAR(25),
+	"port"	INTEGER,
+	"password"	VARCHAR(50)
+);
+""")
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS "sessions" (
+	"guild_id"	INTEGER NOT NULL,
+	"name"	VARCHAR(40) NOT NULL,
+	"start_time"	VARCHAR(30) NOT NULL,
+	"end_time"	VARCHAR(30) NOT NULL,
+	"deleted"	BOOLEAN NOT NULL CHECK ("deleted" IN (0, 1)) DEFAULT 0,
+	"credentials_id"	INTEGER,
+    FOREIGN KEY(credentials_id) REFERENCES credentials(ROWID) ON DELETE SET NULL
+);
+""")
+
+cursor.execute("""
+INSERT INTO "db_version" ("format_version")
+    SELECT 1 WHERE NOT EXISTS(
+        SELECT 1 FROM "db_version"
+    );
+""")
+
+database.commit()
+
+cursor.execute("SELECT format_version FROM db_version")
+db_version: int = cursor.fetchone()[0]
+
+# Very dirty way of doing this, I know
+if db_version > DB_VERSION:
+    logging.warn('Unrecognized database format version! Expected %s but got %s. Certain functionality may be broken. Did you downgrade versions?', DB_VERSION, db_version)
+elif db_version < DB_VERSION:
+    logging.info('Outdated database format version! Expected %s but got %s. Migrating now...', DB_VERSION, db_version)
+
+    if db_version < 2:
+        cursor.execute('ALTER TABLE "sessions" ADD "modifiers" INTEGER DEFAULT 0 NOT NULL;')
+    
+    cursor.execute('UPDATE "db_version" SET "format_version" = ?', (DB_VERSION,))
+    database.commit()
+    logging.info('Migrated database to format version %s!', DB_VERSION)
+
 
 def insert_many_logs(sess_id: int, logs: Sequence['LogLine'], sort: bool = True):
     sess_name = f"session{int(sess_id)}"

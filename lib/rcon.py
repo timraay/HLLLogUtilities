@@ -7,7 +7,8 @@ from typing import List, TYPE_CHECKING
 
 from lib.protocol import HLLRconProtocol
 from lib.exceptions import HLLConnectionError
-from lib.info_types import *
+from lib.mappings import SQUAD_LEADER_ROLES, TEAM_LEADER_ROLES, INFANTRY_ROLES, TANK_ROLES, RECON_ROLES
+from lib.info.models import *
 from utils import to_timedelta, ttl_cache, get_config
 
 if TYPE_CHECKING:
@@ -15,13 +16,15 @@ if TYPE_CHECKING:
 
 NUM_WORKERS_PER_INSTANCE = get_config().getint('Session', 'NumRCONWorkers')
 
-SQUAD_LEADER_ROLES = {"Officer", "TankCommander", "Spotter"}
-TEAM_LEADER_ROLES = {"ArmyCommander"}
 
-INFANTRY_ROLES = {"Officer", "Assault", "AutomaticRifleman", "Medic", "Support",
-                  "HeavyMachineGunner", "AntiTank", "Engineer", "Rifleman"}
-TANK_ROLES = {"TankCommander", "Crewman"}
-RECON_ROLES = {"Spotter", "Sniper"}
+def target_to_players(target: Union[Player, Squad, Team, None]) -> Union[List[Player], None]:
+    if not target:
+        return None
+    elif isinstance(target, Player):
+        return [target]
+    elif target.has('players'):
+        return [player for player in target.players if player]
+    raise ValueError(f'{target.__class__.__name__} is not a valid target')
 
 
 # --- Wrappers to help manage the connection
@@ -647,6 +650,20 @@ class HLLRcon:
     
     async def send_broadcast_message(self, message: str):
         await self.exec_command(f'broadcast {message}')
+    
+    async def send_direct_message(self, message: str, target: Union[Player, Squad, Team, None]):
+        players = target_to_players(target)
+        if players is None:
+            players = self.info.players
+
+        if len(players) == 1:
+            player = players[0]
+            await self.exec_command(f'message "{player.steamid}" {message}')
+        elif len(players) > 1:
+            await asyncio.gather(*[
+                self.exec_command(f'message "{player.steamid}" {message}')
+                for player in players
+            ], return_exceptions=True)
     
     async def add_map_to_rotation(self, map: str):
         await self.exec_command(f'rotadd {map}')

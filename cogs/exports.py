@@ -12,7 +12,7 @@ from discord_utils import CallableButton, CallableSelect, only_once, CustomExcep
 from cogs.sessions import autocomplete_sessions
 from lib.session import HLLCaptureSession, SESSIONS
 from lib.storage import LogLine
-from lib.info_types import EventFlags, EventTypes
+from lib.info.models import EventFlags, EventTypes
 from lib.converters import ExportFormats, Converter
 from lib.mappings import get_map_and_mode
 from lib.scores import create_scoreboard, MatchData
@@ -47,6 +47,7 @@ class ExportFilterView(ui.View):
         ("Messages", "✉️", EventFlags.messages()),
         ("Gamestates", "🚥", EventFlags.game_states()),
         ("Admin Cam", "🎥", EventFlags.admin_cam()),
+        ("Modifiers", "🧮", EventFlags.modifiers()),
     )
     
     async def toggle_value(self, interaction: Interaction, flags: EventFlags, enable: bool):
