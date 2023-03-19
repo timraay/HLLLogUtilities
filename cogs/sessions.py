@@ -450,9 +450,9 @@ class sessions(commands.Cog):
         @only_once
         async def on_confirm(_interaction: Interaction):
             await session.stop()
-            await _interaction.response.send_message(embed=get_success_embed(
+            await _interaction.response.edit_message(embed=get_success_embed(
                 f"Stopped \"{session.name}\"!"
-            ), ephemeral=True)
+            ))
 
         embed = discord.Embed(
             title="Are you sure you want to stop this session?",
@@ -477,9 +477,9 @@ class sessions(commands.Cog):
         @only_once
         async def on_confirm(_interaction: Interaction):
             session.delete()
-            await _interaction.response.send_message(embed=get_success_embed(
+            await _interaction.response.edit_message(embed=get_success_embed(
                 f"Deleted \"{session.name}\"!"
-            ), ephemeral=True)
+            ))
 
         embed = discord.Embed(
             title="Are you sure you want to delete this session?",
