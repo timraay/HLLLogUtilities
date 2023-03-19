@@ -45,7 +45,7 @@ def get_log_payload(player: Player, player2: Player = None):
     if squad:
         payload['squad_name'] = squad.name
 
-    return payload
+    return {k: v for k, v in payload.items() if v is not None}
 
 class OneArtyModifier(Modifier):
 
@@ -226,7 +226,7 @@ class OneArtyModifier(Modifier):
                 type="arty_unassigned",
                 event_time=datetime.now(tz=timezone.utc),
 
-                message=f"Unassigned {player.team.name} from artillery due to being offline",
+                message=f"Unassigned from arty due to being offline",
                 **payload
             )
             self.session._logs.append(log)
