@@ -492,7 +492,7 @@ class sessions(commands.Cog):
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
-    @SessionGroup.command(name="logs", description="Download logs from a session")
+    @SessionGroup.command(name="logs", description="DEPRECATED: Use the /export command instead")
     @app_commands.describe(
         session="A log capture session",
         format="The format the logs should be exported in"
@@ -509,7 +509,7 @@ class sessions(commands.Cog):
         file = discord.File(fp, filename=session.name + '.' + converter.ext())
 
         await interaction.response.send_message(
-            content=f"Logs for **{esc_md(session.name)}**",
+            content=f"Logs for **{esc_md(session.name)}**\n> *NOTE: This command has been deprecated and will be removed in the future. Use the `/export` command instead.*",
             file=file
         )
 
