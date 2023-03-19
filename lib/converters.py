@@ -4,7 +4,7 @@ from enum import Enum
 from datetime import datetime
 from typing import List
 
-from lib.storage import LogLine
+from lib.storage import LogLine, HLU_VERSION
 
 __all__ = (
     'ExportFormats',
@@ -34,6 +34,13 @@ class Converter:
     player_level_up=...
     server_state_changed=...
     server_map_changed=...
+
+    rule_violated=...
+    arty_assigned=...
+    arty_unassigned=...
+    start_arty_cooldown=...
+    cancel_arty_cooldown=...
+
 
     @classmethod
     def convert(cls, log: 'LogLine'):
@@ -90,6 +97,11 @@ class TextConverter(Converter):
     server_match_ended      = "MATCH ENDED         \tMATCH ENDED `{new}` ALLIED ({message}) AXIS"
     server_warmup_ended     = "WARMUP ENDED        \tWARMUP ENDED"
 
+    arty_assigned           = "ARTILLERY ASSIGNED  \t{player_name} ({player_team}/{player_steamid}) with {weapon}: {message}"
+    arty_unassigned         = "ARTILLERY UNASSIGNED\t{player_name} ({player_team}/{player_steamid}): {message}"
+    start_arty_cooldown     = "COOLDOWN STARTED    \t{player_name} ({player_team}/{player_steamid}): {message}"
+    cancel_arty_cooldown    = "COOLDOWN CANCELED   \t{player_name} ({player_steamid}): {message}"
+
     @staticmethod
     def player_message(log: 'LogLine'):
         if log.squad_name:
@@ -102,7 +114,21 @@ class TextConverter(Converter):
         p1 = f"{log.player_name} ({log.player_steamid})" if log.player_name is not None else "None"
         p2 = f"{log.player2_name} ({log.player2_steamid})" if log.player2_name is not None else "None"
         return "OFFICER CHANGED".ljust(20) + f"\tOfficer for {log.squad_name} ({log.team_name}): {p2} -> {p1}"
-
+    
+    @staticmethod
+    def rule_violated(log: 'LogLine'):
+        msg = "RULE VIOLATED".ljust(20) + f"\t{log.player_name} ({log.player_team}/{log.player_steamid})"
+        if log.player2_name:
+            msg += f" -> {log.player2_name} ({log.player2_team}/{log.player2_steamid})"
+        if log.weapon:
+            msg += f" with {log.weapon}"
+        if log.message:
+            msg += f": {log.message}"
+        return msg
+    
+    @staticmethod
+    def header():
+        return f"-- Captured and exported using HLL Log Utilities {HLU_VERSION}"
     
     @classmethod
     def convert(cls, log: 'LogLine'):
@@ -110,6 +136,20 @@ class TextConverter(Converter):
         if out is not None:
             out = log.event_time.strftime('%H:%M:%S - %a, %b %d\t') + out
         return out
+
+    @classmethod
+    def convert_many(cls, logs: List['LogLine'], include_header=True):
+        lines = list()
+
+        if include_header:
+            lines.append(cls.header())
+        
+        for log in logs:
+            line = cls.convert(log)
+            if line is not None:
+                lines.append(line)
+        
+        return "\n".join(lines)
 
 
 class CSVConverter(Converter):

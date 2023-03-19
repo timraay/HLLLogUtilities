@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum, unique
 from inspect import isclass
 
-from lib.info_models import *
+from lib.info.types import *
 
 if TYPE_CHECKING:
     from lib.storage import LogLine
@@ -388,17 +388,12 @@ class PrivateEventModel(EventModel):
     this event as one that should not be adopted
     by info trees."""
 
-class UpdateEvent(PrivateEventModel):
-    __scope_path__ = 'events.update'
-class MountEvent(PrivateEventModel):
-    __scope_path__ = 'events.mount'
-class DismountEvent(PrivateEventModel):
-    __scope_path__ = 'events.dismount'
-class SettingUpdateEvent(PrivateEventModel):
-    __scope_path__ = 'events.setting_update'
-    key: str
-    old: Any
-    new: Any
+class ActivationEvent(PrivateEventModel):
+    __scope_path__ = 'events.activation'
+class IterationEvent(PrivateEventModel):
+    __scope_path__ = 'events.iteration'
+class DeactivationEvent(PrivateEventModel):
+    __scope_path__ = 'events.deactivation'
 
 #####################################
 
@@ -408,10 +403,9 @@ class EventTypes(Enum):
     def __str__(self):
         return self.name
 
-    update = UpdateEvent
-    mount = MountEvent
-    dismount = DismountEvent
-    setting_update = SettingUpdateEvent
+    activation = ActivationEvent
+    iteration = IterationEvent
+    deactivation = DeactivationEvent
     
     # In order of evaluation!
     player_join_server = PlayerJoinServerEvent
@@ -717,62 +711,12 @@ class InfoHopper(ModelTree):
         self.events.merge(events)
 
 
-from functools import reduce
-from types import MethodType
-from discord.flags import BaseFlags, flag_value, fill_with_flags
+from discord.flags import flag_value, fill_with_flags
 # discord.py provides some nice tools for making flags. We have to be
 # careful for breaking changes however.
 
 @fill_with_flags()
-class EventFlags(BaseFlags):
-    __slots__ = ()
-
-    def __init__(self, value: int = 0, **kwargs: bool) -> None:
-        self.value: int = value
-        for key, value in kwargs.items():
-            if key not in self.VALID_FLAGS:
-                raise TypeError(f'{key!r} is not a valid flag name.')
-            setattr(self, key, value)
-
-    def is_subset(self, other: 'EventFlags') -> bool:
-        """Returns ``True`` if self has the same or fewer permissions as other."""
-        if isinstance(other, EventFlags):
-            return (self.value & other.value) == self.value
-        else:
-            raise TypeError(f"cannot compare {self.__class__.__name__} with {other.__class__.__name__}")
-
-    def is_superset(self, other: 'EventFlags') -> bool:
-        """Returns ``True`` if self has the same or more permissions as other."""
-        if isinstance(other, EventFlags):
-            return (self.value | other.value) == self.value
-        else:
-            raise TypeError(f"cannot compare {self.__class__.__name__} with {other.__class__.__name__}")
-
-    def is_strict_subset(self, other: 'EventFlags') -> bool:
-        """Returns ``True`` if the permissions on other are a strict subset of those on self."""
-        return self.is_subset(other) and self != other
-
-    def is_strict_superset(self, other: 'EventFlags') -> bool:
-        """Returns ``True`` if the permissions on other are a strict superset of those on self."""
-        return self.is_superset(other) and self != other
-
-    __le__ = is_subset
-    __ge__ = is_superset
-    __lt__ = is_strict_subset
-    __gt__ = is_strict_superset
-
-    @classmethod
-    def all(cls: Type['EventFlags']) -> 'EventFlags':
-        value = reduce(lambda a, b: a | b, cls.VALID_FLAGS.values())
-        self = cls.__new__(cls)
-        self.value = value
-        return self
-
-    @classmethod
-    def none(cls: Type['EventFlags']) -> 'EventFlags':
-        self = cls.__new__(cls)
-        self.value = self.DEFAULT_VALUE
-        return self
+class EventFlags(Flags):
     
     @classmethod
     def connections(cls: Type['EventFlags']) -> 'EventFlags':
@@ -833,6 +777,16 @@ class EventFlags(BaseFlags):
         self.player_change_role = True
         self.player_change_loadout = True
         self.player_level_up = True
+        return self
+    
+    @classmethod
+    def modifiers(cls: Type['EventFlags']) -> 'EventFlags':
+        self = cls.none()
+        self.rule_violated = True
+        self.arty_assigned = True
+        self.arty_unassigned = True
+        self.start_arty_cooldown = True
+        self.cancel_arty_cooldown = True
         return self
     
 
@@ -919,6 +873,27 @@ class EventFlags(BaseFlags):
     @flag_value
     def objective_capture(self):
         return 1 << 20
+    
+    @flag_value
+    def rule_violated(self):
+        return 1 << 21
+
+    @flag_value
+    def arty_assigned(self):
+        return 1 << 22
+
+    @flag_value
+    def arty_unassigned(self):
+        return 1 << 23
+
+    @flag_value
+    def start_arty_cooldown(self):
+        return 1 << 24
+
+    @flag_value
+    def cancel_arty_cooldown(self):
+        return 1 << 25
+
 
     def filter_logs(self, logs: Sequence['LogLine']):
         allowed_types = {type_ for type_, allowed in self if allowed}

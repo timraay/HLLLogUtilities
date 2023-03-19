@@ -5,7 +5,7 @@ import operator
 from typing import Dict, List, Union, TYPE_CHECKING
 
 from lib import mappings
-from lib.info_types import EventTypes
+from lib.info.models import EventTypes
 from utils import toTable, side_by_side
 
 if TYPE_CHECKING:

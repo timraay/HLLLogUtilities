@@ -1,8 +1,5 @@
-import asyncio
-from typing import Optional
-
 import discord
-from discord import app_commands, ui, Interaction
+from discord import app_commands, Interaction, ButtonStyle
 from discord.ext import commands, tasks
 from discord.utils import escape_markdown as esc_md
 from datetime import datetime, timedelta, timezone
@@ -10,16 +7,20 @@ from dateutil.parser import parse as dt_parse
 from enum import Enum
 from io import StringIO
 from traceback import print_exc
+from typing import Callable
 
 from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions, assert_name
 from lib.credentials import Credentials, credentials_in_guild_tll
 from lib.converters import Converter, ExportFormats
 from lib.storage import cursor
+from lib.modifiers import ModifierFlags
 from cogs.credentials import RCONCredentialsModal, SECURITY_URL
-from discord_utils import CallableButton, CustomException, get_success_embed, only_once, View
+from discord_utils import CallableButton, CustomException, get_success_embed, only_once, View, ExpiredButtonError
 from utils import get_config
 
 MAX_SESSION_DURATION = timedelta(minutes=get_config().getint('Session', 'MaxDurationInMinutes'))
+
+MODIFIERS_URL = "https://github.com/timraay/HLLLogUtilities/blob/main/README.md"
 
 class SessionFilters(Enum):
     all = "all"
@@ -81,6 +82,198 @@ async def autocomplete_active_sessions(interaction: Interaction, current: str):
         for session in get_sessions(interaction.guild_id)
         if session.active_in() and current.lower() in str(session).lower()]
     return choices
+
+
+class SessionCreateView(View):
+    def __init__(self, name: str, guild: discord.Guild, credentials: Credentials, start_time: datetime, end_time: datetime, timeout: float = 180):
+        super().__init__(timeout=timeout)
+        self.add_item(CallableButton(self.on_confirm, label="Confirm", style=ButtonStyle.green))
+        self.add_item(CallableButton(self.select_modifiers, label="Modifiers...", style=ButtonStyle.gray))
+
+        self.name = assert_name(name)
+        self.guild = guild
+        self.credentials = credentials
+        self.start_time = start_time
+        self.end_time = end_time
+
+        self.modifiers = ModifierFlags()
+        self._message = None
+        self.__created = False
+    
+    @property
+    def duration(self):
+        return self.end_time - self.start_time
+    @property
+    def total_minutes(self):
+        return int(self.duration.total_seconds() / 60 + 0.5)
+
+    async def send(self, interaction: discord.Interaction):
+        embed = self.get_embed()
+        await interaction.response.send_message(embed=embed, view=self, ephemeral=True)
+        self._message = await interaction.original_response()
+
+    def get_embed(self):
+        if self.guild.icon is not None:
+            icon_url = self.guild.icon.url
+        else:
+            icon_url = None
+        
+        embed = discord.Embed(
+            title="Scheduling a new session...",
+            description="Please verify that all the information is correct. This cannot be changed later.",
+            colour=discord.Colour(16746296)
+        ).set_author(
+            name=f"{self.credentials.name} - {self.credentials.address}:{self.credentials.port}" if self.credentials else "Custom server",
+            icon_url=icon_url
+        ).add_field(
+            name="From",
+            value=f"<t:{int(self.start_time.timestamp())}:f>\n:watch: <t:{int(self.start_time.timestamp())}:R>"
+        ).add_field(
+            name="To",
+            value=f"<t:{int(self.end_time.timestamp())}:f>\n:calling: {self.total_minutes} minutes later"
+        )
+
+        if self.modifiers:
+            embed.add_field(name=f"Active Modifiers ({len(self.modifiers)})", value="\n".join([
+                f"{m.config.emoji} [**{m.config.name}**]({MODIFIERS_URL}#{m.config.name.lower().replace(' ', '-')}) - {m.config.description}"
+                for m in self.modifiers.get_modifier_types()
+            ]), inline=False)
+
+        return embed
+
+    async def on_confirm(self, interaction: Interaction):
+        if not self.credentials:
+
+            async def on_form_request(interaction: Interaction):
+                modal = RCONCredentialsModal(on_form_submit, title="RCON Credentials Form")
+                await interaction.response.send_modal(modal)
+
+            async def on_form_submit(_interaction: Interaction, name: str, address: str, port: int, password: str):
+                self.credentials = Credentials.create_temporary(interaction.guild_id, name=name, address=address, port=port, password=password)
+
+                @only_once
+                async def on_save_accept(interaction: Interaction):
+                    try:
+                        self.credentials.insert_in_db()
+                    except TypeError:
+                        raise CustomException("Credentials have already been saved!")
+
+                    await msg1.delete()
+                    await msg2.delete()
+                    await self.create_session(interaction)
+
+                @only_once
+                async def on_save_decline(interaction: Interaction):
+                    await msg1.delete()
+                    await msg2.delete()
+                    await self.create_session(interaction)
+
+                embed = discord.Embed(
+                    title="Do you want me to save these credentials?",
+                    description=f"That way you don't have to type 'em in every time, and can I recover your session in case of a restart.",
+                    url=SECURITY_URL
+                )
+
+                view = View(timeout=300)
+                view.add_item(CallableButton(on_save_accept, label="Save", style=ButtonStyle.blurple))
+                view.add_item(CallableButton(on_save_decline, label="Decline", style=ButtonStyle.gray))
+
+                msg2 = await _interaction.followup.send(embed=embed, view=view, ephemeral=True, wait=True)
+
+            embed = discord.Embed(
+                description=f"**Important notice!**\nIn order to retrieve logs, RCON access to your server is needed! You shouldn't hand your credentials to any sources you don't trust however. See [what was done to make sharing your password with me as safe as possible :bust_in_silhouette:]({SECURITY_URL}).\n\nPressing the below button will open a form where you can enter the needed information."
+            )
+            view = View(timeout=600)
+            view.add_item(CallableButton(on_form_request, label="Open form", emoji="📝", style=ButtonStyle.gray))
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            msg1 = await interaction.original_response()
+
+        else:
+            await self.create_session(interaction)
+        
+    async def create_session(self, interaction: discord.Interaction):
+        if self.__created:
+            raise ExpiredButtonError
+
+        embed = discord.Embed(
+            title="Log capture session scheduled!",
+            description="\n".join([
+                f"**{esc_md(self.name)}**",
+                f"🕓 <t:{int(self.start_time.timestamp())}:f> - <t:{int(self.end_time.timestamp())}:t>",
+                f"🚩 Server: `{self.credentials.name}`"
+            ]),
+            timestamp=datetime.now(tz=timezone.utc),
+            colour=discord.Colour(16746296)
+        ).set_footer(
+            text=str(interaction.user),
+            icon_url=interaction.user.avatar.url
+        )
+
+        HLLCaptureSession.create_in_db(
+            guild_id=self.guild.id,
+            name=self.name,
+            start_time=self.start_time,
+            end_time=self.end_time,
+            credentials=self.credentials,
+            modifiers=self.modifiers,
+        )
+        self.__created == True
+
+        if interaction.channel.permissions_for(interaction.guild.me).send_messages:
+            await interaction.channel.send(embed=embed)
+        else:
+            await interaction.response.send_message(embed=embed)
+
+        if self._message:
+            await self._message.delete()
+        else:
+            await interaction.response.defer()
+
+    async def select_modifiers(self, interaction: Interaction):
+        view = SessionModifierView(self._message, self.updated_modifiers, flags=self.modifiers)
+        await interaction.response.edit_message(content="Select all of the modifiers you want to enable by clicking on the buttons below", view=view, embed=None)
+    
+    async def updated_modifiers(self, interaction: discord.Interaction, modifiers: ModifierFlags):
+        self.modifiers = modifiers
+        await interaction.response.edit_message(content=None, view=self, embed=self.get_embed())
+
+
+class SessionModifierView(View):
+    def __init__(self, message: discord.InteractionMessage, callback: Callable, flags: ModifierFlags = None, timeout: float = 300.0, **kwargs):
+        super().__init__(timeout=timeout, **kwargs)
+        self.message = message
+        self._callback = callback
+        self.flags = flags or ModifierFlags()
+        self.update_self()
+    
+    options = []
+    for m_id, _ in ModifierFlags():
+        flag = ModifierFlags(**{m_id: True})
+        m = next(flag.get_modifier_types())
+        options.append((m.config.name, m.config.emoji, flag))
+    
+    async def toggle_value(self, interaction: Interaction, flags: ModifierFlags, enable: bool):
+        if enable:
+            self.flags |= flags
+        else:
+            self.flags ^= (self.flags & flags)
+        
+        await self.message.edit(view=self.update_self())
+        await interaction.response.defer()
+
+    def update_self(self):
+        self.clear_items()
+        for (name, emoji, flags) in self.options:
+            enabled = (flags <= self.flags) # Subset of
+            style = ButtonStyle.green if enabled else ButtonStyle.red
+            self.add_item(CallableButton(self.toggle_value, flags, not enabled, label=name, emoji=emoji, style=style))
+        self.add_item(CallableButton(self.callback, label="Back...", style=ButtonStyle.gray))
+
+        return self
+    
+    async def callback(self, interaction: Interaction):
+        return await self._callback(interaction, self.flags)
+
 
 class sessions(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -190,111 +383,14 @@ class sessions(commands.Cog):
                 f"The duration of the session exceeds the upper limit of {max_minutes} minutes.\n\n• Start time: `{start_time}`\n• End time: `{end_time}`\n• Duration: {minutes} minutes"
             )
 
-        name = assert_name(name)
-
-        icon_url: Optional[str] = None
-        if interaction.guild.icon is not None:
-            icon_url = interaction.guild.icon.url
-        embed = discord.Embed(
-            title="Scheduling a new session...",
-            description="Please verify that all the information is correct. This cannot be changed later.",
-            colour=discord.Colour(16746296)
-        ).set_author(
-            name=f"{credentials.name} - {credentials.address}:{credentials.port}" if credentials else "Custom server",
-            icon_url=icon_url
-        ).add_field(
-            name="From",
-            value=f"<t:{int(start_time.timestamp())}:f>\n:watch: <t:{int(start_time.timestamp())}:R>"
-        ).add_field(
-            name="To",
-            value=f"<t:{int(end_time.timestamp())}:f>\n:calling: {minutes} minutes later"
+        view = SessionCreateView(
+            name=name,
+            guild=interaction.guild,
+            credentials=credentials,
+            start_time=start_time,
+            end_time=end_time
         )
-
-        @only_once
-        async def on_confirm(interaction: Interaction):
-            if not credentials:
-
-                async def on_form_request(_interaction: Interaction):
-                    modal = RCONCredentialsModal(on_form_submit, title="RCON Credentials Form")
-                    await _interaction.response.send_modal(modal)
-
-                async def on_form_submit(_interaction: Interaction, name: str, address: str, port: int, password: str):
-                    credentials = Credentials.create_temporary(_interaction.guild_id, name=name, address=address, port=port, password=password)
-
-                    @only_once
-                    async def on_save_accept(__interaction: Interaction):
-                        try:
-                            credentials.insert_in_db()
-                        except TypeError:
-                            raise CustomException("Credentials have already been saved!")
-
-                        await msg.delete()
-                        await create_session(interaction, credentials)
-
-                    @only_once
-                    async def on_save_decline(__interaction: Interaction):
-                        await msg.delete()
-                        await create_session(interaction, credentials)
-
-                    embed = discord.Embed(
-                        title="Do you want me to save these credentials?",
-                        description=f"That way you don't have to type 'em in every time, and can I recover your session in case of a restart.",
-                        url=SECURITY_URL
-                    )
-
-                    view = View(timeout=300)
-                    view.add_item(CallableButton(on_save_accept, label="Save", style=discord.ButtonStyle.blurple))
-                    view.add_item(CallableButton(on_save_decline, label="Decline", style=discord.ButtonStyle.gray))
-
-                    await interaction.edit_original_response(view=None)
-                    msg = await interaction.followup.send(embed=embed, view=view, ephemeral=True, wait=True)
-
-                embed = discord.Embed(
-                    description=f"**Important notice!**\nIn order to retrieve logs, RCON access to your server is needed! You shouldn't hand your credentials to any sources you don't trust however. See [what was done to make sharing your password with me as safe as possible :bust_in_silhouette:]({SECURITY_URL}).\n\nPressing the below button will open a form where you can enter the needed information."
-                )
-                view = View(timeout=600)
-                view.add_item(CallableButton(on_form_request, label="Open form", emoji="📝", style=discord.ButtonStyle.gray))
-                await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-            else:
-                await create_session(interaction, credentials)
-
-
-        @only_once
-        async def create_session(_interaction: Interaction, credentials: Credentials):
-            embed = discord.Embed(
-                title="Log capture session scheduled!",
-                description="\n".join([
-                    f"**{esc_md(name)}**",
-                    f"🕓 <t:{int(start_time.timestamp())}:f> - <t:{int(end_time.timestamp())}:t>",
-                    f"🚩 Server: `{credentials.name}`"
-                ]),
-                timestamp=datetime.now(tz=timezone.utc),
-                colour=discord.Colour(16746296)
-            ).set_footer(
-                text=str(interaction.user),
-                icon_url=interaction.user.avatar.url
-            )
-
-            HLLCaptureSession.create_in_db(
-                guild_id=interaction.guild_id,
-                name=name,
-                start_time=start_time,
-                end_time=end_time,
-                credentials=credentials
-            )
-
-            if not _interaction.response.is_done():
-                await _interaction.response.send_message(embed=embed)
-            else:
-                await _interaction.followup.send(embed=embed)
-
-            await _interaction.edit_original_response(view=None)
-
-        view = View(timeout=300)
-        view.add_item(CallableButton(on_confirm, label="Confirm", style=discord.ButtonStyle.green))
-
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await view.send(interaction)
 
     @SessionGroup.command(name="list", description="View all available sessions")
     @app_commands.describe(
@@ -364,7 +460,7 @@ class sessions(commands.Cog):
         )
 
         view = View()
-        view.add_item(CallableButton(on_confirm, label="Confirm", style=discord.ButtonStyle.gray))
+        view.add_item(CallableButton(on_confirm, label="Confirm", style=ButtonStyle.gray))
 
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
@@ -391,7 +487,7 @@ class sessions(commands.Cog):
         )
 
         view = View()
-        view.add_item(CallableButton(on_confirm, label="Confirm", style=discord.ButtonStyle.gray))
+        view.add_item(CallableButton(on_confirm, label="Confirm", style=ButtonStyle.gray))
 
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 

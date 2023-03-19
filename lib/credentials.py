@@ -4,16 +4,6 @@ from lib.storage import cursor, database
 from lib.exceptions import NotFound
 from utils import ttl_cache
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS "credentials" (
-	"guild_id"	VARCHAR(18) NOT NULL,
-	"name"	VARCHAR(80) NOT NULL,
-	"address"	VARCHAR(25),
-	"port"	INTEGER,
-	"password"	VARCHAR(50)
-);""")
-database.commit()
-
 class Credentials:
     def __init__(self, id: Union[int, None], guild_id: int, name: str, address: str, port: int, password: str):
         self.id = id

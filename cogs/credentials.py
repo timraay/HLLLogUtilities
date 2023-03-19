@@ -55,6 +55,7 @@ class RCONCredentialsModal(ui.Modal):
             )
 
         async def finish_callback(_interaction):
+            await interaction.delete_original_response()
             await self._callback(
                 _interaction,
                 name=self.name.value,
@@ -92,7 +93,7 @@ class RCONCredentialsModal(ui.Modal):
                 )
 
             async def finish_callback_delete(_interaction):
-                await interaction.delete_original_response()
+                # await interaction.delete_original_response()
                 await finish_callback(interaction)
 
             view = View()
