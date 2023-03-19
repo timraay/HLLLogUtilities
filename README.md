@@ -1,39 +1,40 @@
-# HLLLogUtilities ![GitHub release (latest by date)](https://img.shields.io/github/v/release/timraay/HLLLogUtilities)
+# **HLLLogUtilities** ![GitHub release (latest by date)](https://img.shields.io/github/v/release/timraay/HLLLogUtilities)
 
 <img align="right" width="250" height="250" src="icon.png">
 
 > For any issues or feature requests, please [open an Issue](https://github.com/timraay/HLLLogUtilities/issues) here on GitHub.
 
-HLLLogUtilities (or HLU in short) is a Discord bot providing a clean interface to record and download logs in different formats from your Hell Let Loose server. It is capable of providing highly detailed logs with information no other program is able to capture.
+HLLLogUtilities (or HLU in short) is a Discord bot providing a clean interface to record and download logs in different formats from your Hell Let Loose server. It is capable of providing highly detailed logs with information no other program is able to capture. Plus, it may help you [enforce custom rules](#game-modifiers)!
 
 You can [invite HLU to your server](https://discord.com/oauth2/authorize?client_id=1033779011005980773&scope=bot+applications.commands&permissions=35840) right away with no costs whatsoever, or [host a private instance](#setup-guide) yourself!
 
-## Easy to use!
+## **Easy to use!**
 
 It takes only a few clicks to create a capture session and start recording logs. Just give a start and end time and select the server you want to record! From there on you can download the logs in formats such as `txt`, `csv` and `json`.
 
-## Super-detailed logs!
+## **Super-detailed logs!**
 
 HLU makes great use of its asynchronous backend by opening up multiple connections, that way it can poll player information at a blazing-fast rate. It is capable of computing all sorts of events no other tool has been capable of so far, such as players changing roles, players redeploying, players joining, leaving or creating units, and more!
 
-# Planned features
+# **Planned features**
 
 This is a non-exhaustive list in no particular order of everything I *may* add one day, whenever I feel like it.
 
 - [x] Exporting a single match from a session
 - [x] Exporting statistics from a session or match
+- [x] Framework for custom match modifiers
 - [ ] Replace the info model core for more precise logs
 - [ ] Uploading and converting existing logs
 - [ ] Add timezone settings
 - [ ] Command localization
 
-# Quickstart
+# **Quickstart**
 
-### Prerequisites
+### **Prerequisites**
 - A Discord server you have Administrator permissions in
 - A Hell Let Loose server you know the RCON credentials of
 
-### Guide
+### **Guide**
 
 To get started with HLLLogUtilities, follow the below steps!
 
@@ -41,7 +42,7 @@ To get started with HLLLogUtilities, follow the below steps!
 2. Type in `/`, and select the `/session new` command.
 3. Fill in the parameters.
     - Give it a name that you can later identify the session by, for instance "First-time test".
-    - Give it a start and end time. The times have to be in UTC, and make sure they're not relative. So "14:30" is fine, but not "in 30 minutes". You can also use "now".
+    - Give it a start and end time. The times have to be in UTC. Unless selected from the presented list of choices, times have to be fixed and not relative, with the exception of the word "now".
     - For the server, select "Custom". You likely won't have any other options there yet anyway.
 4. Run the command. Confirm that the presented information is correct and press "Confirm". Otherwise dismiss the message and run the command again.
 5. It'll ask you for your RCON credentials. Open the form and fill them in. 
@@ -50,24 +51,23 @@ To get started with HLLLogUtilities, follow the below steps!
 
 Your session is now scheduled! Now, let's wait for it to gather some logs and then view them.
 
-1. Type in `/`, and select the `/session logs` command.
+1. Type in `/`, and select the `/export logs` command.
 2. Fill in the parameters.
     - Select the session you created earlier.
-    - The format you can leave on `text` for now.
-3. Run the command.
+3. Run the command and follow the on-screen instructions.
 
 And that's everything! You can see all of your sessions with the `/session list` command. Just note that they'll be deleted after 14 days. To manage your server credentials, use the `/credentials` command.
 
 > **NOTE:** All commands require **Administrator permissions**. You can add exceptions for specific roles, channels and/or users under *Server Settings > Integrations > HLL Log Utilities*.
 
-# Setup Guide
+# **Setup Guide**
 
-### Prerequisites
+### **Prerequisites**
 - A machine to host on, such as a VPS, dedicated server or your own PC
-- [Python](https://www.python.org/downloads) 3.7 or above
+- [Python](https://www.python.org/downloads) 3.8 or above
 - [Git](https://git-scm.com/downloads)
 
-### Guide
+### **Guide**
 
 To host your own instance of HLU, there's a few steps you have to follow. Let's start off by cloning the code from GitHub. For this you need to have Git installed.
 
@@ -110,10 +110,34 @@ And that's everything! Now we just need to run it.
 python bot.py
 ```
 
-Note that the bot will shut down whenever you close this terminal.
+> **NOTE:** The exact command may vary per installation. On Windows it often will be `py` instead of `python`, and on Unix-like systems it is often `python3`.
+
+This terminal will need to stay open for the bot to work. Closing down this terminal will also shut down the bot.
+
+# **Game Modifiers**
+
+When creating a new session, you are given the option to enable modifiers. These modifiers can be used to enforce certain rules and track additional information, by listening and responding to incoming events from the game server.
+
+A list of available modifiers, including what they do and how they work, can be found below.
+
+- ## **No Panther**
+
+    The "No Panther" modifier aims to reduce faction imbalance by disallowing the use of Panther tanks. Getting a kill with a Panther will kill its entire crew, as well as their team's commander.
+
+- ## **One-man arty**
+
+    The "One-man Arty" modifiers aims to assist with the enforcement of rules that limit the use of artillery down to one gunner per team. The moment a player gets a kill with artillery, they become slotted in as that team's designated artillery gunner.
+
+    While this modifier is active, artillery gunners cannot be killed. Similarly, artillery players may not use any weapons other than artillery to target infantry.
+
+    If any of the above rules are violated, including having a second player jump on artillery and getting a kill with it, up to 10 random players on that team will be admin-killed. Only when the team's artillery gunner stays disconnected for more than 5 minutes will the commander get a message that someone new may now jump on artillery.
+
+<br>
 
 <div align=center>
-    
+
+**Like what you see?**
+
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/abusify)
 
 </div>
