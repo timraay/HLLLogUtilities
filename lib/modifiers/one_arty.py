@@ -4,10 +4,9 @@ from datetime import datetime, timezone
 from typing import Dict, Union
 
 from .base import Modifier
-from lib.info.events import (on_activation, on_server_map_changed, on_player_kill, on_player_any_kill,
-    on_player_leave_server, on_player_join_server, add_condition, add_cooldown, CooldownType, event_listener)
-from lib.info.models import (ActivationEvent, ServerMapChangedEvent, PlayerKillEvent,
-    PlayerLeaveServerEvent, PlayerJoinServerEvent, Player, Team)
+from lib.info.events import (on_player_kill, on_player_any_kill, on_player_leave_server, on_player_join_server,
+    add_condition, add_cooldown, CooldownType, event_listener)
+from lib.info.models import ActivationEvent, PlayerKillEvent, PlayerLeaveServerEvent, PlayerJoinServerEvent, Player, Team
 from lib.storage import LogLine
 from lib.mappings import WEAPONS, BASIC_CATEGORIES
 
@@ -73,8 +72,13 @@ class OneArtyModifier(Modifier):
         return None
 
     async def punish_ten_people(self, player: Player, reason: str):
-        all_players = [p for p in player.team.players if p.steamid != player.steamid]
-        players = random.choices(all_players, k=min(9, len(all_players)))
+        dap = self.find_dap(player.team)
+        all_players = [p for p in player.team.players
+            if p.steamid != player.steamid and not (dap and p.steamid == dap.steamid)]
+        players = random.choices(all_players, k=min(8, len(all_players)))
+        if dap:
+            players.append(dap)
+
         extended_reason = (
             "One member of your team has violated One Arty rules. To compensate the enemy, random "
             "players on your team, including yourself, were killed.\n\nThe rule in question is as follows:\n"
@@ -90,7 +94,22 @@ class OneArtyModifier(Modifier):
             return_exceptions=True
         )
 
-        return res[1:].count(True)
+        players.insert(0, player)
+        punished = list()
+        for i, success in enumerate(res[1:]):
+
+            if success == True:
+                punished.append(players[i])
+
+            elif isinstance(success, Exception):
+                player = players[i]
+                self.logger.exception("Failed to punish %s (%s): %s - %s",
+                    player.name, player.steamid, type(success).__name__, success)
+                
+        self.logger.info("Punished %s/%s players: %s",
+            len(punished), len(players), ", ".join([f"{player.name} ({player.steamid})" for player in punished]))
+
+        return punished
 
     # --- Assign DAPs
 
