@@ -194,7 +194,7 @@ def update_table_columns(table_name: str, old: list, new: list, defaults: dict =
     # Drop the old table
     cursor.execute(str(Query.drop_table(table_name)))
     # Rename the new table
-    cursor.execute('ALTER TABLE ? RENAME TO ?;', (table_name_new, table_name))
+    cursor.execute(f'ALTER TABLE "{table_name_new}" RENAME TO "{table_name}";')
 
     database.commit()
 
@@ -219,8 +219,11 @@ elif db_version < DB_VERSION:
         # Add "player_score_X" columns to all session logs tables
         cursor.execute('SELECT name FROM sqlite_master WHERE type = "table" AND name LIKE "session%";')
         for (table_name,) in cursor.fetchall():
-            if table_name.endswith('_new'):
-                logging.warning('Found table with name %s', table_name)
+            try:
+                int(table_name[7:])
+            except ValueError:
+                if table_name.endswith('_new'):
+                    logging.warning('Found table with name %s, you will likely need to manually delete it', table_name)
                 continue
 
             update_table_columns(table_name,
