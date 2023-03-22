@@ -452,7 +452,7 @@ class sessions(commands.Cog):
             await session.stop()
             await _interaction.response.edit_message(embed=get_success_embed(
                 f"Stopped \"{session.name}\"!"
-            ))
+            ), view=None)
 
         embed = discord.Embed(
             title="Are you sure you want to stop this session?",
@@ -479,7 +479,7 @@ class sessions(commands.Cog):
             session.delete()
             await _interaction.response.edit_message(embed=get_success_embed(
                 f"Deleted \"{session.name}\"!"
-            ))
+            ), view=None)
 
         embed = discord.Embed(
             title="Are you sure you want to delete this session?",
