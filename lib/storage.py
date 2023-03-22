@@ -55,6 +55,7 @@ class LogLine(BaseModel):
 
         old = event.get('old')
         new = event.get('new') or event.get('map')
+        message = event.get('message')
 
         if isinstance(event, SquadLeaderChangeEvent):
             player = event.new
