@@ -209,6 +209,12 @@ class SessionCreateView(View):
             icon_url=interaction.user.avatar.url
         )
 
+        if self.modifiers:
+            embed.description += f"🧮 Modifiers: " + ", ".join([
+                f"[{m.config.name}]({MODIFIERS_URL}#{m.config.name.lower().replace(' ', '-')})"
+                for m in self.modifiers.get_modifier_types()
+            ])
+
         HLLCaptureSession.create_in_db(
             guild_id=self.guild.id,
             name=self.name,
