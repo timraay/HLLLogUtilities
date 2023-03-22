@@ -89,9 +89,7 @@ class Player(InfoModel):
         else:
             return super().__eq__(other)
 
-class HLLPlayerScore(InfoModel):
-    __scope_path__ = "players.hll_score"
-
+class HLLPlayerScore(pydantic.BaseModel):
     combat: int = UnsetField
     """The player's combat score"""
     
@@ -440,7 +438,7 @@ class EventTypes(Enum):
         try:
             return cls[value]
         except KeyError:
-            return super()._missing_(cls, value)
+            return super()._missing_(value)
     
     @classmethod
     def all(cls):
@@ -645,7 +643,7 @@ class InfoHopper(ModelTree):
             for player in others:
                 if other.server.state == "in_progress":
                     events.add(PlayerScoreUpdateEvent(self, event_time=event_time,
-                        player=player.create_link(with_fallback=True)
+                        player=player.create_link(with_fallback=True, hopper=self)
                     ))
 
                 events.add(PlayerLeaveServerEvent(self, event_time=event_time,
