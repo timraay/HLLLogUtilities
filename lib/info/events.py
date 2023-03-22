@@ -289,6 +289,12 @@ def on_player_level_up(timeout: float = 10.0):
     """Adds an event listener for players leveling up."""
     return event_listener([EventTypes.player_level_up], timeout=timeout)
 
+def on_player_score_update(timeout: float = 10.0):
+    """Adds an event listener for whenever HLU sends an update on a player's
+    score. It does this for every online player directly after a match ends, or
+    prematurely for players who disconnect while the match is still in progress."""
+    return event_listener([EventTypes.player_score_update], timeout=timeout)
+
 def on_player_exit_admin_cam(timeout: float = 10.0):
     """Adds an event listener for players exiting the admin camera."""
     return event_listener([EventTypes.player_exit_admin_cam], timeout=timeout)

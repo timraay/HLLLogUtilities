@@ -102,11 +102,7 @@ class HLLCaptureSession:
 
         # Create the table if needed
         sess_name = f"session{id_}"
-        table = Table(sess_name)
-        create_table_query = Query.create_table(table).columns(*[
-            Column(field.name, 'TEXT') for field in LogLine.__fields__.values()
-        ])
-        cursor.execute(str(create_table_query))
+        cursor.execute(LogLine._get_create_query(sess_name))
         database.commit()
 
         return cls(

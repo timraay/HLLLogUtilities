@@ -371,6 +371,10 @@ class PlayerLevelUpEvent(EventModel):
     old: int = UnsetField
     new: int = UnsetField
 
+class PlayerScoreUpdateEvent(EventModel):
+    __scope_path__ = 'events.player_score_update'
+    player: Union[Player, Link] = UnsetField
+
 class PlayerExitAdminCamEvent(EventModel):
     __scope_path__ = 'events.player_exit_admin_cam'
     player: Union[Player, Link] = UnsetField
@@ -426,6 +430,7 @@ class EventTypes(Enum):
     player_suicide = PlayerSuicideEvent
     objective_capture = ObjectiveCaptureEvent
     player_level_up = PlayerLevelUpEvent
+    player_score_update = PlayerScoreUpdateEvent
     player_exit_admin_cam = PlayerExitAdminCamEvent
     player_leave_server = PlayerLeaveServerEvent
     squad_disbanded = SquadDisbandedEvent
@@ -466,6 +471,7 @@ class Events(InfoModel):
     objective_capture: List['ObjectiveCaptureEvent'] = UnsetField
     server_match_ended: List['ServerMatchEnded'] = UnsetField
     player_level_up: List['PlayerLevelUpEvent'] = UnsetField
+    player_score_update: List['PlayerScoreUpdateEvent'] = UnsetField
     player_exit_admin_cam: List['PlayerExitAdminCamEvent'] = UnsetField
     player_leave_server: List['PlayerLeaveServerEvent'] = UnsetField
     squad_disbanded: List['SquadDisbandedEvent'] = UnsetField
@@ -637,6 +643,11 @@ class InfoHopper(ModelTree):
                     ))
 
             for player in others:
+                if other.server.state == "in_progress":
+                    events.add(PlayerScoreUpdateEvent(self, event_time=event_time,
+                        player=player.create_link(with_fallback=True)
+                    ))
+
                 events.add(PlayerLeaveServerEvent(self, event_time=event_time,
                     player=player.create_link(with_fallback=True)
                 ))
@@ -778,6 +789,12 @@ class EventFlags(Flags):
         self.player_change_loadout = True
         self.player_level_up = True
         return self
+
+    @classmethod
+    def scores(cls: Type['EventFlags']) -> 'EventFlags':
+        self = cls.none()
+        self.player_score_update = True
+        return self
     
     @classmethod
     def modifiers(cls: Type['EventFlags']) -> 'EventFlags':
@@ -892,6 +909,10 @@ class EventFlags(Flags):
 
     @flag_value
     def cancel_arty_cooldown(self):
+        return 1 << 25
+    
+    @flag_value
+    def player_score_update(self):
         return 1 << 25
 
 

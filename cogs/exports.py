@@ -44,6 +44,7 @@ class ExportFilterView(ui.View):
         ("Teams", "🫐", EventFlags.teams()),
         ("Squads", "👬", EventFlags.squads()),
         ("Roles", "🏹", EventFlags.roles()),
+        ("Scores", "🪙", EventFlags.scores()),
         ("Messages", "✉️", EventFlags.messages()),
         ("Gamestates", "🚥", EventFlags.game_states()),
         ("Admin Cam", "🎥", EventFlags.admin_cam()),

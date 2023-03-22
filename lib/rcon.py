@@ -539,6 +539,13 @@ class HLLRcon:
                             self._end_warmup_handle.cancel()
                         self._end_warmup_handle = None
 
+                        # Log the scores of all online players
+                        for player in self.info.players:
+                            if player.has('score'):
+                                self.info.events.add(
+                                    PlayerScoreUpdateEvent(self.info, player=player.create_link())
+                                )
+
                     elif log.split(' ', 1)[0] in {'CONNECTED', 'DISCONNECTED', 'TEAMSWITCH', 'KICK:', 'BAN:', 'VOTESYS:', 'MESSAGE:'}:
                         # Suppress error logs
                         pass
