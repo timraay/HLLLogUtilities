@@ -10,7 +10,7 @@ from lib.credentials import Credentials
 from lib.storage import LogLine, database, cursor, insert_many_logs, delete_logs
 from lib.exceptions import NotFound, SessionDeletedError, SessionAlreadyRunningError, SessionMissingCredentialsError
 from lib.modifiers import ModifierFlags
-from lib.info.models import EventFlags, EventModel, ActivationEvent, IterationEvent, DeactivationEvent, InfoHopper
+from lib.info.models import EventFlags, EventModel, ActivationEvent, IterationEvent, DeactivationEvent, InfoHopper, PrivateEventModel
 from lib.info.events import EventListener
 from utils import get_config, schedule_coro, get_logger
 
@@ -185,13 +185,14 @@ class HLLCaptureSession:
         events = list(info.events.flatten())
         events.insert(0, IterationEvent(info))
         for event in events:
-            try:
-                log = LogLine.from_event(event)
-                # print(event.to_dict(exclude_unset=True))
-            except:
-                self.logger.exception('Failed to cast event to log line: %s %s' % (type(event).__name__, event.to_dict(exclude_unset=True)))
-            else:
-                self._logs.append(log)
+            if not isinstance(event, PrivateEventModel):
+                try:
+                    log = LogLine.from_event(event)
+                    # print(event.to_dict(exclude_unset=True))
+                except:
+                    self.logger.exception('Failed to cast event to log line: %s %s' % (type(event).__name__, event.to_dict(exclude_unset=True)))
+                else:
+                    self._logs.append(log)
             
             for modifier in self.modifiers:
                 for listener in modifier.get_listeners_for_event(event):
