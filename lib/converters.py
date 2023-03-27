@@ -92,7 +92,7 @@ class TextConverter(Converter):
     player_enter_admin_cam  = "CAMERA ENTERED      \t{player_name} ({player_team}/{player_steamid}) entered admin cam"
     player_exit_admin_cam   = "CAMERA EXITED       \t{player_name} ({player_team}/{player_steamid}) exited admin cam"
     player_level_up         = "LEVELUP             \t{player_name} ({player_steamid}) leveled up: {old} -> {new}"
-    player_score_update     = "PLAYER SCORE        \t{player_name} ({player_steamid}): {player_combat_score} C, {player_offense_score} O, {player_defense_score} D, {player_support_score} S (KD: {new}/{message})"
+    player_score_update     = "PLAYER SCORE        \t{player_name} ({player_steamid}): {player_combat_score} C; {player_offense_score} O; {player_defense_score} D; {player_support_score} S (KD: {new}/{message})"
     objective_capture       = "OBJECTIVE CAPTURED  \t{team_name} captured an objective: ALLIED ({message}) AXIS"
     server_map_changed      = "MAP CHANGED         \tMap changed from {old} to {new}"
     server_match_started    = "MATCH START         \tMATCH START {new}"
