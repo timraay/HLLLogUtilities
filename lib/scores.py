@@ -146,6 +146,12 @@ class DataStore:
     @property
     def total_axis_deaths(self):
         return sum(p.axis_deaths for p in self.players)
+    @property
+    def total_allied_score(self) -> 'PlayerScore':
+        return sum((p.allied_score for p in self.players), start=PlayerScore())
+    @property
+    def total_axis_score(self) -> 'PlayerScore':
+        return sum((p.axis_score for p in self.players), start=PlayerScore())
 
     @property
     def avg_kills(self):
@@ -387,7 +393,7 @@ class PlayerData:
         self._nemeses: Dict[str, int] = {}
         self.allied_score: PlayerScore = PlayerScore()
         self.axis_score: PlayerScore = PlayerScore()
-        self._total_score: PlayerScore = PlayerScore()
+        self.score: PlayerScore = PlayerScore()
         self._playtime: int = 0
         self._sess_start: datetime = match_start
         self._match_end: datetime = match_end
@@ -401,7 +407,7 @@ class PlayerData:
 
         for attr in ('kills', 'deaths', 'allied_kills', 'axis_kills', 'allied_deaths',
                      'axis_deaths', 'teamkills', 'suicides', 'allied_score', 'axis_score',
-                     'num_matches_played'):
+                     'score', 'num_matches_played'):
             res.__setattr__(attr, self.__getattribute__(attr) + other.__getattribute__(attr))
         
         for attr in ('weapons', 'causes'):
@@ -442,7 +448,7 @@ class PlayerData:
     
     def update_score(self, log: 'LogLine'):
         faction = self._faction
-        if faction == Faction.Any:
+        if faction == Faction.Any and log.player_team:
             faction = Faction(log.player_team)
 
         score = PlayerScore(
@@ -451,12 +457,14 @@ class PlayerData:
             defense=log.player_defense_score,
             support=log.player_support_score
         )
-        score -= self._total_score
+        score -= self.score
 
         if faction == Faction.Allies:
             self.allied_score += score
         elif faction == Faction.Axis:
             self.axis_score += score
+
+        self.score += score
 
     def kill(self, victim, weapon: str, faction: Faction):
         self.kills += 1
@@ -471,7 +479,8 @@ class PlayerData:
 
         # Killstreak
         self._curr_streak += 1
-        if self._curr_streak > self.killstreak: self.killstreak = self._curr_streak
+        if self._curr_streak > self.killstreak:
+            self.killstreak = self._curr_streak
         # Deathstreak
         self._curr_deathstreak = 0
 
@@ -558,10 +567,6 @@ class PlayerData:
     @property
     def nemesis(self):
         return max(self.nemeses, key=self.nemeses.get)
-
-    @property
-    def score(self):
-        return self.allied_score + self.axis_score
 
     def join(self, timestamp):
         self._sess_start = timestamp
@@ -702,10 +707,14 @@ def create_scoreboard(stats: 'MatchData'):
         f"  Suicides: {stats.total_suicides}",
     ]
 
+    total_allied_score = stats.total_allied_score
+    total_axis_score = stats.total_axis_score
     table = [
         ['FACTION', 'KILLS', 'DEATHS', 'KDR', 'COMBAT', 'OFFENSE', 'DEFENSE', 'SUPPORT'],
-        ['Allies', stats.total_allied_kills, stats.total_allied_deaths, round(stats.total_allied_kills / (stats.total_allied_deaths or 1), 2)],
-        ['Axis', stats.total_axis_kills, stats.total_axis_deaths, round(stats.total_axis_kills / (stats.total_axis_deaths or 1), 2)],
+        ['Allies', stats.total_allied_kills, stats.total_allied_deaths, round(stats.total_allied_kills / (stats.total_allied_deaths or 1), 2),
+            total_allied_score.combat, total_allied_score.offense, total_allied_score.defense, total_allied_score.support],
+        ['Axis', stats.total_axis_kills, stats.total_axis_deaths, round(stats.total_axis_kills / (stats.total_axis_deaths or 1), 2),
+            total_axis_score.combat, total_axis_score.offense, total_axis_score.defense, total_axis_score.support],
     ]
 
     output += [
