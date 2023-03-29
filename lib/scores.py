@@ -2,6 +2,7 @@ import operator
 from datetime import datetime, timedelta
 from enum import Enum
 import operator
+from pydantic import BaseModel
 from typing import Dict, List, Union, TYPE_CHECKING
 
 from lib import mappings
@@ -23,6 +24,21 @@ class Faction(Enum):
     Allies = "Allies"
     Axis = "Axis"
     Any = "Any"
+
+class PlayerScore(BaseModel):
+    combat: int = 0
+    offense: int = 0
+    defense: int = 0
+    support: int = 0
+
+    def __add__(self, other: 'PlayerScore'):
+        if not isinstance(other, PlayerScore):
+            return NotImplemented
+        return PlayerScore(**combine_dicts(self.dict(), other.dict()))
+    def __sub__(self, other: 'PlayerScore'):
+        if not isinstance(other, PlayerScore):
+            return NotImplemented
+        return PlayerScore(**combine_dicts(self.dict(), other.dict(), op=operator.sub))
 
 
 
@@ -209,13 +225,13 @@ class DataStore:
     def to_text(self, single_match: bool = True):
         data = sorted(self.players, key=lambda player: player.kills_per_minute*1000000-player.deaths, reverse=True)
     
-        headers = ['RANK', 'NAME', 'KILLS', 'DEATHS', 'K/D', 'TKS', 'SUIC', 'STREAK', 'WEAPON', 'VICTIM', 'NEMESIS'] if single_match else \
-            ['RANK', 'STEAMID', 'PLAYED', 'NAME', 'KILLS', 'DEATHS', 'K/D', 'TKS', 'SUIC', 'STREAK', 'WEAPON', 'VICTIM', 'NEMESIS', 'PLAYTIME', 'K/MIN']
+        headers = ['RANK', 'NAME', 'KILLS', 'DEATHS', 'K/D', 'TKS', 'SUIC', 'STREAK', 'WEAPON', 'VICTIM', 'NEMESIS', 'COMB', 'DEF', 'OFF', 'SUPP', 'PLAYTIME'] if single_match else \
+            ['RANK', 'STEAMID', 'PLAYED', 'NAME', 'KILLS', 'DEATHS', 'K/D', 'TKS', 'SUIC', 'STREAK', 'WEAPON', 'VICTIM', 'NEMESIS', 'COMB', 'DEF', 'OFF', 'SUPP', 'PLAYTIME', 'K/MIN']
 
         if single_match:
-            output = "{: <5} {: <25} {: <6} {: <6} {: <5} {: <5} {: <5} {: <6} {: <27} {: <25} {}".format(*headers)
+            output = "{: <5} {: <25} {: <6} {: <6} {: <5} {: <5} {: <5} {: <6} {: <27} {: <25} {: <25} {: <4} {: <4} {: <4} {: <4} {}".format(*headers)
         else:
-            output = "{: <6} {: <13} {: <6}  {: <25} {: <6} {: <6} {: <5} {: <5} {: <5} {: <6} {: <27} {: <25} {: <25} {: <9} {}".format(*headers)
+            output = "{: <6} {: <13} {: <6}  {: <25} {: <6} {: <6} {: <5} {: <5} {: <5} {: <6} {: <27} {: <25} {: <25} {: <4} {: <4} {: <4} {: <4} {: <9} {}".format(*headers)
         for i, player in enumerate(data):
             if not player.steam_id:
                 continue
@@ -299,6 +315,9 @@ class MatchData(DataStore, MatchGroup):
                 elif log.new:
                     killer_data.update_faction(Faction(log.new))
             
+            if log.player_combat_score is not None:
+                killer_data.update_score(log)
+            
             data[log.player_steamid] = killer_data
             if victim_data:
                 data[log.player2_steamid] = victim_data
@@ -345,30 +364,34 @@ class MatchData(DataStore, MatchGroup):
             return DataStore(self.duration, [player for player in self.players if player.faction == faction])
 
 class PlayerData:
-    def __init__(self, steam_id, name, match_start, match_end):
-        self.steam_id = steam_id
-        self.names = {name: 1}
-        self.faction = None
-        self.kills = 0
-        self.deaths = 0
-        self.allied_kills = 0
-        self.axis_kills = 0
-        self.allied_deaths = 0
-        self.axis_deaths = 0
-        self.weapons = {'None': 0}
-        self.causes = {'None': 0}
-        self.teamkills = 0
-        self.suicides = 0
-        self._curr_streak = 0
-        self.killstreak = 0
-        self._curr_deathstreak = 0
-        self.deathstreak = 0
-        self._victims = {}
-        self._nemeses = {}
-        self._playtime = 0
-        self._sess_start = match_start
-        self._match_end = match_end
-        self.num_matches_played = 1
+    def __init__(self, steam_id: str, name: str, match_start: datetime, match_end: datetime):
+        self.steam_id: str = steam_id
+        self.names: Dict[str, int] = {name: 1}
+        self._faction: Faction = Faction.Any
+        self.faction: Faction = None
+        self.kills: int = 0
+        self.deaths: int = 0
+        self.allied_kills: int = 0
+        self.axis_kills: int = 0
+        self.allied_deaths: int = 0
+        self.axis_deaths: int = 0
+        self.weapons: Dict[str, int] = {'None': 0}
+        self.causes: Dict[str, int] = {'None': 0}
+        self.teamkills: int = 0
+        self.suicides: int = 0
+        self._curr_streak: int = 0
+        self.killstreak: int = 0
+        self._curr_deathstreak: int = 0
+        self.deathstreak: int = 0
+        self._victims: Dict[str, int] = {}
+        self._nemeses: Dict[str, int] = {}
+        self.allied_score: PlayerScore = PlayerScore()
+        self.axis_score: PlayerScore = PlayerScore()
+        self._total_score: PlayerScore = PlayerScore()
+        self._playtime: int = 0
+        self._sess_start: datetime = match_start
+        self._match_end: datetime = match_end
+        self.num_matches_played: int = 1
     
     def __add__(self, other):
         if not isinstance(other, PlayerData):
@@ -377,7 +400,8 @@ class PlayerData:
         res = PlayerData(self.steam_id, self.name, None, self._match_end)
 
         for attr in ('kills', 'deaths', 'allied_kills', 'axis_kills', 'allied_deaths',
-                     'axis_deaths', 'teamkills', 'suicides', 'num_matches_played'):
+                     'axis_deaths', 'teamkills', 'suicides', 'allied_score', 'axis_score',
+                     'num_matches_played'):
             res.__setattr__(attr, self.__getattribute__(attr) + other.__getattribute__(attr))
         
         for attr in ('weapons', 'causes'):
@@ -415,6 +439,24 @@ class PlayerData:
             self.faction = Faction.Any
         
         return self.faction
+    
+    def update_score(self, log: LogLine):
+        faction = self._faction
+        if faction == Faction.Any:
+            faction = Faction(log.player_team)
+
+        score = PlayerScore(
+            combat=log.player_combat_score,
+            offense=log.player_offense_score,
+            defense=log.player_defense_score,
+            support=log.player_support_score
+        )
+        score -= self._total_score
+
+        if faction == Faction.Allies:
+            self.allied_score += score
+        elif faction == Faction.Axis:
+            self.axis_score += score
 
     def kill(self, victim, weapon: str, faction: Faction):
         self.kills += 1
@@ -517,6 +559,10 @@ class PlayerData:
     def nemesis(self):
         return max(self.nemeses, key=self.nemeses.get)
 
+    @property
+    def score(self):
+        return self.allied_score + self.axis_score
+
     def join(self, timestamp):
         self._sess_start = timestamp
     def leave(self, timestamp):
@@ -540,7 +586,7 @@ class PlayerData:
         minutes = int(playtime / 60) % 60
         hours = int(self.playtime / 3600)
         if single_match:
-            return "#{: <4} {: <25} {: <6} {: <6} {: <5} {: <5} {: <5} {: <6} {: <28}{: <25} {: <25} {}".format(
+            return "#{: <4} {: <25} {: <6} {: <6} {: <5} {: <5} {: <5} {: <6} {: <28}{: <25} {: <25} {: <4} {: <4} {: <4} {: <4} {}".format(
                 rank,
                 self.name,
                 self.kills,
@@ -552,10 +598,14 @@ class PlayerData:
                 f"{weapon}({weapons[weapon]})",
                 f"{victim}({self.victims[victim]})",
                 f"{nemesis}({self.nemeses[nemesis]})",
+                self.score.combat,
+                self.score.offense,
+                self.score.defense,
+                self.score.support,
                 "{:0>2}:{:0>2}:{:0>2}".format(hours, minutes, seconds),
             )
         else:
-            return "#{: <5} {: <17} {: >2}  {: <25} {: <6} {: <6} {: <5} {: <5} {: <5} {: <6} {: <28}{: <25} {: <25} {: <9} {}".format(
+            return "#{: <5} {: <17} {: >2}  {: <25} {: <6} {: <6} {: <5} {: <5} {: <5} {: <6} {: <28}{: <25} {: <25} {: <4} {: <4} {: <4} {: <4} {: <9} {}".format(
                 rank,
                 self.steam_id,
                 self.num_matches_played,
@@ -569,13 +619,13 @@ class PlayerData:
                 f"{weapon}({weapons[weapon]})",
                 f"{victim}({self.victims[victim]})",
                 f"{nemesis}({self.nemeses[nemesis]})",
+                self.score.combat,
+                self.score.offense,
+                self.score.defense,
+                self.score.support,
                 "{:0>2}:{:0>2}:{:0>2}".format(hours, minutes, seconds),
                 self.kills_per_minute
             )
-
-    def to_list(self):
-        return [self.name, self.kills, self.deaths, self.teamkills, self.killstreak, self.deathstreak, self.weapon,
-            self.weapons[self.weapon], self.victim, self.victims[self.victim], self.nemesis, self.nemeses[self.nemesis], self.playtime, self.num_matches_played, self.steam_id]
 
     def to_dict(self):
         return dict(
@@ -590,6 +640,10 @@ class PlayerData:
             weapons_died_to={k: v for k, v in sorted(self.causes.items(), key=lambda x: x[1], reverse=True) if k != 'None'},
             victims={k: v for k, v in sorted(self.victims.items(), key=lambda x: x[1], reverse=True) if k != 'None'},
             nemeses={k: v for k, v in sorted(self.nemeses.items(), key=lambda x: x[1], reverse=True) if k != 'None'},
+            combat_score=self.combat_score,
+            offense_score=self.offense_score,
+            defense_score=self.defense_score,
+            support_score=self.support_score,
             num_matches_played=self.num_matches_played,
             playtime=self.playtime
         )
@@ -649,7 +703,7 @@ def create_scoreboard(stats: 'MatchData'):
     ]
 
     table = [
-        ['FACTION', 'KILLS', 'DEATHS', 'KDR'],
+        ['FACTION', 'KILLS', 'DEATHS', 'KDR', 'COMBAT', 'OFFENSE', 'DEFENSE', 'SUPPORT'],
         ['Allies', stats.total_allied_kills, stats.total_allied_deaths, round(stats.total_allied_kills / (stats.total_allied_deaths or 1), 2)],
         ['Axis', stats.total_axis_kills, stats.total_axis_deaths, round(stats.total_axis_kills / (stats.total_axis_deaths or 1), 2)],
     ]
