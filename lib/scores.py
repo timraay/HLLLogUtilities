@@ -440,7 +440,7 @@ class PlayerData:
         
         return self.faction
     
-    def update_score(self, log: LogLine):
+    def update_score(self, log: 'LogLine'):
         faction = self._faction
         if faction == Faction.Any:
             faction = Faction(log.player_team)
