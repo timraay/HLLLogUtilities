@@ -911,7 +911,7 @@ class EventFlags(Flags):
     
     @flag_value
     def player_score_update(self):
-        return 1 << 25
+        return 1 << 26
 
 
     def filter_logs(self, logs: Sequence['LogLine']):
