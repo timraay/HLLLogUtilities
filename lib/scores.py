@@ -455,6 +455,7 @@ class PlayerData:
         self.deathstreak: int = 0
         self._victims: Dict[str, int] = {}
         self._nemeses: Dict[str, int] = {}
+        self._last_seen_score: PlayerScore = PlayerScore()
         self.allied_score: PlayerScore = PlayerScore()
         self.axis_score: PlayerScore = PlayerScore()
         self.score: PlayerScore = PlayerScore()
@@ -536,15 +537,16 @@ class PlayerData:
             defense=log.player_defense_score,
             support=log.player_support_score
         )
-        score -= self.score
+        score_diff = score - self._last_seen_score
 
         if faction == Faction.Allies:
-            self.allied_score += score
+            self.allied_score += score_diff
         elif faction == Faction.Axis:
-            self.axis_score += score
+            self.axis_score += score_diff
 
         self._faction = faction
-        self.score += score
+        self.score += score_diff
+        self._last_seen_score = score
 
     def kill(self, victim, weapon: str, faction: Faction):
         self.kills += 1
@@ -618,6 +620,7 @@ class PlayerData:
         else:
             self._seconds_played += (time - self._sess_start).total_seconds()
         self._sess_start = None
+        self._last_seen_score = PlayerScore()
     
     @property
     def name(self):
