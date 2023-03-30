@@ -210,7 +210,7 @@ class SessionCreateView(View):
         )
 
         if self.modifiers:
-            embed.description += f"🧮 Modifiers: " + ", ".join([
+            embed.description += f"\n🧮 Modifiers: " + ", ".join([
                 f"[{m.config.name}]({MODIFIERS_URL}#{m.config.name.lower().replace(' ', '-')})"
                 for m in self.modifiers.get_modifier_types()
             ])
