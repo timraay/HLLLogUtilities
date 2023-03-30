@@ -11,8 +11,12 @@ from lib.storage import LogLine
 from lib.mappings import WEAPONS, BASIC_CATEGORIES
 
 def is_arty(weapon: str, yes_no: bool = True):
-    res = BASIC_CATEGORIES.get(WEAPONS.get(weapon, weapon)) == "Artillery"
-    return res if yes_no else not res
+    weapon = WEAPONS.get(weapon, weapon)
+    is_arty = BASIC_CATEGORIES.get(weapon) == "Artillery"
+    if yes_no:
+        return is_arty
+    else:
+        return not (is_arty or weapon.endswith(" Mine") or weapon.upper() == "UNKNOWN")
 def is_arty_condition(yes_no: bool = True):
     def decorator(func):
         return add_condition(lambda _, event: is_arty(event.weapon, yes_no=yes_no))(func)
