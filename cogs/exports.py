@@ -5,7 +5,7 @@ from discord.utils import escape_markdown as esc_md
 from datetime import datetime
 from pydantic import BaseModel
 from io import StringIO
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Union
 
 from discord_utils import CallableButton, CallableSelect, only_once, CustomException, get_error_embed
 
@@ -14,8 +14,8 @@ from lib.session import HLLCaptureSession, SESSIONS
 from lib.storage import LogLine
 from lib.info.models import EventFlags, EventTypes
 from lib.converters import ExportFormats, Converter
-from lib.mappings import get_map_and_mode
-from lib.scores import create_scoreboard, MatchData
+from lib.mappings import get_map_and_mode, Map
+from lib.scores import create_scoreboard, MatchData, MatchGroup
 
 class ExportRange(BaseModel):
     start_time: Optional[datetime]
@@ -80,19 +80,21 @@ class ExportRangeSelectView(ui.View):
         self.interaction = interaction
         self._callback = callback
 
-        flags = EventFlags(server_match_started=True, server_match_ended=True)
+        flags = EventFlags(server_match_started=True, server_match_ended=True, server_map_changed=True)
         self.ranges = [ExportRange()]
         for log in flags.filter_logs(logs):
             log_type = EventTypes(log.type)
             
             if log_type == EventTypes.server_match_ended:
-                self.ranges[-1].map_name = " ".join(get_map_and_mode(log.new))
-
-            elif log_type == EventTypes.server_match_started:
+                if not self.ranges[-1].map_name:
+                    self.ranges[-1].map_name = " ".join(get_map_and_mode(log.new))
+            
+            elif log_type == EventTypes.server_map_changed:
+                self.ranges[-1].map_name = Map.load(log.old).pretty()
                 self.ranges[-1].end_time = log.event_time
                 self.ranges.append(ExportRange(
                     start_time=log.event_time,
-                    map_name=" ".join(get_map_and_mode(log.new))
+                    map_name=Map.load(log.new).pretty()
                 ))
         
         if len(self.ranges) == 1:
@@ -121,9 +123,10 @@ class ExportRangeSelectView(ui.View):
         
     async def callback(self, interaction: Interaction, value: List[int]):
         int_value = int(value[0])
+        range_i = int_value - 1 if int_value else None
         range = self.ranges[int_value - 1] if int_value else None
         await interaction.response.defer()
-        return await self._callback(interaction, range)
+        return await self._callback(interaction, range, range_i)
 
 
 class exports(commands.Cog):
@@ -231,20 +234,17 @@ class exports(commands.Cog):
             )
 
         @only_once
-        async def send_scoreboard(_, range: ExportRange):
-            range = range or ExportRange()
-
-            logs = session.get_logs(
-                from_=range.start_time,
-                to=range.end_time
-            )
+        async def send_scoreboard(_, range: Union[ExportRange, None], match_index: Union[int, None]):
+            logs = session.get_logs()
             if not logs:
                 raise CustomException(
                     "Invalid range!",
                     "No logs match the given criteria"
                 )
 
-            match_data = MatchData.from_logs(logs, range)
+            match_data = MatchGroup.from_logs(logs)
+            if range:
+                match_data = match_data.matches[match_index]
             scoreboard = create_scoreboard(match_data)
 
             fp = StringIO(scoreboard)

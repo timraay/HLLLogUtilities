@@ -1,4 +1,5 @@
 import re
+from enum import Enum
 
 MAP_NAMES = {
     "SAINTE-MÈRE-ÉGLISE": "SME",
@@ -15,11 +16,6 @@ MAP_NAMES = {
     "Kharkov": "Kharkov"
 }
 
-GAMEMODE_NAMES = {
-    "WARFARE": "Warfare",
-    "OFFENSIVE": "Offensive"
-}
-
 LONG_MAP_NAMES = {
     "SAINTE-MÈRE-ÉGLISE": "Sainte-Mère-Église",
     "ST MARIE DU MONT": "St. Marie Du Mont",
@@ -34,6 +30,106 @@ LONG_MAP_NAMES = {
     "REMAGEN": "Remagen",
     "KHARKOV": "Kharkov"
 }
+
+LONG_MAP_NAMES_BY_ID = {
+    "stmereeglise": "Sainte-Mère-Église",
+    "stmariedumont": "St. Marie Du Mont",
+    "utahbeach": "Utah Beach",
+    "purpleheartlane": "Purple Heart Lane",
+    "carentan": "Carentan",
+    "hurtgenforest": "Hürtgen Forest",
+    "hill400": "Hill 400",
+    "foy": "Foy",
+    "kursk": "Kursk",
+    "stalingrad": "Stalingrad",
+    "remagen": "Remagen",
+    "kharkov": "Kharkov"
+}
+
+GAMEMODE_NAMES = {
+    "WARFARE": "Warfare",
+    "OFFENSIVE": "Offensive"
+}
+
+class Gamemode(Enum):
+    warfare = "warfare"
+    offensive = "offensive"
+
+class Map:
+    def __init__(self, name: str, gamemode: Gamemode, attackers: str = None, night: bool = False, v2: bool = False, short: bool = False):
+        self.name = str(name)
+        self.gamemode = Gamemode(gamemode)
+        self._attackers = str(attackers)
+        self.night = bool(night)
+        self.v2 = bool(v2)
+        self.short = bool(short)
+    
+    @property
+    def attackers(self):
+        return self._attackers.lower()
+
+    @classmethod
+    def load(cls, map: str):
+        if "_warfare" in map:
+            name, rest = map.split('_warfare', 1)
+            return cls(
+                name=name,
+                gamemode=Gamemode.warfare,
+                night="_night" in rest,
+                v2="V2" in rest
+            )
+        elif "_offensive_" in map:
+            name, attackers = map.split('_offensive_')
+            return cls(
+                name=name,
+                gamemode=Gamemode.offensive,
+                attackers=attackers
+            )
+        elif "_off_" in map:
+            name, attackers = map.split('_off_')
+            return cls(
+                name=name,
+                gamemode=Gamemode.offensive,
+                attackers=attackers,
+                short=True
+            )
+        else:
+            raise ValueError('Unknown map %s' % map)
+
+    def pretty(self):
+        out = LONG_MAP_NAMES_BY_ID.get(self.name, self.name.capitalize())
+        if self.gamemode == Gamemode.warfare:
+            out += " Warfare"
+        elif self.gamemode == Gamemode.offensive:
+            out += f" Off. {self.attackers.upper()}"
+        if self.night:
+            out += " (Night)"
+        return out
+
+    def __str__(self):
+        if self.gamemode == Gamemode.warfare:
+            out = f"{self.name}_warfare"
+            if self.v2:
+                out += "_V2"
+            if self.night:
+                out += "_night"
+            return out
+        elif self.gamemode == Gamemode.offensive:
+            if self.short:
+                return f"{self.name}_off_{self._attackers}"
+            else:
+                return f"{self.name}_offensive_{self._attackers}"
+        raise ValueError("Map string could not be compiled")
+    
+    def __repr__(self) -> str:
+        return str(self)
+    
+    def __hash__(self) -> int:
+        return hash(self.__str__())
+    
+    def __eq__(self, other):
+        return str(self) == str(other)
+
 
 def get_map_and_mode(layer_name: str):
     map, mode = layer_name.rsplit(' ', 1)

@@ -52,7 +52,28 @@ class MatchGroup:
         yield from self.matches
     def __bool__(self):
         return True
+    
+    @classmethod
+    def from_logs(cls, logs: List['LogLine']):
+        matches = list()
+        match_logs = list()
         
+        while logs:
+            log = logs.pop(0)
+            log_type = EventTypes(log.type)
+
+            if log_type == EventTypes.server_map_changed:
+                match_data = MatchData.from_logs(match_logs)
+                matches.append(match_data)
+                match_logs.clear()
+
+            match_logs.append(log)
+        
+        match_data = MatchData.from_logs(match_logs)
+        matches.append(match_data)
+
+        return cls(matches=matches)
+                
     def get_matches_for_player(self, player: Union['PlayerData', str]):
         if not isinstance(player, PlayerData):
             player = self.stats.find_player(player)
@@ -103,6 +124,9 @@ class MatchGroup:
 
 
 class DataStore:
+    """A storage to collect and access various stats
+    from players.
+    """
     def __init__(self, duration: timedelta, players: List["PlayerData"]):
         self.duration = duration
         self.players = list(players)
@@ -246,7 +270,9 @@ class DataStore:
         return output
 
 
-class MatchData(DataStore, MatchGroup):
+class MatchData(DataStore):
+    """A particular type of DataStore that represents an in-game match
+    """
     def __init__(self, players: List["PlayerData"], duration: timedelta,
             map: str = None, team1_score: int = 0, team2_score: int = 0):
 
@@ -254,7 +280,6 @@ class MatchData(DataStore, MatchGroup):
         self.team1_score = int(team1_score)
         self.team2_score = int(team2_score)
 
-        MatchGroup.__init__(self)
         DataStore.__init__(self, duration, players)
     
     @classmethod
@@ -328,7 +353,7 @@ class MatchData(DataStore, MatchGroup):
             if victim_data:
                 data[log.player2_steamid] = victim_data
 
-        duration = range.duration or logs_end - logs_start
+        duration = logs_end - logs_start
 
         if match_ended:
             return cls(
