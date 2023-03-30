@@ -60,7 +60,10 @@ class MatchGroup:
         
         while logs:
             log = logs.pop(0)
-            log_type = EventTypes(log.type)
+            try:
+                log_type = EventTypes(log.type)
+            except ValueError:
+                continue
 
             if log_type == EventTypes.server_match_started:
                 match_data = MatchData.from_logs(match_logs)

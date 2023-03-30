@@ -83,7 +83,10 @@ class ExportRangeSelectView(View):
         flags = EventFlags(server_match_started=True, server_match_ended=True, server_map_changed=True)
         self.ranges = [ExportRange()]
         for log in flags.filter_logs(logs):
-            log_type = EventTypes(log.type)
+            try:
+                log_type = EventTypes(log.type)
+            except ValueError:
+                continue
             
             if log_type == EventTypes.server_match_ended:
                 if not self.ranges[-1].map_name:
