@@ -321,12 +321,12 @@ class MatchData(DataStore):
 
             elif log_type == EventTypes.server_match_started:
                 if not map_name:
-                    map_name = mappings.get_map_and_mode(log.new)
+                    map_name = " ".join(mappings.get_map_and_mode(log.new))
                 continue
 
             elif log_type == EventTypes.server_match_ended:
                 if not map_name:
-                    map_name = mappings.get_map_and_mode(log.new)
+                    map_name = " ".join(mappings.get_map_and_mode(log.new))
                 match_ended = log
                 continue
 
