@@ -75,7 +75,7 @@ class OneArtyModifier(Modifier):
         all_players = [p for p in player.team.players
             if p.steamid != player.steamid and not (dap and p.steamid == dap.steamid)]
         players = random.choices(all_players, k=min(8, len(all_players)))
-        if dap:
+        if dap and dap.steamid != player.steamid:
             players.append(dap)
 
         extended_reason = (
