@@ -97,7 +97,7 @@ class ExportRangeSelectView(View):
                 ))
 
             elif log_type == EventTypes.server_map_changed:
-                if len(self.ranges) >= 2 and (self.ranges[-1].start_time - log.event_time) < timedelta(seconds=30):
+                if len(self.ranges) >= 2 and (log.event_time - self.ranges[-1].start_time) < timedelta(seconds=30):
                     self.ranges[-2].map_name = Map.load(log.old).pretty()
                     self.ranges[-1].map_name = Map.load(log.new).pretty()
         
