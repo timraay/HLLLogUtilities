@@ -255,7 +255,7 @@ class exports(commands.Cog):
             file = discord.File(fp, filename=f'{session.name} scores.txt')
 
             content = f"Scoreboard for **{esc_md(session.name)}**"
-            if range.map_name:
+            if range and range.map_name:
                 content += f" ({range.map_name})"
 
             await interaction.delete_original_response()
