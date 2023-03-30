@@ -151,8 +151,14 @@ class DataStore:
     def total_suicides(self):
         return sum(p.suicides for p in self.players)
     @property
+    def total_score(self):
+        return sum((p.score for p in self.players), start=PlayerScore())
+    @property
     def total_time_played(self):
-        return timedelta(seconds=sum(p.playtime for p in self.players))
+        return timedelta(seconds=sum(p.seconds_played for p in self.players))
+    @property
+    def total_time_alive(self):
+        return timedelta(seconds=sum(p.seconds_alive for p in self.players))
     
     @property
     def kill_death_ratio(self):
@@ -176,6 +182,18 @@ class DataStore:
     @property
     def total_axis_score(self) -> 'PlayerScore':
         return sum((p.axis_score for p in self.players), start=PlayerScore())
+    @property
+    def total_allied_time_played(self):
+        return timedelta(seconds=sum(p.allied_seconds_played for p in self.players))
+    @property
+    def total_axis_time_played(self):
+        return timedelta(seconds=sum(p.axis_seconds_played for p in self.players))
+    @property
+    def total_allied_time_alive(self):
+        return timedelta(seconds=sum(p.allied_seconds_alive for p in self.players))
+    @property
+    def total_axis_time_alive(self):
+        return timedelta(seconds=sum(p.axis_seconds_alive for p in self.players))
 
     @property
     def avg_kills(self):
@@ -360,16 +378,16 @@ class MatchData(DataStore):
             elif log_type == EventTypes.player_leave_server:
                 killer_data.leave(log.event_time)
             
+            # Update player score
+            if log.player_combat_score is not None:
+                killer_data.update_score(log)
+
             # Update player faction
             elif log_type == EventTypes.player_switch_team:
                 if all([log.old, log.new]):
                     killer_data.update_faction(Faction.Any)
                 elif log.new:
                     killer_data.update_faction(Faction(log.new))
-            
-            # Update player score
-            if log.player_combat_score is not None:
-                killer_data.update_score(log)
 
         duration = logs_end - logs_start
 
@@ -437,9 +455,12 @@ class PlayerData:
         self.allied_score: PlayerScore = PlayerScore()
         self.axis_score: PlayerScore = PlayerScore()
         self.score: PlayerScore = PlayerScore()
-        self._playtime: int = 0
+        self._seconds_played: int = 0
+        self._last_seen_playtime: int = 0
         self._sess_start: datetime = match_start
         self._match_end: datetime = match_end
+        self.allied_seconds_played: int = 0
+        self.axis_seconds_played: int = 0
         self.num_matches_played: int = 1
     
     def __add__(self, other):
@@ -450,7 +471,7 @@ class PlayerData:
 
         for attr in ('kills', 'deaths', 'allied_kills', 'axis_kills', 'allied_deaths',
                      'axis_deaths', 'teamkills', 'suicides', 'allied_score', 'axis_score',
-                     'score', 'num_matches_played'):
+                     'score', 'allied_seconds_played', 'axis_seconds_played', 'num_matches_played'):
             res.__setattr__(attr, self.__getattribute__(attr) + other.__getattribute__(attr))
         
         for attr in ('weapons', 'causes'):
@@ -461,7 +482,7 @@ class PlayerData:
             _new_attr = combine_dicts(self.__getattribute__(attr), other.__getattribute__(attr))
             res.__setattr__(attr, _new_attr if _new_attr is not None else {})
         
-        res._playtime = self.playtime + other.playtime
+        res._seconds_played = self.seconds_played + other.seconds_played
         res.killstreak = max(self.killstreak, other.killstreak)
         res.deathstreak = max(self.deathstreak, other.deathstreak)
         res.names = combine_dicts(self.names, other.names)
@@ -487,6 +508,18 @@ class PlayerData:
         elif self.faction != faction:
             self.faction = Faction.Any
         
+        if faction != Faction.Any:
+
+            if self._faction == Faction.Allies:
+                self.allied_seconds_played += self.seconds_played - self._last_seen_playtime
+                self._last_seen_playtime = self.seconds_played
+            
+            elif self._faction == Faction.Axis:
+                self.axis_seconds_played += self.seconds_played - self._last_seen_playtime
+                self._last_seen_playtime = self.seconds_played
+            
+            self._faction = faction
+        
         return self.faction
     
     def update_score(self, log: 'LogLine'):
@@ -507,6 +540,7 @@ class PlayerData:
         elif faction == Faction.Axis:
             self.axis_score += score
 
+        self._faction = faction
         self.score += score
 
     def kill(self, victim, weapon: str, faction: Faction):
@@ -572,6 +606,15 @@ class PlayerData:
         # Deathstreak
         self._curr_deathstreak += 1
         if self._curr_deathstreak > self.deathstreak: self.deathstreak = self._curr_deathstreak
+
+    def join(self, time):
+        self._sess_start = time
+    def leave(self, time):
+        if not self._sess_start:
+            logging.warn('Player left but was already offline: %s', self.to_dict())
+        else:
+            self._seconds_played += (time - self._sess_start).total_seconds()
+        self._sess_start = None
     
     @property
     def name(self):
@@ -596,7 +639,7 @@ class PlayerData:
         return round(self.kills/self.num_matches_played, 2)
     @property
     def kills_per_minute(self):
-        return round(self.kills / (self.playtime / 60), 2) if self.playtime else self.kills
+        return round(self.kills / (self.seconds_played / 60), 2) if self.seconds_played else self.kills
 
     @property
     def weapon(self):
@@ -611,17 +654,19 @@ class PlayerData:
     def nemesis(self):
         return max(self.nemeses, key=self.nemeses.get)
 
-    def join(self, timestamp):
-        self._sess_start = timestamp
-    def leave(self, timestamp):
-        if not self._sess_start:
-            print('[WARN]', 'Player left but was already offline:', self.to_dict())
-        else:
-            self._playtime += (timestamp - self._sess_start).total_seconds()
-        self._sess_start = None
     @property
-    def playtime(self):
-        return int(self._playtime + (self._match_end - self._sess_start).total_seconds() if self._sess_start else self._playtime)
+    def seconds_played(self):
+        return int(self._seconds_played + (self._match_end - self._sess_start).total_seconds() if self._sess_start else self._seconds_played)    
+    
+    @property
+    def seconds_alive(self):
+        return min(self.seconds_played, (1 + (self.score.offense + self.score.defense) // 20) * 60)
+    @property
+    def allied_seconds_alive(self):
+        return (1 + (self.allied_score.offense + self.allied_score.defense) // 20) * 60
+    @property
+    def axis_seconds_alive(self):
+        return (1 + (self.axis_score.offense + self.axis_score.defense) // 20) * 60
 
     def to_string(self, rank: int, single_match=True):
         weapon = self.weapon
@@ -629,10 +674,10 @@ class PlayerData:
         weapons = DataStore.map_weapons(self.weapons, mappings.VEHICLE_WEAPONS_FACTIONLESS, mappings.FACTIONLESS)
         victim = self.victim
         nemesis = self.nemesis
-        playtime = self.playtime
+        playtime = self.seconds_played
         seconds = playtime % 60
         minutes = int(playtime / 60) % 60
-        hours = int(self.playtime / 3600)
+        hours = int(playtime / 3600)
         if single_match:
             return "#{: <4} {: <25} {: <6} {: <6} {: <5} {: <5} {: <5} {: <6} {: <28}{: <25} {: <25} {: <4} {: <4} {: <4} {: <4} {}".format(
                 rank,
@@ -688,12 +733,13 @@ class PlayerData:
             weapons_died_to={k: v for k, v in sorted(self.causes.items(), key=lambda x: x[1], reverse=True) if k != 'None'},
             victims={k: v for k, v in sorted(self.victims.items(), key=lambda x: x[1], reverse=True) if k != 'None'},
             nemeses={k: v for k, v in sorted(self.nemeses.items(), key=lambda x: x[1], reverse=True) if k != 'None'},
-            combat_score=self.combat_score,
-            offense_score=self.offense_score,
-            defense_score=self.defense_score,
-            support_score=self.support_score,
+            combat_score=self.score.combat,
+            offense_score=self.score.offense,
+            defense_score=self.score.defense,
+            support_score=self.score.support,
             num_matches_played=self.num_matches_played,
-            playtime=self.playtime
+            seconds_played=self.seconds_played,
+            seconds_alive=self.seconds_alive
         )
 
 
@@ -737,10 +783,20 @@ def _get_weapon_stats(stats: DataStore):
         "\n\n\n".join([vehiclesTable, vehiclesAlliesTable, vehiclesAxisTable]),
     spacing=18)
 
-def create_scoreboard(stats: 'MatchData'):
-    output = [
-        f"Map: {stats.map or 'Unknown'}",
-        f"Score: ALLIES ({stats.team1_score} - {stats.team2_score}) AXIS",
+def create_scoreboard(data: Union['MatchData', 'MatchGroup']):
+    if isinstance(data, MatchGroup):
+        stats = data.stats
+        output = [
+            f"Matches played: {data.num_matches_played}",
+        ]
+    else:
+        stats = data
+        output = [
+            f"Map: {stats.map or 'Unknown'}",
+            f"Score: ALLIES ({stats.team1_score} - {stats.team2_score}) AXIS",
+        ]
+
+    output += [
         f"Duration: {int(stats.duration.total_seconds() / 60 + 0.5)} minutes",
         "",
         f"Players: {len(stats.players)}",
@@ -753,11 +809,19 @@ def create_scoreboard(stats: 'MatchData'):
     total_allied_score = stats.total_allied_score
     total_axis_score = stats.total_axis_score
     table = [
-        ['FACTION', 'KILLS', 'DEATHS', 'KDR', 'COMBAT', 'OFFENSE', 'DEFENSE', 'SUPPORT'],
-        ['Allies', stats.total_allied_kills, stats.total_allied_deaths, round(stats.total_allied_kills / (stats.total_allied_deaths or 1), 2),
-            total_allied_score.combat, total_allied_score.offense, total_allied_score.defense, total_allied_score.support],
-        ['Axis', stats.total_axis_kills, stats.total_axis_deaths, round(stats.total_axis_kills / (stats.total_axis_deaths or 1), 2),
-            total_axis_score.combat, total_axis_score.offense, total_axis_score.defense, total_axis_score.support],
+        ['FACTION', 'KILLS', 'DEATHS', 'KDR', 'COMBAT', 'OFFENSE', 'DEFENSE', 'SUPPORT', 'ALIVE'],
+
+        [   
+            'Allies', stats.total_allied_kills, stats.total_allied_deaths, round(stats.total_allied_kills / (stats.total_allied_deaths or 1), 2),
+            total_allied_score.combat, total_allied_score.offense, total_allied_score.defense, total_allied_score.support,
+            f"{round(100 * stats.total_allied_time_alive / stats.total_allied_time_played, 1)}%"
+        ],
+        
+        [
+            'Axis', stats.total_axis_kills, stats.total_axis_deaths, round(stats.total_axis_kills / (stats.total_axis_deaths or 1), 2),
+            total_axis_score.combat, total_axis_score.offense, total_axis_score.defense, total_axis_score.support,
+            f"{round(100 * stats.total_axis_time_alive / stats.total_axis_time_played, 1)}%"
+        ],
     ]
 
     output += [
