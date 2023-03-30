@@ -4,13 +4,13 @@ from enum import Enum
 import operator
 from pydantic import BaseModel
 from typing import Dict, List, Union, TYPE_CHECKING
+import logging
 
 from lib import mappings
 from lib.info.models import EventTypes
 from utils import toTable, side_by_side
 
 if TYPE_CHECKING:
-    from cogs.exports import ExportRange
     from lib.storage import LogLine
 
 def combine_dicts(a, b, op=operator.add):
@@ -62,7 +62,7 @@ class MatchGroup:
             log = logs.pop(0)
             log_type = EventTypes(log.type)
 
-            if log_type == EventTypes.server_map_changed:
+            if log_type == EventTypes.server_match_started:
                 match_data = MatchData.from_logs(match_logs)
                 matches.append(match_data)
                 match_logs.clear()
@@ -283,7 +283,7 @@ class MatchData(DataStore):
         DataStore.__init__(self, duration, players)
     
     @classmethod
-    def from_logs(cls, logs: List['LogLine'], range: 'ExportRange'):
+    def from_logs(cls, logs: List['LogLine']):
         data = dict()
         # TODO: Error when logs list is empty, though
         # should probably handle that at a higher level
@@ -292,33 +292,53 @@ class MatchData(DataStore):
             logs.reverse()
 
         match_ended = None
+        map_name = None
         for log in logs:
             log_type = EventTypes(log.type)
 
-            if log_type == EventTypes.server_match_ended:
-                match_ended = log
+            # Look for map name
+            if log_type == EventTypes.server_map_changed:
+                map_name = mappings.Map.load(log.new).pretty()
+                continue
 
-            # if (not (log.player_name and log.player_steamid)) or (victim_name and not victim_steamid):
-            #     print('[WARN]', 'Missing vital data:', log)
-            killer_data = data[log.player_steamid] \
-                if log.player_steamid in data.keys() \
-                else PlayerData(log.player_steamid, log.player_name, logs_start, logs_end)
-            victim_data = data[log.player2_steamid] \
-                if log.player2_steamid in data.keys() \
-                else PlayerData(log.player2_steamid, log.player2_name, logs_start, logs_end) \
-                    if log.player2_steamid \
-                    else None
+            elif log_type == EventTypes.server_match_started:
+                if not map_name:
+                    map_name = mappings.get_map_and_mode(log.new)
+                continue
+
+            elif log_type == EventTypes.server_match_ended:
+                if not map_name:
+                    map_name = mappings.get_map_and_mode(log.new)
+                match_ended = log
+                continue
+
+            # Get or create killer and victim data
+            if log.player_steamid in data.keys():
+                killer_data = data[log.player_steamid]
+            else:
+                killer_data = PlayerData(log.player_steamid, log.player_name, logs_start, logs_end)
+                data[log.player_steamid] = killer_data
+            
+            if log.player2_steamid in data.keys():
+                victim_data = data[log.player2_steamid]
+            elif log.player2_steamid:
+                victim_data = PlayerData(log.player2_steamid, log.player2_name, logs_start, logs_end)
+                data[log.player2_steamid] = victim_data
+            else:
+                victim_data = None
             
             killer_faction = Faction(log.player_team) if log.player_team else Faction.Any
             victim_faction = Faction(log.player2_team) if log.player2_team else Faction.Any
             
+            # Get weapon
             weapon = log.weapon
             if weapon:
                 if weapon not in mappings.WEAPONS:
-                    print('WARN: Weapon "%s" is not mapped' % weapon)
+                    logging.warn('Weapon "%s" is not mapped', weapon)
                 else:
                     weapon = mappings.WEAPONS[weapon]
 
+            # Process event
             if log_type == EventTypes.player_kill:
                 killer_data.update_faction(killer_faction)
                 victim_data.update_faction(victim_faction)
@@ -340,18 +360,16 @@ class MatchData(DataStore):
             elif log_type == EventTypes.player_leave_server:
                 killer_data.leave(log.event_time)
             
+            # Update player faction
             elif log_type == EventTypes.player_switch_team:
                 if all([log.old, log.new]):
                     killer_data.update_faction(Faction.Any)
                 elif log.new:
                     killer_data.update_faction(Faction(log.new))
             
+            # Update player score
             if log.player_combat_score is not None:
                 killer_data.update_score(log)
-            
-            data[log.player_steamid] = killer_data
-            if victim_data:
-                data[log.player2_steamid] = victim_data
 
         duration = logs_end - logs_start
 
@@ -359,7 +377,7 @@ class MatchData(DataStore):
             return cls(
                 players=data.values(),
                 duration=duration,
-                map=range.map_name,
+                map=map_name,
                 team1_score=match_ended.message.split(' - ')[0],
                 team2_score=match_ended.message.split(' - ')[1],
             )
@@ -367,7 +385,7 @@ class MatchData(DataStore):
             return cls(
                 players=data.values(),
                 duration=duration,
-                map=range.map_name,
+                map=map_name,
             )
 
     @property

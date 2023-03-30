@@ -2,12 +2,12 @@ import discord
 from discord import app_commands, Interaction, ui, ButtonStyle, SelectOption
 from discord.ext import commands
 from discord.utils import escape_markdown as esc_md
-from datetime import datetime
+from datetime import datetime, timedelta
 from pydantic import BaseModel
 from io import StringIO
 from typing import Callable, List, Optional, Union
 
-from discord_utils import CallableButton, CallableSelect, only_once, CustomException, get_error_embed
+from discord_utils import CallableButton, CallableSelect, View, only_once, CustomException, get_error_embed
 
 from cogs.sessions import autocomplete_sessions
 from lib.session import HLLCaptureSession, SESSIONS
@@ -29,7 +29,7 @@ class ExportRange(BaseModel):
         else:
             return None
 
-class ExportFilterView(ui.View):
+class ExportFilterView(View):
     def __init__(self, interaction: Interaction, callback: Callable, *args, timeout: float = 300.0, **kwargs):
         super().__init__(*args, timeout=timeout, **kwargs)
         self.interaction = interaction
@@ -74,7 +74,7 @@ class ExportFilterView(ui.View):
         await interaction.response.defer()
         return await self._callback(interaction, self.flags)
 
-class ExportRangeSelectView(ui.View):
+class ExportRangeSelectView(View):
     def __init__(self, interaction: Interaction, callback: Callable, logs: List[LogLine], *args, timeout: float = 300.0, **kwargs):
         super().__init__(*args, timeout=timeout, **kwargs)
         self.interaction = interaction
@@ -89,13 +89,17 @@ class ExportRangeSelectView(ui.View):
                 if not self.ranges[-1].map_name:
                     self.ranges[-1].map_name = " ".join(get_map_and_mode(log.new))
             
-            elif log_type == EventTypes.server_map_changed:
-                self.ranges[-1].map_name = Map.load(log.old).pretty()
+            elif log_type == EventTypes.server_match_started:
                 self.ranges[-1].end_time = log.event_time
                 self.ranges.append(ExportRange(
                     start_time=log.event_time,
-                    map_name=Map.load(log.new).pretty()
+                    map_name=" ".join(get_map_and_mode(log.new))
                 ))
+
+            elif log_type == EventTypes.server_map_changed:
+                if len(self.ranges) >= 2 and (self.ranges[-1].start_time - log.event_time) < timedelta(seconds=30):
+                    self.ranges[-2].map_name = Map.load(log.old).pretty()
+                    self.ranges[-1].map_name = Map.load(log.new).pretty()
         
         if len(self.ranges) == 1:
             self.ranges.clear()
@@ -157,7 +161,7 @@ class exports(commands.Cog):
 
         async def ask_export_range(_, flags: EventFlags):
 
-            async def ask_export_format(_, range: ExportRange):
+            async def ask_export_format(_, range: Union[ExportRange, None], range_i: Union[int, None]):
                 range = range or ExportRange()
 
                 @only_once
