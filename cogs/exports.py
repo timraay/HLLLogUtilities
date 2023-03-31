@@ -2,20 +2,20 @@ import discord
 from discord import app_commands, Interaction, ui, ButtonStyle, SelectOption
 from discord.ext import commands
 from discord.utils import escape_markdown as esc_md
-from datetime import datetime
+from datetime import datetime, timedelta
 from pydantic import BaseModel
 from io import StringIO
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Union
 
-from discord_utils import CallableButton, CallableSelect, only_once, CustomException, get_error_embed
+from discord_utils import CallableButton, CallableSelect, View, only_once, CustomException, get_error_embed
 
 from cogs.sessions import autocomplete_sessions
 from lib.session import HLLCaptureSession, SESSIONS
 from lib.storage import LogLine
 from lib.info.models import EventFlags, EventTypes
 from lib.converters import ExportFormats, Converter
-from lib.mappings import get_map_and_mode
-from lib.scores import create_scoreboard, MatchData
+from lib.mappings import get_map_and_mode, Map
+from lib.scores import create_scoreboard, MatchData, MatchGroup
 
 class ExportRange(BaseModel):
     start_time: Optional[datetime]
@@ -29,7 +29,7 @@ class ExportRange(BaseModel):
         else:
             return None
 
-class ExportFilterView(ui.View):
+class ExportFilterView(View):
     def __init__(self, interaction: Interaction, callback: Callable, *args, timeout: float = 300.0, **kwargs):
         super().__init__(*args, timeout=timeout, **kwargs)
         self.interaction = interaction
@@ -44,6 +44,7 @@ class ExportFilterView(ui.View):
         ("Teams", "🫐", EventFlags.teams()),
         ("Squads", "👬", EventFlags.squads()),
         ("Roles", "🏹", EventFlags.roles()),
+        ("Scores", "🪙", EventFlags.scores()),
         ("Messages", "✉️", EventFlags.messages()),
         ("Gamestates", "🚥", EventFlags.game_states()),
         ("Admin Cam", "🎥", EventFlags.admin_cam()),
@@ -73,26 +74,35 @@ class ExportFilterView(ui.View):
         await interaction.response.defer()
         return await self._callback(interaction, self.flags)
 
-class ExportRangeSelectView(ui.View):
+class ExportRangeSelectView(View):
     def __init__(self, interaction: Interaction, callback: Callable, logs: List[LogLine], *args, timeout: float = 300.0, **kwargs):
         super().__init__(*args, timeout=timeout, **kwargs)
         self.interaction = interaction
         self._callback = callback
 
-        flags = EventFlags(server_match_started=True, server_match_ended=True)
+        flags = EventFlags(server_match_started=True, server_match_ended=True, server_map_changed=True)
         self.ranges = [ExportRange()]
         for log in flags.filter_logs(logs):
-            log_type = EventTypes(log.type)
+            try:
+                log_type = EventTypes(log.type)
+            except ValueError:
+                continue
             
             if log_type == EventTypes.server_match_ended:
-                self.ranges[-1].map_name = " ".join(get_map_and_mode(log.new))
-
+                if not self.ranges[-1].map_name:
+                    self.ranges[-1].map_name = " ".join(get_map_and_mode(log.new))
+            
             elif log_type == EventTypes.server_match_started:
                 self.ranges[-1].end_time = log.event_time
                 self.ranges.append(ExportRange(
                     start_time=log.event_time,
                     map_name=" ".join(get_map_and_mode(log.new))
                 ))
+
+            elif log_type == EventTypes.server_map_changed:
+                if len(self.ranges) >= 2 and (log.event_time - self.ranges[-1].start_time) < timedelta(seconds=30):
+                    self.ranges[-2].map_name = Map.load(log.old).pretty()
+                    self.ranges[-1].map_name = Map.load(log.new).pretty()
         
         if len(self.ranges) == 1:
             self.ranges.clear()
@@ -120,9 +130,10 @@ class ExportRangeSelectView(ui.View):
         
     async def callback(self, interaction: Interaction, value: List[int]):
         int_value = int(value[0])
+        range_i = int_value - 1 if int_value else None
         range = self.ranges[int_value - 1] if int_value else None
         await interaction.response.defer()
-        return await self._callback(interaction, range)
+        return await self._callback(interaction, range, range_i)
 
 
 class exports(commands.Cog):
@@ -153,7 +164,7 @@ class exports(commands.Cog):
 
         async def ask_export_range(_, flags: EventFlags):
 
-            async def ask_export_format(_, range: ExportRange):
+            async def ask_export_format(_, range: Union[ExportRange, None], range_i: Union[int, None]):
                 range = range or ExportRange()
 
                 @only_once
@@ -230,27 +241,24 @@ class exports(commands.Cog):
             )
 
         @only_once
-        async def send_scoreboard(_, range: ExportRange):
-            range = range or ExportRange()
-
-            logs = session.get_logs(
-                from_=range.start_time,
-                to=range.end_time
-            )
+        async def send_scoreboard(_, range: Union[ExportRange, None], match_index: Union[int, None]):
+            logs = session.get_logs()
             if not logs:
                 raise CustomException(
                     "Invalid range!",
                     "No logs match the given criteria"
                 )
 
-            match_data = MatchData.from_logs(logs, range)
+            match_data = MatchGroup.from_logs(logs)
+            if range:
+                match_data = match_data.matches[match_index]
             scoreboard = create_scoreboard(match_data)
 
             fp = StringIO(scoreboard)
             file = discord.File(fp, filename=f'{session.name} scores.txt')
 
             content = f"Scoreboard for **{esc_md(session.name)}**"
-            if range.map_name:
+            if range and range.map_name:
                 content += f" ({range.map_name})"
 
             await interaction.delete_original_response()

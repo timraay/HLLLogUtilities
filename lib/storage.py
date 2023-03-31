@@ -1,13 +1,13 @@
 from pydantic import BaseModel, validator
-from datetime import datetime, timedelta
-from pypika import Table, Query
+from datetime import datetime
+from pypika import Table, Query, Column
 import sqlite3
 import logging
 
 from lib.info.models import *
 
-DB_VERSION = 2
-HLU_VERSION = "v1.4.0"
+DB_VERSION = 3
+HLU_VERSION = "v1.5.0"
 
 class LogLine(BaseModel):
     event_time: datetime = None
@@ -16,6 +16,10 @@ class LogLine(BaseModel):
     player_steamid: str = None
     player_team: str = None
     player_role: str = None
+    player_combat_score: int = None
+    player_offense_score: int = None
+    player_defense_score: int = None
+    player_support_score: int = None
     player2_name: str = None
     player2_steamid: str = None
     player2_team: str = None
@@ -49,6 +53,10 @@ class LogLine(BaseModel):
         squad = event.get('squad') or (player.get('squad') if player else None)
         team = event.get('team') or (squad.get('team') if squad else None) or (player.get('team') if player else None)
 
+        old = event.get('old')
+        new = event.get('new') or event.get('map')
+        message = event.get('message')
+
         if isinstance(event, SquadLeaderChangeEvent):
             player = event.new
             player2 = event.old
@@ -57,9 +65,12 @@ class LogLine(BaseModel):
         elif isinstance(event, (PlayerSwitchSquadEvent, PlayerSwitchTeamEvent)):
             old = event.old.name if event.old else None
             new = event.new.name if event.new else None
-        else:
-            old = event.get('old')
-            new = event.get('new') or event.get('map')
+        elif isinstance(event, PlayerScoreUpdateEvent):
+            # Bit confusing, but cba to add two new columns to the table for this event alone
+            new = event.player.get('kills', 0)
+            message = event.player.get('deaths', 0)
+        elif isinstance(event, (ServerMatchEndedEvent, ObjectiveCaptureEvent)):
+            message = event.score
         
         if isinstance(event, PlayerMessageEvent):
             if isinstance(event.channel, Squad):
@@ -77,6 +88,13 @@ class LogLine(BaseModel):
                 player_team=player_team.name if player_team else None,
                 player_role=player.get('role'),
             )
+            if player.has('score'):
+                payload.update(
+                    player_combat_score=player.score.combat,
+                    player_offense_score=player.score.offense,
+                    player_defense_score=player.score.defense,
+                    player_support_score=player.score.support,
+                )
         if player2:
             player2_team = player2.get('team')
             payload.update(
@@ -89,14 +107,34 @@ class LogLine(BaseModel):
             payload['team_name'] = team.name
         if squad:
             payload['squad_name'] = squad.name
+
         payload['old'] = old
         payload['new'] = new
+        payload['message'] = message
         
-        payload['message'] = event.score if isinstance(event, (ServerMatchEnded, ObjectiveCaptureEvent)) else event.get('message')
         payload['weapon'] = event.get('weapon')
 
         payload.setdefault('type', str(EventTypes(event.__class__)))
         return cls(event_time=event.event_time, **{k: v for k, v in payload.items() if v is not None})
+
+    @staticmethod
+    def _get_create_query(table_name: str, _explicit_fields: Sequence = None):
+        if _explicit_fields:
+            field_names = list(_explicit_fields)
+        else:
+            field_names = [field.name for field in LogLine.__fields__.values()]
+
+        # I really need to look into a better way to do this at some point
+        exceptions = dict(
+            player_combat_score='INTEGER',
+            player_offense_score='INTEGER',
+            player_defense_score='INTEGER',
+            player_support_score='INTEGER',
+        )
+        query = Query.create_table(table_name).columns(*[
+            Column(field_name, exceptions.get(field_name, 'TEXT')) for field_name in field_names
+        ])
+        return str(query)
 
 database = sqlite3.connect('sessions.db')
 cursor = database.cursor()
@@ -136,6 +174,34 @@ INSERT INTO "db_version" ("format_version")
 
 database.commit()
 
+
+def update_table_columns(table_name: str, old: list, new: list, defaults: dict = {}):
+    table_name_new = table_name + "_new"
+
+    # Create a new table with the proper columns
+    cursor.execute(LogLine._get_create_query(table_name_new, _explicit_fields=new))
+    # Copy over the values
+    to_copy = [c for c in old if c in new]
+    query = Query.into(table_name_new).columns(*to_copy).from_(table_name).select(*to_copy)
+    cursor.execute(str(query))
+    # Insert defaults
+    defaults = {col: val for col, val in defaults.items() if col in new and col not in old}
+    if defaults:
+        query = Query.update(table_name_new)
+        for col, val in defaults.items():
+            query = query.set(col, val)
+        cursor.execute(str(query))
+    # Drop the old table
+    cursor.execute(str(Query.drop_table(table_name)))
+    # Rename the new table
+    cursor.execute(f'ALTER TABLE "{table_name_new}" RENAME TO "{table_name}";')
+
+    database.commit()
+
+    added = [c for c in new if c not in old]
+    removed = [c for c in old if c not in new]
+    logging.info("Altered table %s: Added %s and removed %s", table_name, added, removed)
+
 cursor.execute("SELECT format_version FROM db_version")
 db_version: int = cursor.fetchone()[0]
 
@@ -146,8 +212,28 @@ elif db_version < DB_VERSION:
     logging.info('Outdated database format version! Expected %s but got %s. Migrating now...', DB_VERSION, db_version)
 
     if db_version < 2:
+        # Add a "modifiers" column to the "sessions" table
         cursor.execute('ALTER TABLE "sessions" ADD "modifiers" INTEGER DEFAULT 0 NOT NULL;')
     
+    if db_version < 3:
+        # Add "player_score_X" columns to all session logs tables
+        cursor.execute('SELECT name FROM sqlite_master WHERE type = "table" AND name LIKE "session%";')
+        for (table_name,) in cursor.fetchall():
+            try:
+                int(table_name[7:])
+            except ValueError:
+                if table_name.endswith('_new'):
+                    logging.warning('Found table with name %s, you will likely need to manually delete it', table_name)
+                continue
+
+            update_table_columns(table_name,
+                old=['event_time', 'type', 'player_name', 'player_steamid', 'player_team', 'player_role', 'player2_name', 'player2_steamid',
+                     'player2_team', 'player2_role', 'weapon', 'old', 'new', 'team_name', 'squad_name', 'message'],
+                new=['event_time', 'type', 'player_name', 'player_steamid', 'player_team', 'player_role', 'player_combat_score',
+                     'player_offense_score', 'player_defense_score', 'player_support_score', 'player2_name', 'player2_steamid', 'player2_team',
+                     'player2_role', 'weapon', 'old', 'new', 'team_name', 'squad_name', 'message']
+            )
+
     cursor.execute('UPDATE "db_version" SET "format_version" = ?', (DB_VERSION,))
     database.commit()
     logging.info('Migrated database to format version %s!', DB_VERSION)

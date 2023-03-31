@@ -209,6 +209,12 @@ class SessionCreateView(View):
             icon_url=interaction.user.avatar.url
         )
 
+        if self.modifiers:
+            embed.description += f"\n🧮 Modifiers: " + ", ".join([
+                f"[{m.config.name}]({MODIFIERS_URL}#{m.config.name.lower().replace(' ', '-')})"
+                for m in self.modifiers.get_modifier_types()
+            ])
+
         HLLCaptureSession.create_in_db(
             guild_id=self.guild.id,
             name=self.name,
@@ -452,7 +458,7 @@ class sessions(commands.Cog):
             await session.stop()
             await _interaction.response.edit_message(embed=get_success_embed(
                 f"Stopped \"{session.name}\"!"
-            ))
+            ), view=None)
 
         embed = discord.Embed(
             title="Are you sure you want to stop this session?",
@@ -479,7 +485,7 @@ class sessions(commands.Cog):
             session.delete()
             await _interaction.response.edit_message(embed=get_success_embed(
                 f"Deleted \"{session.name}\"!"
-            ))
+            ), view=None)
 
         embed = discord.Embed(
             title="Are you sure you want to delete this session?",

@@ -89,9 +89,7 @@ class Player(InfoModel):
         else:
             return super().__eq__(other)
 
-class HLLPlayerScore(InfoModel):
-    __scope_path__ = "players.hll_score"
-
+class HLLPlayerScore(pydantic.BaseModel):
     combat: int = UnsetField
     """The player's combat score"""
     
@@ -291,14 +289,14 @@ class ServerMapChangedEvent(EventModel):
     old: str = UnsetField
     new: str = UnsetField
 
-class ServerMatchStarted(EventModel):
+class ServerMatchStartedEvent(EventModel):
     __scope_path__ = 'events.server_match_started'
     map: str = UnsetField
     
-class ServerWarmupEnded(EventModel):
+class ServerWarmupEndedEvent(EventModel):
     __scope_path__ = 'events.server_warmup_ended'
 
-class ServerMatchEnded(EventModel):
+class ServerMatchEndedEvent(EventModel):
     __scope_path__ = 'events.server_match_ended'
     map: str = UnsetField
     score: str = UnsetField
@@ -371,6 +369,10 @@ class PlayerLevelUpEvent(EventModel):
     old: int = UnsetField
     new: int = UnsetField
 
+class PlayerScoreUpdateEvent(EventModel):
+    __scope_path__ = 'events.player_score_update'
+    player: Union[Player, Link] = UnsetField
+
 class PlayerExitAdminCamEvent(EventModel):
     __scope_path__ = 'events.player_exit_admin_cam'
     player: Union[Player, Link] = UnsetField
@@ -410,9 +412,9 @@ class EventTypes(Enum):
     # In order of evaluation!
     player_join_server = PlayerJoinServerEvent
     server_map_changed = ServerMapChangedEvent
-    server_match_started = ServerMatchStarted
-    server_warmup_ended = ServerWarmupEnded
-    server_match_ended = ServerMatchEnded
+    server_match_started = ServerMatchStartedEvent
+    server_warmup_ended = ServerWarmupEndedEvent
+    server_match_ended = ServerMatchEndedEvent
     squad_created = SquadCreatedEvent
     player_switch_team = PlayerSwitchTeamEvent
     player_switch_squad = PlayerSwitchSquadEvent
@@ -426,6 +428,7 @@ class EventTypes(Enum):
     player_suicide = PlayerSuicideEvent
     objective_capture = ObjectiveCaptureEvent
     player_level_up = PlayerLevelUpEvent
+    player_score_update = PlayerScoreUpdateEvent
     player_exit_admin_cam = PlayerExitAdminCamEvent
     player_leave_server = PlayerLeaveServerEvent
     squad_disbanded = SquadDisbandedEvent
@@ -435,7 +438,7 @@ class EventTypes(Enum):
         try:
             return cls[value]
         except KeyError:
-            return super()._missing_(cls, value)
+            return super()._missing_(value)
     
     @classmethod
     def all(cls):
@@ -450,8 +453,8 @@ class EventTypes(Enum):
 class Events(InfoModel):
     player_join_server: List['PlayerJoinServerEvent'] = UnsetField
     server_map_changed: List['ServerMapChangedEvent'] = UnsetField
-    server_match_started: List['ServerMatchStarted'] = UnsetField
-    server_warmup_ended: List['ServerWarmupEnded'] = UnsetField
+    server_match_started: List['ServerMatchStartedEvent'] = UnsetField
+    server_warmup_ended: List['ServerWarmupEndedEvent'] = UnsetField
     squad_created: List['SquadCreatedEvent'] = UnsetField
     player_switch_team: List['PlayerSwitchTeamEvent'] = UnsetField
     player_switch_squad: List['PlayerSwitchSquadEvent'] = UnsetField
@@ -464,8 +467,9 @@ class Events(InfoModel):
     player_teamkill: List['PlayerTeamkillEvent'] = UnsetField
     player_suicide: List['PlayerSuicideEvent'] = UnsetField
     objective_capture: List['ObjectiveCaptureEvent'] = UnsetField
-    server_match_ended: List['ServerMatchEnded'] = UnsetField
+    server_match_ended: List['ServerMatchEndedEvent'] = UnsetField
     player_level_up: List['PlayerLevelUpEvent'] = UnsetField
+    player_score_update: List['PlayerScoreUpdateEvent'] = UnsetField
     player_exit_admin_cam: List['PlayerExitAdminCamEvent'] = UnsetField
     player_leave_server: List['PlayerLeaveServerEvent'] = UnsetField
     squad_disbanded: List['SquadDisbandedEvent'] = UnsetField
@@ -622,33 +626,38 @@ class InfoHopper(ModelTree):
                 m_squad = match.get('squad') if match else None
                 if p_squad != m_squad:
                     events.add(PlayerSwitchSquadEvent(self, event_time=event_time,
-                        player=player.create_link(with_fallback=True),
-                        old=m_squad.create_link(with_fallback=True) if m_squad else None,
-                        new=p_squad.create_link(with_fallback=True) if p_squad else None,
+                        player=player.create_link(with_fallback=True, hopper=self),
+                        old=m_squad.create_link(with_fallback=True, hopper=self) if m_squad else None,
+                        new=p_squad.create_link(with_fallback=True, hopper=self) if p_squad else None,
                     ))
                     
                 p_team = player.get('team')
                 m_team = match.get('team') if match else None
                 if p_team != m_team:
                     events.add(PlayerSwitchTeamEvent(self, event_time=event_time,
-                        player=player.create_link(with_fallback=True),
+                        player=player.create_link(with_fallback=True, hopper=self),
                         old=m_team.create_link(with_fallback=True) if m_team else None,
                         new=p_team.create_link(with_fallback=True) if p_team else None,
                     ))
 
             for player in others:
+                if other.server.state == "in_progress":
+                    events.add(PlayerScoreUpdateEvent(self, event_time=event_time,
+                        player=player.create_link(with_fallback=True, hopper=self)
+                    ))
+
                 events.add(PlayerLeaveServerEvent(self, event_time=event_time,
-                    player=player.create_link(with_fallback=True)
+                    player=player.create_link(with_fallback=True, hopper=self)
                 ))
                 if player.get('squad'):
                     events.add(PlayerSwitchSquadEvent(self, event_time=event_time,
-                        player=player.create_link(with_fallback=True),
-                        old=player.squad.create_link(with_fallback=True),
+                        player=player.create_link(with_fallback=True, hopper=self),
+                        old=player.squad.create_link(with_fallback=True, hopper=self),
                         new=None
                     ))
                 if player.get('team'):
                     events.add(PlayerSwitchTeamEvent(self, event_time=event_time,
-                        player=player.create_link(with_fallback=True),
+                        player=player.create_link(with_fallback=True, hopper=self),
                         old=player.team.create_link(with_fallback=True),
                         new=None
                     ))
@@ -664,8 +673,8 @@ class InfoHopper(ModelTree):
 
                     if squad.has('leader') and match.has('leader'):
                         if squad.leader != match.leader:
-                            old = match.leader.create_link(with_fallback=True) if match.leader else None
-                            new = squad.leader.create_link(with_fallback=True) if squad.leader else None
+                            old = match.leader.create_link(with_fallback=True, hopper=self) if match.leader else None
+                            new = squad.leader.create_link(with_fallback=True, hopper=self) if squad.leader else None
                             events.add(SquadLeaderChangeEvent(self, event_time=event_time, squad=squad.create_link(with_fallback=True), old=old, new=new))
                 
                 if not squad.get('created_at'):
@@ -678,7 +687,7 @@ class InfoHopper(ModelTree):
                     events.add(SquadCreatedEvent(self, event_time=event_time, squad=squad.create_link(with_fallback=True)))
             
             for squad in others:
-                events.add(SquadDisbandedEvent(self, event_time=event_time, squad=squad.create_link(with_fallback=True)))
+                events.add(SquadDisbandedEvent(self, event_time=event_time, squad=squad.create_link(with_fallback=True, hopper=self)))
         
         if self.has('teams') and other.has('teams'):
             others = InfoModelArray(other.teams)
@@ -777,6 +786,12 @@ class EventFlags(Flags):
         self.player_change_role = True
         self.player_change_loadout = True
         self.player_level_up = True
+        return self
+
+    @classmethod
+    def scores(cls: Type['EventFlags']) -> 'EventFlags':
+        self = cls.none()
+        self.player_score_update = True
         return self
     
     @classmethod
@@ -893,6 +908,10 @@ class EventFlags(Flags):
     @flag_value
     def cancel_arty_cooldown(self):
         return 1 << 25
+    
+    @flag_value
+    def player_score_update(self):
+        return 1 << 26
 
 
     def filter_logs(self, logs: Sequence['LogLine']):

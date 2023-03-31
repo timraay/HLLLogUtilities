@@ -454,7 +454,7 @@ class InfoModel(ModelTree):
             return link.fallback
         return res
     
-    def create_link(self, with_fallback=False):
+    def create_link(self, with_fallback=False, hopper: 'InfoHopper' = None):
         if not self.__key_fields__:
             raise TypeError('This model does not have any key fields specified')
 
@@ -464,9 +464,19 @@ class InfoModel(ModelTree):
         
         fallback = None
         if with_fallback:
-            fallback = type(self)(self.__hopper__, **self.get_key_attributes(exclude_unset=True, exclude_links=True))
+            if hopper is None:
+                fallback = type(self)(self.__hopper__, **self.get_key_attributes(exclude_unset=True, exclude_links=True))
+            elif isinstance(hopper, ModelTree):
+                fallback = self.copy(hopper.root)
+            else:
+                raise TypeError('hopper must be an ModelTree, got %s' % type(hopper).__name__)
 
         return Link(self.__scope_path__, values, fallback=fallback)
+
+    def copy(self, hopper: 'InfoHopper'):
+        new = type(self)(hopper)
+        new.merge(self)
+        return new
 
     def _get_raw_value(self, attr):
         res = self.get(attr, raw=True)
