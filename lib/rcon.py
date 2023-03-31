@@ -520,7 +520,7 @@ class HLLRcon:
                     elif log.startswith('MATCH START'):
                         map_name = log[12:]
                         self.info.events.add(
-                            ServerMatchStarted(self.info, event_time=time, map=map_name)
+                            ServerMatchStartedEvent(self.info, event_time=time, map=map_name)
                         )
                         self._state = "warmup"
                         if isinstance(self._end_warmup_handle, asyncio.TimerHandle):
@@ -530,7 +530,7 @@ class HLLRcon:
                     elif log.startswith('MATCH ENDED'):
                         map_name, score = re.match(r'MATCH ENDED `(.+)` ALLIED \((.+)\) AXIS', log).groups()
                         self.info.events.add(
-                            ServerMatchEnded(self.info, event_time=time, map=map_name, score=score)
+                            ServerMatchEndedEvent(self.info, event_time=time, map=map_name, score=score)
                         )
                         self._state = "end_of_round"
 
@@ -561,7 +561,7 @@ class HLLRcon:
         # -- Warmup ended events
         if self._end_warmup_handle is True:
             self.info.events.add(
-                ServerWarmupEnded(self.info, event_time=self._logs_seen_time)
+                ServerWarmupEndedEvent(self.info, event_time=self._logs_seen_time)
             )
             self._state = "in_progress"
             self._end_warmup_handle = None

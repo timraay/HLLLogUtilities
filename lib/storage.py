@@ -69,7 +69,7 @@ class LogLine(BaseModel):
             # Bit confusing, but cba to add two new columns to the table for this event alone
             new = event.player.get('kills', 0)
             message = event.player.get('deaths', 0)
-        elif isinstance(event, (ServerMatchEnded, ObjectiveCaptureEvent)):
+        elif isinstance(event, (ServerMatchEndedEvent, ObjectiveCaptureEvent)):
             message = event.score
         
         if isinstance(event, PlayerMessageEvent):

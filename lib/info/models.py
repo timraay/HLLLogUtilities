@@ -289,14 +289,14 @@ class ServerMapChangedEvent(EventModel):
     old: str = UnsetField
     new: str = UnsetField
 
-class ServerMatchStarted(EventModel):
+class ServerMatchStartedEvent(EventModel):
     __scope_path__ = 'events.server_match_started'
     map: str = UnsetField
     
-class ServerWarmupEnded(EventModel):
+class ServerWarmupEndedEvent(EventModel):
     __scope_path__ = 'events.server_warmup_ended'
 
-class ServerMatchEnded(EventModel):
+class ServerMatchEndedEvent(EventModel):
     __scope_path__ = 'events.server_match_ended'
     map: str = UnsetField
     score: str = UnsetField
@@ -412,9 +412,9 @@ class EventTypes(Enum):
     # In order of evaluation!
     player_join_server = PlayerJoinServerEvent
     server_map_changed = ServerMapChangedEvent
-    server_match_started = ServerMatchStarted
-    server_warmup_ended = ServerWarmupEnded
-    server_match_ended = ServerMatchEnded
+    server_match_started = ServerMatchStartedEvent
+    server_warmup_ended = ServerWarmupEndedEvent
+    server_match_ended = ServerMatchEndedEvent
     squad_created = SquadCreatedEvent
     player_switch_team = PlayerSwitchTeamEvent
     player_switch_squad = PlayerSwitchSquadEvent
@@ -453,8 +453,8 @@ class EventTypes(Enum):
 class Events(InfoModel):
     player_join_server: List['PlayerJoinServerEvent'] = UnsetField
     server_map_changed: List['ServerMapChangedEvent'] = UnsetField
-    server_match_started: List['ServerMatchStarted'] = UnsetField
-    server_warmup_ended: List['ServerWarmupEnded'] = UnsetField
+    server_match_started: List['ServerMatchStartedEvent'] = UnsetField
+    server_warmup_ended: List['ServerWarmupEndedEvent'] = UnsetField
     squad_created: List['SquadCreatedEvent'] = UnsetField
     player_switch_team: List['PlayerSwitchTeamEvent'] = UnsetField
     player_switch_squad: List['PlayerSwitchSquadEvent'] = UnsetField
@@ -467,7 +467,7 @@ class Events(InfoModel):
     player_teamkill: List['PlayerTeamkillEvent'] = UnsetField
     player_suicide: List['PlayerSuicideEvent'] = UnsetField
     objective_capture: List['ObjectiveCaptureEvent'] = UnsetField
-    server_match_ended: List['ServerMatchEnded'] = UnsetField
+    server_match_ended: List['ServerMatchEndedEvent'] = UnsetField
     player_level_up: List['PlayerLevelUpEvent'] = UnsetField
     player_score_update: List['PlayerScoreUpdateEvent'] = UnsetField
     player_exit_admin_cam: List['PlayerExitAdminCamEvent'] = UnsetField
