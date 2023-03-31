@@ -626,16 +626,16 @@ class InfoHopper(ModelTree):
                 m_squad = match.get('squad') if match else None
                 if p_squad != m_squad:
                     events.add(PlayerSwitchSquadEvent(self, event_time=event_time,
-                        player=player.create_link(with_fallback=True),
-                        old=m_squad.create_link(with_fallback=True) if m_squad else None,
-                        new=p_squad.create_link(with_fallback=True) if p_squad else None,
+                        player=player.create_link(with_fallback=True, hopper=self),
+                        old=m_squad.create_link(with_fallback=True, hopper=self) if m_squad else None,
+                        new=p_squad.create_link(with_fallback=True, hopper=self) if p_squad else None,
                     ))
                     
                 p_team = player.get('team')
                 m_team = match.get('team') if match else None
                 if p_team != m_team:
                     events.add(PlayerSwitchTeamEvent(self, event_time=event_time,
-                        player=player.create_link(with_fallback=True),
+                        player=player.create_link(with_fallback=True, hopper=self),
                         old=m_team.create_link(with_fallback=True) if m_team else None,
                         new=p_team.create_link(with_fallback=True) if p_team else None,
                     ))
@@ -647,17 +647,17 @@ class InfoHopper(ModelTree):
                     ))
 
                 events.add(PlayerLeaveServerEvent(self, event_time=event_time,
-                    player=player.create_link(with_fallback=True)
+                    player=player.create_link(with_fallback=True, hopper=self)
                 ))
                 if player.get('squad'):
                     events.add(PlayerSwitchSquadEvent(self, event_time=event_time,
-                        player=player.create_link(with_fallback=True),
-                        old=player.squad.create_link(with_fallback=True),
+                        player=player.create_link(with_fallback=True, hopper=self),
+                        old=player.squad.create_link(with_fallback=True, hopper=self),
                         new=None
                     ))
                 if player.get('team'):
                     events.add(PlayerSwitchTeamEvent(self, event_time=event_time,
-                        player=player.create_link(with_fallback=True),
+                        player=player.create_link(with_fallback=True, hopper=self),
                         old=player.team.create_link(with_fallback=True),
                         new=None
                     ))
@@ -673,8 +673,8 @@ class InfoHopper(ModelTree):
 
                     if squad.has('leader') and match.has('leader'):
                         if squad.leader != match.leader:
-                            old = match.leader.create_link(with_fallback=True) if match.leader else None
-                            new = squad.leader.create_link(with_fallback=True) if squad.leader else None
+                            old = match.leader.create_link(with_fallback=True, hopper=self) if match.leader else None
+                            new = squad.leader.create_link(with_fallback=True, hopper=self) if squad.leader else None
                             events.add(SquadLeaderChangeEvent(self, event_time=event_time, squad=squad.create_link(with_fallback=True), old=old, new=new))
                 
                 if not squad.get('created_at'):
@@ -687,7 +687,7 @@ class InfoHopper(ModelTree):
                     events.add(SquadCreatedEvent(self, event_time=event_time, squad=squad.create_link(with_fallback=True)))
             
             for squad in others:
-                events.add(SquadDisbandedEvent(self, event_time=event_time, squad=squad.create_link(with_fallback=True)))
+                events.add(SquadDisbandedEvent(self, event_time=event_time, squad=squad.create_link(with_fallback=True, hopper=self)))
         
         if self.has('teams') and other.has('teams'):
             others = InfoModelArray(other.teams)
