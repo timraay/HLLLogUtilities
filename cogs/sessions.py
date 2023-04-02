@@ -15,7 +15,7 @@ from lib.converters import Converter, ExportFormats
 from lib.storage import cursor
 from lib.modifiers import ModifierFlags
 from cogs.credentials import RCONCredentialsModal, SECURITY_URL
-from discord_utils import CallableButton, CustomException, get_success_embed, only_once, View, ExpiredButtonError
+from discord_utils import CallableButton, CustomException, get_success_embed, get_question_embed, only_once, View, ExpiredButtonError
 from utils import get_config
 
 MAX_SESSION_DURATION = timedelta(minutes=get_config().getint('Session', 'MaxDurationInMinutes'))
@@ -96,7 +96,7 @@ class SessionCreateView(View):
         self.start_time = start_time
         self.end_time = end_time
 
-        self.modifiers = ModifierFlags()
+        self.modifiers = credentials.default_modifiers.copy()
         self._message = None
         self.__created = False
     
@@ -239,9 +239,33 @@ class SessionCreateView(View):
         view = SessionModifierView(self._message, self.updated_modifiers, flags=self.modifiers)
         await interaction.response.edit_message(content="Select all of the modifiers you want to enable by clicking on the buttons below", view=view, embed=None)
     
-    async def updated_modifiers(self, interaction: discord.Interaction, modifiers: ModifierFlags):
-        self.modifiers = modifiers
-        await interaction.response.edit_message(content=None, view=self, embed=self.get_embed())
+    async def updated_modifiers(self, interaction: discord.Interaction, modifiers: ModifierFlags, _skip_save_default=False):
+        if (not _skip_save_default
+            and not self.credentials.temporary
+            and modifiers != self.credentials.default_modifiers):
+            
+            @only_once
+            async def save_as_default(interaction: Interaction):
+                self.credentials.default_modifiers = modifiers.copy()
+                self.credentials.save()
+                await self.updated_modifiers(interaction, modifiers, _skip_save_default=True)
+
+            @only_once
+            async def skip_save_default(interaction: Interaction):
+                await self.updated_modifiers(interaction, modifiers, _skip_save_default=True)
+
+            view = View()
+            view.add_item(CallableButton(save_as_default, style=ButtonStyle.blurple, label="Set as default"))
+            view.add_item(CallableButton(skip_save_default, style=ButtonStyle.gray, label="Skip"))
+
+            await interaction.response.edit_message(content=None, view=view, embed=get_question_embed(
+                "Do you want to save these modifiers as the default for this server?",
+                "That way you don't have to re-enable them for every session. You can always change your preferences again later."
+            ))
+
+        else:
+            self.modifiers = modifiers
+            await interaction.response.edit_message(content=None, view=self, embed=self.get_embed())
 
 
 class SessionModifierView(View):

@@ -6,8 +6,8 @@ import logging
 
 from lib.info.models import *
 
-DB_VERSION = 3
-HLU_VERSION = "v1.5.0"
+DB_VERSION = 4
+HLU_VERSION = "v1.6.0"
 
 class LogLine(BaseModel):
     event_time: datetime = None
@@ -233,6 +233,10 @@ elif db_version < DB_VERSION:
                      'player_offense_score', 'player_defense_score', 'player_support_score', 'player2_name', 'player2_steamid', 'player2_team',
                      'player2_role', 'weapon', 'old', 'new', 'team_name', 'squad_name', 'message']
             )
+    
+    if db_version < 4:
+        # Add a "default_modifiers" column to the "credentials" table
+        cursor.execute('ALTER TABLE "credentials" ADD "default_modifiers" INTEGER DEFAULT 0 NOT NULL;')
 
     cursor.execute('UPDATE "db_version" SET "format_version" = ?', (DB_VERSION,))
     database.commit()
