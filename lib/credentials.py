@@ -111,7 +111,7 @@ class Credentials:
 
     def save(self):
         cursor.execute('UPDATE credentials SET name = ?, address = ?, port = ?, password = ?, default_modifiers = ? WHERE ROWID = ?',
-            (self.name, self.address, self.port, self.password, self.id, self.default_modifiers.value))
+            (self.name, self.address, self.port, self.password, self.default_modifiers.value, self.id))
         database.commit()
     
     def delete(self):
