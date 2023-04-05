@@ -31,7 +31,7 @@ This is a non-exhaustive list in no particular order of everything I *may* add o
 # **Quickstart**
 
 ### **Prerequisites**
-- A Discord server you have Administrator permissions in
+- A Discord server you have Manage Server or Administrator permissions in
 - A Hell Let Loose server you know the RCON credentials of
 
 ### **Guide**
