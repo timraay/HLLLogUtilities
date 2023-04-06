@@ -11,7 +11,7 @@ import logging
 from lib.credentials import Credentials, credentials_in_guild_tll
 from lib.exceptions import HLLAuthError, HLLConnectionError, HLLConnectionRefusedError, HLLError
 from lib.rcon import create_plain_transport
-from lib.autosession import MIN_PLAYERS_TO_START, MIN_PLAYERS_UNTIL_STOP, SECONDS_BETWEEN_ITERATIONS
+from lib.autosession import MIN_PLAYERS_TO_START, MIN_PLAYERS_UNTIL_STOP, SECONDS_BETWEEN_ITERATIONS, MAX_DURATION_MINUTES
 from discord_utils import CallableButton, get_error_embed, get_success_embed, handle_error, CustomException, only_once, View, Modal
 from utils import get_config
 
@@ -146,10 +146,10 @@ class AutoSessionView(View):
         ).set_footer(
             text=(
                 "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
-                "Automatically start sessions with AutoSession! As soon as 70\n"
+                f"Automatically start sessions with AutoSession! As soon as {MIN_PLAYERS_TO_START}\n"
                 "or more players get online a new session will automatically be\n"
-                "started, which automatically ends after 5 hours or when the\n"
-                "server drops below 30 players again."
+                f"started, which automatically ends after {(MAX_DURATION_MINUTES+59) // 60} hours or when the\n"
+                f"server drops below {MIN_PLAYERS_UNTIL_STOP} players again."
             )
         )
 

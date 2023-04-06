@@ -15,6 +15,7 @@ MIN_PLAYERS_TO_START = get_config().getint('AutoSession', 'MinPlayersToStart')
 MIN_PLAYERS_UNTIL_STOP = get_config().getint('AutoSession', 'MinPlayersUntilStop')
 SECONDS_BETWEEN_ITERATIONS = get_config().getint('AutoSession', 'SecondsBetweenIterations')
 SECONDS_BETWEEN_ITERATIONS_AFTER_FAIL = get_config().getint('AutoSession', 'SecondsBetweenIterationsAfterFail')
+MAX_DURATION_MINUTES = get_config().getint('AutoSession', 'MaxDurationInMinutes')
 NUM_FAILED_ATTEMPTS_UNTIL_SLOW = 5
 NUM_ITERATIONS_UNTIL_COOLDOWN_EXPIRE = 3
 NUM_ATTEMPTS_PER_ITERATION = 3
