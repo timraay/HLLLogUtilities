@@ -94,7 +94,7 @@ class HLLCaptureSession:
             guild_id=int(res[1]),
             name=str(res[2]),
             start_time=datetime.fromisoformat(res[3]),
-            end_time=datetime.fromisoformat(res[4]),
+            end_time=datetime.fromisoformat(res[4]) if res[4] else None,
             credentials=credentials,
             modifiers=ModifierFlags(int(res[7]))
         )
