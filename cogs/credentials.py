@@ -3,6 +3,7 @@ from discord import app_commands, ui, Interaction
 from discord.ext import commands
 from discord.utils import escape_markdown as esc_md
 from ipaddress import IPv4Address
+from datetime import timedelta
 import asyncio
 from typing import Optional
 import logging
@@ -10,7 +11,8 @@ import logging
 from lib.credentials import Credentials, credentials_in_guild_tll
 from lib.exceptions import HLLAuthError, HLLConnectionError, HLLConnectionRefusedError, HLLError
 from lib.rcon import create_plain_transport
-from discord_utils import CallableButton, get_error_embed, get_success_embed, handle_error, CustomException, only_once, View
+from lib.autosession import MIN_PLAYERS_TO_START, MIN_PLAYERS_UNTIL_STOP, SECONDS_BETWEEN_ITERATIONS
+from discord_utils import CallableButton, get_error_embed, get_success_embed, handle_error, CustomException, only_once, View, Modal
 from utils import get_config
 
 MIN_ALLOWED_PORT = 1025
@@ -18,7 +20,7 @@ MAX_ALLOWED_PORT = 65536
 
 SECURITY_URL = "https://github.com/timraay/HLLLogUtilities/blob/main/SECURITY.md"
 
-class RCONCredentialsModal(ui.Modal):
+class RCONCredentialsModal(Modal):
     name = ui.TextInput(label="Server Name - How I should call this server", placeholder="My HLL Server #1", required=True, max_length=60)
     address = ui.TextInput(label="RCON Address - To connect to RCON", placeholder="XXX.XXX.XXX.XXX:XXXXX", required=True, min_length=12, max_length=21)
     password = ui.TextInput(label="RCON Password - For authentication", required=True, max_length=40)
@@ -107,6 +109,120 @@ class RCONCredentialsModal(ui.Modal):
     async def on_error(self, interaction: Interaction, error: Exception):
         await handle_error(interaction, error)
 
+class AutoSessionView(View):
+    def __init__(self, credentials: Credentials, guild: discord.Guild):
+        super().__init__()
+        self.credentials = credentials
+        self.guild = guild
+
+        if self.enabled:
+            self.button = CallableButton(self.disable_button_cb, label="Disable", style=discord.ButtonStyle.red)
+        else:
+            self.button = CallableButton(self.enable_button_cb, label="Enable", style=discord.ButtonStyle.green)
+        
+        self.add_item(self.button)
+        self.add_item(ui.Button(label="Docs", style=discord.ButtonStyle.blurple, url="https://github.com/timraay/HLLLogUtilities#autosession"))
+        self.add_item(CallableButton(self.update, emoji="🔄", style=discord.ButtonStyle.gray))
+    
+    @property
+    def autosession(self):
+        return self.credentials.autosession
+    
+    @property
+    def enabled(self):
+        return self.autosession.enabled
+
+    def get_embed(self):
+        if self.guild.icon is not None:
+            icon_url = self.guild.icon.url
+        else:
+            icon_url = None
+        
+        embed = discord.Embed(
+            description="⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯",
+        ).set_author(
+            name=str(self.credentials),
+            icon_url=icon_url
+        ).set_footer(
+            text=(
+                "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+                "Automatically start sessions with AutoSession! As soon as 70\n"
+                "or more players get online a new session will automatically be\n"
+                "started, which automatically ends after 5 hours or when the\n"
+                "server drops below 30 players again."
+            )
+        )
+
+        if self.credentials.autosession_enabled:
+            session = self.autosession.get_active_session()
+
+            if session:
+                ts = int(session.start_time.timestamp())
+                embed.title = "AutoSession is currently enabled."
+                embed.color = discord.Colour.from_rgb(52,205,43)
+                embed.add_field(name="Status", value="\🟢Enabled", inline=True)
+                embed.add_field(name="Currently recording...", value=f"<t:{ts}:t> (<t:{ts}:R>)", inline=True)
+            
+            elif self.autosession.is_slowed:
+                ts = int(self.autosession.last_seen_time.timestamp())
+                embed.title = "AutoSession is having issues!"
+                embed.color = discord.Colour.from_rgb(235,49,64)
+                embed.add_field(name="Status", value="\🟠Problems", inline=True)
+                embed.add_field(name="Last successful update", value=f"<t:{ts}:t> (<t:{ts}:R>)", inline=True)
+                embed.add_field(name="Most recent error", value=self.autosession.last_error, inline=False)
+            
+            elif not self.autosession._cooldown:
+                ts = int(self.autosession.last_seen_time.timestamp())
+                embed.title = "AutoSession is currently enabled."
+                embed.color = discord.Colour.from_rgb(52,205,43)
+                embed.add_field(name="Status", value="\🟢Enabled", inline=True)
+                embed.add_field(name="Waiting for players...", value=f"{self.autosession.last_seen_playercount}/{MIN_PLAYERS_TO_START} players (<t:{ts}:R>)", inline=True)
+            
+            elif self.autosession.last_seen_playercount >= MIN_PLAYERS_UNTIL_STOP:
+                ts = int(self.autosession.last_seen_time.timestamp())
+                embed.title = "AutoSession is currently enabled."
+                embed.color = discord.Colour.from_rgb(255,243,33)
+                embed.add_field(name="Status", value="\🟡Cooldown", inline=True)
+                embed.add_field(name="Waiting for players...", value=f"{self.autosession.last_seen_playercount}/{MIN_PLAYERS_UNTIL_STOP} players (<t:{ts}:R>)", inline=True)
+            
+            else:
+                ts = int((self.autosession.last_seen_time + self.autosession._cooldown * timedelta(SECONDS_BETWEEN_ITERATIONS)).timestamp())
+                embed.title = "AutoSession is currently enabled."
+                embed.color = discord.Colour.from_rgb(255,243,33)
+                embed.add_field(name="Status", value="\🟡Cooldown", inline=True)
+                embed.add_field(name="Available soon...", value=f"<t:{ts}:t> (<t:{ts}:R>)", inline=True)
+
+        else:
+            embed.title = "AutoSession is currently disabled!"
+            embed.add_field(name="Status", value="\🔴Disabled", inline=True)
+            embed.add_field(name="Documentation", value="[View on GitHub](https://github.com/timraay/HLLLogUtilities#autosession)", inline=True)
+
+        return embed
+        
+    async def enable_button_cb(self, interaction: Interaction):
+        if not self.autosession.enabled:
+            await self.autosession.enable()
+        await self.update(interaction)
+
+    async def disable_button_cb(self, interaction: Interaction):
+        if self.autosession.enabled:
+            await self.autosession.disable()
+        await self.update(interaction)
+    
+    async def update(self, interaction: Interaction):
+        if self.enabled:
+            self.button.callback = self.disable_button_cb
+            self.button.label = "Disable"
+            self.button.style = discord.ButtonStyle.red
+        else:
+            self.button.callback = self.enable_button_cb
+            self.button.label = "Enable"
+            self.button.style = discord.ButtonStyle.green
+        
+        embed = self.get_embed()
+
+        await interaction.response.edit_message(embed=embed, view=self)
+
 class credentials(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -194,5 +310,19 @@ class credentials(commands.Cog):
         modal = RCONCredentialsModal(on_form_submit, title="RCON Credentials Form", defaults=credentials)
         await interaction.response.send_modal(modal)
 
+    @app_commands.command(name="autosession", description="Manage AutoSession for a server")
+    @app_commands.describe(
+        credentials="A server's credentials"
+    )
+    @app_commands.autocomplete(
+        credentials=autocomplete_credentials
+    )
+    async def manage_autosession(self, interaction: Interaction, credentials: int):
+        credentials: Credentials = Credentials.load_from_db(credentials)
+        
+        view = AutoSessionView(credentials, interaction.guild)
+        embed = view.get_embed()
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        
 async def setup(bot):
     await bot.add_cog(credentials(bot))

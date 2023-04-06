@@ -6,7 +6,7 @@ import logging
 
 from lib.info.models import *
 
-DB_VERSION = 4
+DB_VERSION = 5
 HLU_VERSION = "v1.6.0"
 
 class LogLine(BaseModel):
@@ -237,6 +237,28 @@ elif db_version < DB_VERSION:
     if db_version < 4:
         # Add a "default_modifiers" column to the "credentials" table
         cursor.execute('ALTER TABLE "credentials" ADD "default_modifiers" INTEGER DEFAULT 0 NOT NULL;')
+
+    if db_version < 5:
+        # Add a "autosession_enabled" column to the "credentials" table
+        cursor.execute('ALTER TABLE "credentials" ADD "autosession_enabled" BOOLEAN NOT NULL CHECK ("autosession_enabled" IN (0, 1)) DEFAULT 0;')
+
+        # Remove NOT NULL constraint from "end_time" column of the "sessions" table
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS "sessions_new" (
+            "guild_id"	INTEGER NOT NULL,
+            "name"	VARCHAR(40) NOT NULL,
+            "start_time"	VARCHAR(30) NOT NULL,
+            "end_time"	VARCHAR(30),
+            "deleted"	BOOLEAN NOT NULL CHECK ("deleted" IN (0, 1)) DEFAULT 0,
+            "credentials_id"	INTEGER,
+            "modifiers" INTEGER DEFAULT 0 NOT NULL,
+            FOREIGN KEY(credentials_id) REFERENCES credentials(ROWID) ON DELETE SET NULL
+        );
+        """)
+        cursor.execute('INSERT INTO "sessions_new" SELECT * FROM "sessions";')
+        cursor.execute(str(Query.drop_table("sessions")))
+        cursor.execute('ALTER TABLE "sessions_new" RENAME TO "sessions";')
+
 
     cursor.execute('UPDATE "db_version" SET "format_version" = ?', (DB_VERSION,))
     database.commit()

@@ -317,7 +317,8 @@ class sessions(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        """Initialize all sessions"""
+        """Initialize all sessions and autosessions"""
+
         cursor.execute("SELECT ROWID FROM sessions WHERE deleted = 0")
         for (id_,) in cursor.fetchall():
             if id_ not in SESSIONS:
@@ -325,6 +326,15 @@ class sessions(commands.Cog):
                     HLLCaptureSession.load_from_db(id_)
                 except:
                     print('Failed to load session', id_)
+                    print_exc()
+        
+        cursor.execute("SELECT ROWID FROM credentials WHERE autosession_enabled = 1")
+        for (id_,) in cursor.fetchall():
+            if id_ not in SESSIONS:
+                try:
+                    Credentials.load_from_db(id_)
+                except:
+                    print('Failed to load credentials and initialize autosession', id_)
                     print_exc()
 
         if not self.session_manager.is_running():
