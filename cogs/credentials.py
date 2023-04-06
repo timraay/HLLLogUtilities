@@ -121,7 +121,7 @@ class AutoSessionView(View):
             self.button = CallableButton(self.enable_button_cb, label="Enable", style=discord.ButtonStyle.green)
         
         self.add_item(self.button)
-        self.add_item(ui.Button(label="Docs", style=discord.ButtonStyle.blurple, url="https://github.com/timraay/HLLLogUtilities#autosession"))
+        self.add_item(ui.Button(label="Docs", style=discord.ButtonStyle.blurple, url="https://github.com/timraay/HLLLogUtilities#automatic-session-scheduling"))
         self.add_item(CallableButton(self.update, emoji="🔄", style=discord.ButtonStyle.gray))
     
     @property
@@ -195,7 +195,7 @@ class AutoSessionView(View):
         else:
             embed.title = "AutoSession is currently disabled!"
             embed.add_field(name="Status", value="\🔴Disabled", inline=True)
-            embed.add_field(name="Documentation", value="[View on GitHub](https://github.com/timraay/HLLLogUtilities#autosession)", inline=True)
+            embed.add_field(name="Documentation", value="[View on GitHub](https://github.com/timraay/HLLLogUtilities#automatic-session-scheduling)", inline=True)
 
         return embed
         
