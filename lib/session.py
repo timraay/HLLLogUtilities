@@ -237,7 +237,7 @@ class HLLCaptureSession:
             else:
                 if self._session_expiration_count != 0:
                     self.credentials.autosession.logger.info("%s/%s players online, session expiration has been cancelled",
-                        playercount, MIN_PLAYERS_UNTIL_AUTOSESSION_STOP, MIN_PLAYERS_ITERATIONS_UNTIL_STOP - self._session_expiration_count)
+                        playercount, MIN_PLAYERS_UNTIL_AUTOSESSION_STOP)
                 self._session_expiration_count = 0
             
             if self._session_expiration_count >= MIN_PLAYERS_ITERATIONS_UNTIL_STOP:
