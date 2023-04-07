@@ -18,7 +18,7 @@ class HSSApi:
     def __init__(self, api_url: str):
         self.api_url = api_url
 
-    async def submit_match(self, guild_id: int, winning_team: str, opposing_team: str, csv_export: StringIO) -> str:
+    async def submit_match(self, guild_id: int, submitting_user: str, winning_team: str, opposing_team: str, csv_export: StringIO) -> str:
         key = await self._api_key(guild_id, winning_team, opposing_team)
         if key is None:
             raise Exception(f'You do not have an API Key for {winning_team}, nor for {opposing_team} and '
@@ -26,6 +26,7 @@ class HSSApi:
 
         data = FormData()
         data.add_field("data", json.dumps({'teams': [winning_team, opposing_team]}))
+        data.add_field("username", submitting_user)
         data.add_field("file", csv_export, filename="export.csv")
         async with aiohttp.ClientSession() as sess:
             async with sess.post('{0}/matches/serverlog'.format(self.api_url), data=data,

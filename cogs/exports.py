@@ -340,7 +340,8 @@ class exports(commands.Cog):
             range = range or ExportRange()
 
             if range.map_name is None:
-                await interaction.edit_original_response(content='You can only submit full matches to the Hell Let Loose Skill System.', view=None)
+                await interaction.edit_original_response(
+                    content='You can only submit full matches to the Hell Let Loose Skill System.', view=None)
                 return
 
             async def ask_opposing_team(_interaction, winning_team: str):
@@ -361,7 +362,11 @@ class exports(commands.Cog):
                         fp = StringIO(converter.convert_many(logs))
 
                         try:
-                            match_id = await self.hss.submit_match(interaction.guild_id, winning_team, opposing_team, fp)
+                            match_id = await self.hss.submit_match(
+                                interaction.guild_id,
+                                f'{interaction.user.name}#{interaction.user.discriminator}', winning_team,
+                                opposing_team, fp
+                            )
                             await _interaction.delete_original_response()
                             await interaction.followup.send(
                                 content='The match was submitted with the match ID ' + match_id, ephemeral=False)
