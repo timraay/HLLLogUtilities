@@ -12,12 +12,13 @@ from cogs.sessions import autocomplete_sessions
 from discord_utils import CallableButton, CallableSelect, View, only_once, CustomException, get_error_embed
 from lib.converters import ExportFormats, Converter
 from lib.hss.api import HSSApi
+from lib.hss.apikeys import api_keys_in_guild_tll
 from lib.info.models import EventFlags, EventTypes
 from lib.mappings import get_map_and_mode, Map
 from lib.scores import create_scoreboard, MatchGroup
 from lib.session import HLLCaptureSession, SESSIONS
 from lib.storage import LogLine
-from utils import get_config
+from utils import get_config, ttl_cache
 
 HSS_API_BASE = get_config().get('HSS', 'ApiBaseUrl')
 
@@ -306,6 +307,10 @@ class exports(commands.Cog):
             view=view, ephemeral=True
         )
 
+    @ttl_cache(size=60, seconds=60)
+    async def _hss_teams(self):
+        return await self.hss.teams()
+
     @ExportGroup.command(name="hss", description="Export the session as a match to Hell Let Loose Skill System")
     @app_commands.describe(
         session="A log capture session"
@@ -322,7 +327,14 @@ class exports(commands.Cog):
                 "This session doesn't hold any logs yet"
             )
 
-        teams = [{'name': 'Infamous', 'tag': 'INF'}, {'name': 'CER', 'tag': 'CER'}]
+        keys = await api_keys_in_guild_tll(interaction.guild_id)
+        if len(keys) == 0:
+            raise CustomException(
+                "Missing API Keys",
+                "You do not have an API Key for any Hell Let Loose Skill System team registered, yet. Use `/hssapikeys add` to add one."
+            )
+
+        teams = await self._hss_teams()
 
         async def ask_winning_team(_, range: Union[ExportRange, None], match_index: Union[int, None]):
             range = range or ExportRange()
@@ -349,7 +361,7 @@ class exports(commands.Cog):
                         fp = StringIO(converter.convert_many(logs))
 
                         try:
-                            match_id = await self.hss.submit_match(winning_team, opposing_team, fp)
+                            match_id = await self.hss.submit_match(interaction.guild_id, winning_team, opposing_team, fp)
                             await _interaction.delete_original_response()
                             await interaction.followup.send(
                                 content='The match was submitted with the match ID ' + match_id, ephemeral=False)
@@ -374,7 +386,7 @@ class exports(commands.Cog):
 
         view = ExportRangeSelectView(interaction, ask_winning_team, logs)
         await interaction.response.send_message(
-            content="Select a specific match to export a scoreboard from by selecting it from the dropdown",
+            content="Select a specific match to export to Hell Let Loose Skill System. You can only submit complete matches, not partial ones.",
             view=view, ephemeral=True
         )
 
