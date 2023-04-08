@@ -7,12 +7,58 @@ from datetime import datetime
 import os
 from pathlib import Path
 
-from utils import get_config
+from lib.hss.api import HSSApi
+from utils import get_config, ttl_cache
 
-intents = discord.Intents.all() if get_config().getboolean('Bot', 'UnlockDeveloperCommands') else discord.Intents.default()
+BOT_COMMAND_PREFIX = get_config()['Bot']['CommandPrefix']
+BOT_UNLOCK_DEVELOPER_COMMANDS = get_config().getboolean('Bot', 'UnlockDeveloperCommands')
+BOT_INTENTS = discord.Intents.all() if BOT_UNLOCK_DEVELOPER_COMMANDS else discord.Intents.default()
 
-bot = commands.Bot(intents=intents, command_prefix=get_config()['Bot']['CommandPrefix'], case_insensitive=True)
-bot.remove_command('help')
+HSS_API_BASE = get_config().get('HSS', 'ApiBaseUrl')
+
+async def load_all_cogs():
+    for cog in os.listdir(Path("./cogs")):
+        if cog.endswith(".py"):
+            try:
+                cog = f"cogs.{cog.replace('.py', '')}"
+                await bot.load_extension(cog)
+            except Exception as e:
+                print(f"{cog} can not be loaded:")
+                raise e
+    print('Loaded all cogs')
+
+async def sync_commands():
+    for cmd in bot.tree.walk_commands():
+        cmd.default_permissions = discord.Permissions(manage_guild=True)
+    try:
+        await asyncio.wait_for(bot.tree.sync(), timeout=5)
+        print('Synced app commands')
+    except asyncio.TimeoutError:
+        print("Didn't sync app commands. This was likely last done recently, resulting in rate limits.")
+
+    print("\nLaunched " + bot.user.name + " on " + str(datetime.now()))
+    print("ID: " + str(bot.user.id))
+
+
+class Bot(commands.Bot):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.remove_command('help')
+        self.hss = HSSApi(HSS_API_BASE)
+    
+    async def setup_hook(self) -> None:
+        await load_all_cogs()
+        await sync_commands()
+    
+    @ttl_cache(size=60, seconds=300)
+    async def _hss_teams(self):
+        return await self.hss.teams()
+
+bot = Bot(
+    intents=BOT_INTENTS,
+    command_prefix=BOT_COMMAND_PREFIX,
+    case_insensitive=True
+)
 
 
 @bot.group(invoke_without_command=True, aliases=['cog'])
@@ -109,31 +155,6 @@ async def info(ctx, cog: str = None):
 
                     embed.add_field(name=cog.qualified_name, value=f"{str(len(commands_list))} commands & {str(len(events_list))} events", inline=False)
         await ctx.send(embed=embed)
-
-async def load_all_cogs():
-    for cog in os.listdir(Path("./cogs")):
-        if cog.endswith(".py"):
-            try:
-                cog = f"cogs.{cog.replace('.py', '')}"
-                await bot.load_extension(cog)
-            except Exception as e:
-                print(f"{cog} can not be loaded:")
-                raise e
-    print('Loaded all cogs')
-bot.setup_hook = load_all_cogs
-
-@bot.event
-async def on_ready():
-    for cmd in bot.tree.walk_commands():
-        cmd.default_permissions = discord.Permissions(manage_guild=True)
-    try:
-        await asyncio.wait_for(bot.tree.sync(), timeout=5)
-        print('Synced app commands')
-    except asyncio.TimeoutError:
-        print("Didn't sync app commands. This was likely last done recently, resulting in rate limits.")
-
-    print("\nLaunched " + bot.user.name + " on " + str(datetime.now()))
-    print("ID: " + str(bot.user.id))
 
 
 bot.run(get_config()['Bot']['Token'])

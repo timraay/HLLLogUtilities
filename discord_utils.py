@@ -144,7 +144,7 @@ async def handle_error(interaction: Interaction, error: Exception):
             traceback.print_exc()
 
     if isinstance(interaction, Interaction):
-        if interaction.response.is_done():
+        if interaction.response.is_done() or interaction.is_expired():
             await interaction.followup.send(embed=embed)
         else:
             await interaction.response.send_message(embed=embed, ephemeral=True)

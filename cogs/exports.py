@@ -5,23 +5,21 @@ from typing import Callable, List, Optional, Union
 import discord
 from discord import app_commands, Interaction, ui, ButtonStyle, SelectOption
 from discord.ext import commands
-from discord.utils import escape_markdown as esc_md
+from discord.utils import escape_markdown as esc_md, format_dt
 from pydantic import BaseModel
 
 from cogs.sessions import autocomplete_sessions
-from discord_utils import CallableButton, CallableSelect, View, only_once, CustomException, get_error_embed, get_command_mention
+from cogs.credentials import SECURITY_URL
+from cogs.apikeys import HSSApiKeysModal
+from discord_utils import CallableButton, CallableSelect, View, only_once, CustomException, get_error_embed, get_success_embed, get_command_mention
 from lib.converters import ExportFormats, Converter
-from lib.hss.api import HSSApi
-from lib.hss.apikeys import api_keys_in_guild_ttl
+from lib.hss.apikeys import api_keys_in_guild_ttl, ApiKeys
 from lib.info.models import EventFlags, EventTypes
 from lib.mappings import get_map_and_mode, Map
 from lib.scores import create_scoreboard, MatchGroup
 from lib.session import HLLCaptureSession, SESSIONS
 from lib.storage import LogLine
-from utils import get_config, ttl_cache
-
-HSS_API_BASE = get_config().get('HSS', 'ApiBaseUrl')
-
+from utils import ttl_cache
 
 class ExportRange(BaseModel):
     start_time: Optional[datetime]
@@ -171,10 +169,352 @@ class TeamSelectView(View):
         return await self._callback(interaction, value[0])
 
 
+class HSSSubmitPromptView(View):
+    def __init__(self, logs: List[LogLine], user: discord.Member):
+        super().__init__()
+        self.logs = logs
+        self.user = user
+    
+    @discord.ui.button(label="Submit to HSS", style=ButtonStyle.green)
+    async def submit_button(self, interaction: Interaction, button: ui.Button):
+        if interaction.user != self.user and not interaction.channel.permissions_for(interaction.user).manage_guild:
+            raise CustomException(
+                "You are not allowed to use this!",
+                "Only the author of the command and server admins may invoke this interaction"
+            )
+
+        api_keys = await api_keys_in_guild_ttl(interaction.guild.id)
+        if not api_keys:
+            view = HSSSubmitPromptApiKeyView(self.logs)
+        elif len(api_keys) == 1:
+            teams = await interaction.client._hss_teams()
+            view = HSSSubmitSelectOpponentView(api_keys[0], self.logs, teams)
+        else:
+            view = HSSSubmitSelectApiKeyView(api_keys, self.logs)
+        embed = view.get_embed()
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+class HSSSubmitPromptApiKeyView(View):
+    def __init__(self, logs: List[LogLine]):
+        super().__init__()
+        self.logs = logs
+    
+    def get_embed(self):
+        return discord.Embed(
+            title="Before you proceed...",
+            description=(
+                "You are about to export your logs to the [HLL Skill System](https://helo-system.de/)."
+                " To authenticate your request, you need to include an API key. Your team manager can"
+                " generate one [here](https://helo-system.de/)!"
+                "\n\nRemember, this key serves as a password. As such, do not share it with others you"
+                f" do not trust. More information can be found [here]({SECURITY_URL})."
+                "\n\nThe below button will open up a form where you will need to paste this API key."
+            )
+        )
+
+    @discord.ui.button(label="Open form", emoji="📝", style=ButtonStyle.gray)
+    async def open_form_button(self, interaction: Interaction, button: ui.Button):
+        modal = HSSApiKeysModal(self.submit_form, title="Submit HSS API key...")
+        await interaction.response.send_modal(modal)
+    
+    async def submit_form(self, interaction: Interaction, key: str, tag: str):
+        api_key = ApiKeys.create_in_db(interaction.guild.id, tag, key)
+        teams = await interaction.client._hss_teams()
+        view = HSSSubmitSelectOpponentView(api_key, self.logs, teams)
+        embed = view.get_embed()
+        await interaction.response.edit_message(embed=embed, view=view)
+    
+class HSSSubmitSelectOpponentView(View):
+    def __init__(self, api_key: ApiKeys, logs: List[LogLine], teams: list):
+        super().__init__()
+        self.api_key = api_key
+        self.logs = logs
+
+        end_log = next(log for log in logs if log.type == str(EventTypes.server_match_ended))
+        self.map_name = get_map_and_mode(end_log.new)[0]
+        self.allies_score = int(end_log.message.split(' - ')[0])
+        self.axis_score = int(end_log.message.split(' - ')[1])
+        self.duration = logs[1].event_time - logs[0].event_time
+
+        # We can have at most 25 values per select dropdown, so we need to divide all
+        # available teams in separate groups to avoid exceeding this limit
+
+        all_teams = sorted(teams, key=lambda team: team["tag"])
+        ordered_teams = {char: list() for char in "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890?"}
+        for team in all_teams:
+            char = team["tag"][0].upper()
+            if char not in ordered_teams:
+                char = "?"
+            ordered_teams[char].append(team)
+        
+        first_char = "A"
+        prev_char = "A"
+        group = list()
+        grouped_teams = dict()
+        for char, teams in ordered_teams.items():
+            if len(group) + len(teams) > 25:
+                grouped_teams[f"{first_char}-{prev_char}"] = group
+                group = list()
+                first_char = char
+            prev_char = char
+            group += teams
+        if group:
+            grouped_teams[f"{first_char}-?"] = group
+        self.grouped_teams = grouped_teams
+
+        self.group_index = 0
+        self.group_buttons = list()
+        for i, group_name in enumerate(self.grouped_teams.keys()):
+            # reeeeeeeeeee
+            if i == 0: callable = self._change_category_0
+            elif i == 1: callable = self._change_category_1
+            elif i == 2: callable = self._change_category_2
+            elif i == 3: callable = self._change_category_3
+            elif i == 4: callable = self._change_category_4
+            elif i == 5: callable = self._change_category_5
+            elif i == 6: callable = self._change_category_6
+            elif i == 7: callable = self._change_category_7
+            elif i == 8: callable = self._change_category_8
+            elif i == 9: callable = self._change_category_9
+            button = CallableButton(callable, label=group_name, style=ButtonStyle.green)
+            self.add_item(button)
+            self.group_buttons.append(button)
+        
+        self.select = CallableSelect(self.team_select, placeholder="Select your opponent...")
+        self.add_item(self.select)
+
+        self.update_components()
+    
+    def update_components(self):
+        for i, button in enumerate(self.group_buttons):
+            if i == self.group_index:
+                button.style = ButtonStyle.green
+                button.disabled = True
+            else:
+                button.style = ButtonStyle.green
+                button.disabled = False
+        
+        group_name = tuple(self.grouped_teams.keys())[self.group_index]
+        group_teams = self.grouped_teams[group_name]
+        self.select.options = [
+            SelectOption(label=f"{team['tag']} ({team['name']})" if "name" in team else team["tag"], value=team["tag"])
+            for team in group_teams
+        ]
+
+    async def team_select(self, interaction: Interaction, team: str):
+        view = HSSSubmitSelectWinnerView(self.api_key, self.logs, team[0], self.map_name, self.allies_score, self.axis_score)
+        embed = view.get_embed()
+        await interaction.response.edit_message(embed=embed, view=view)
+
+    async def change_category(self, interaction: Interaction, group_index: int):
+        self.group_index = group_index
+        self.update_components()
+        await interaction.response.edit_message(view=self)
+    
+    async def _change_category_0(self, interaction: Interaction):
+        return await self.change_category(interaction, 0)
+    async def _change_category_1(self, interaction: Interaction):
+        return await self.change_category(interaction, 1)
+    async def _change_category_2(self, interaction: Interaction):
+        return await self.change_category(interaction, 2)
+    async def _change_category_3(self, interaction: Interaction):
+        return await self.change_category(interaction, 3)
+    async def _change_category_4(self, interaction: Interaction):
+        return await self.change_category(interaction, 4)
+    async def _change_category_5(self, interaction: Interaction):
+        return await self.change_category(interaction, 5)
+    async def _change_category_6(self, interaction: Interaction):
+        return await self.change_category(interaction, 6)
+    async def _change_category_7(self, interaction: Interaction):
+        return await self.change_category(interaction, 7)
+    async def _change_category_8(self, interaction: Interaction):
+        return await self.change_category(interaction, 8)
+    async def _change_category_9(self, interaction: Interaction):
+        return await self.change_category(interaction, 9)
+    
+    def get_embed(self):
+        embed = discord.Embed(
+            title=f"Match Overview - {self.map_name} ({format_dt(self.logs[0].event_time, 'f')})",
+            description="We are currently filling in the details of your match. React to the dropdown below to fill in the remaining gaps."
+        ).add_field(
+            name="Result",
+            value="\n".join([
+                "Winner: ???",
+                "Score: " + (
+                    f"**{self.allies_score} - {self.axis_score}**"
+                    if abs(self.allies_score - self.axis_score) != 5
+                    else f"**{self.allies_score} - {self.axis_score} ({int(self.duration.total_seconds() // 60)} mins.)**"
+                )
+            ])
+        ).add_field(
+            name="Team 1 (You)",
+            value="\n".join([
+                f"Name: **{self.api_key.tag}**",
+                "Faction: ???"
+            ])
+        ).add_field(
+            name="Team 2 (Opponent)",
+            value="\n".join([
+                "Name: ???",
+                "Faction: ???"
+            ])
+        )
+        return embed
+    
+class HSSSubmitSelectApiKeyView(View):
+    def __init__(self, api_keys: List[ApiKeys], logs: List[LogLine]):
+        super().__init__()
+        self.api_keys = api_keys
+        self.logs = logs
+
+        self.duration = logs[1].event_time - logs[0].event_time
+        
+        self.add_item(CallableSelect(
+            self.api_key_select,
+            placeholder="Select a team...",
+            options=[
+                SelectOption(label=api_key.tag, value=str(i))
+                for i, api_key in enumerate(api_keys)
+            ]
+        ))
+    
+    def get_embed(self):
+        return None
+    
+    async def api_key_select(self, interaction: Interaction, value: str):
+        api_key = self.api_keys[int(value)]        
+        teams = await interaction.client._hss_teams()
+        view = HSSSubmitSelectOpponentView(api_key, self.logs, teams)
+        embed = view.get_embed()
+        await interaction.response.edit_message(embed=embed, view=view)
+
+class HSSSubmitSelectWinnerView(View):
+    def __init__(self, api_key: ApiKeys, logs: List[LogLine], opponent: str, map_name: str, allies_score: int, axis_score: int):
+        super().__init__()
+        self.api_key = api_key
+        self.logs = logs
+        self.opponent = opponent
+        self.map_name = map_name
+        self.allies_score = allies_score
+        self.axis_score = axis_score
+
+        self.duration = logs[1].event_time - logs[0].event_time
+
+        self.add_item(CallableSelect(
+            self.winner_select,
+            placeholder="Select the winner of the match...",
+            options=[
+                SelectOption(label=self.api_key.tag, value="1"),
+                SelectOption(label=self.opponent, value="2"),
+            ]
+        ))
+    
+    def get_embed(self):
+        embed = discord.Embed(
+            title=f"Match Overview - {self.map_name} ({format_dt(self.logs[0].event_time, 'f')})",
+            description="We are currently filling in the details of your match. React to the dropdown below to fill in the remaining gaps."
+        ).add_field(
+            name="Result",
+            value="\n".join([
+                "Winner: ???",
+                "Score: " + (
+                    f"**{self.allies_score} - {self.axis_score}**"
+                    if abs(self.allies_score - self.axis_score) != 5
+                    else f"**{self.allies_score} - {self.axis_score} ({int(self.duration.total_seconds() // 60)} mins.)**"
+                )
+            ])
+        ).add_field(
+            name="Team 1 (You)",
+            value="\n".join([
+                f"Name: **{self.api_key.tag}**",
+                "Faction: ???"
+            ])
+        ).add_field(
+            name="Team 2 (Opponent)",
+            value="\n".join([
+                f"Name: **{self.opponent}**",
+                "Faction: ???"
+            ])
+        )
+        return embed
+    
+    async def winner_select(self, interaction: Interaction, value: str):
+        view = HSSSubmitConfirmationView(self.api_key, self.logs, self.opponent, value[0] == "1", self.map_name, self.allies_score, self.axis_score)
+        embed = view.get_embed()
+        await interaction.response.edit_message(embed=embed, view=view)
+
+class HSSSubmitConfirmationView(View):
+    def __init__(self, api_key: ApiKeys, logs: List[LogLine], opponent: str, won: bool, map_name: str, allies_score: int, axis_score: int):
+        super().__init__()
+        self.api_key = api_key
+        self.logs = logs
+        self.opponent = opponent
+        self.won = won
+        self.map_name = map_name
+        self.allies_score = allies_score
+        self.axis_score = axis_score
+    
+        self.duration = logs[1].event_time - logs[0].event_time
+
+    @property
+    def winning_faction(self):
+        return "Allies" if self.allies_score > self.axis_score else "Axis"
+    @property
+    def losing_faction(self):
+        return "Allies" if self.allies_score < self.axis_score else "Axis"
+    
+    def get_embed(self):
+        embed = discord.Embed(
+            title=f"Match Overview - {self.map_name} ({format_dt(self.logs[0].event_time, 'f')})",
+            description="We are currently filling in the details of your match. React to the dropdown below to fill in the remaining gaps."
+        ).add_field(
+            name="Result",
+            value="\n".join([
+                f"Winner: **{self.api_key.tag if self.won else self.opponent}**",
+                "Score: " + (
+                    f"**{self.allies_score} - {self.axis_score}**"
+                    if abs(self.allies_score - self.axis_score) != 5
+                    else f"**{self.allies_score} - {self.axis_score} ({int(self.duration.total_seconds() // 60)} mins.)**"
+                )
+            ])
+        ).add_field(
+            name="Team 1 (You)",
+            value="\n".join([
+                f"Name: **{self.api_key.tag}**",
+                f"Faction: **{self.winning_faction if self.won else self.losing_faction}**"
+            ])
+        ).add_field(
+            name="Team 2 (Opponent)",
+            value="\n".join([
+                f"Name: **{self.opponent}**",
+                f"Faction: **{self.losing_faction if self.won else self.winning_faction}**"
+            ])
+        )
+        return embed
+
+    @discord.ui.button(label="Confirm & Submit", style=ButtonStyle.green)
+    async def confirm_button(self, interaction: Interaction, button: ui.Button):
+        await interaction.response.defer(ephemeral=True)
+
+        converter = ExportFormats.csv.value
+        fp = StringIO(converter.convert_many(self.logs))
+        match_id = await interaction.client.hss.submit_match(
+            guild_id=interaction.guild_id,
+            submitting_user=str(interaction.user),
+            winning_team=self.api_key.tag,
+            opposing_team=self.opponent,
+            csv_export=fp,
+        )
+        await interaction.followup.send(embed=get_success_embed(
+            "Match submitted to HSS",
+            f"Your match against {self.opponent} has been submitted to the HLL Skill System (ID: #{match_id})"
+        ), view=None)
+        
+
+
 class exports(commands.Cog):
-    def __init__(self, bot: commands.Bot, hss: HSSApi):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.hss = hss
 
     ExportGroup = app_commands.Group(
         name="export",
@@ -224,9 +564,15 @@ class exports(commands.Cog):
                         if flags != flags.all():
                             content += f"\n> Includes: **{'**, **'.join([option[0] for option in ExportFilterView.options if option[2] <= flags])}**"
 
-                        await interaction.delete_original_response()
-                        await interaction.followup.send(content=content, file=file)
+                        if range.start_time and range.end_time:
+                            # The full match was recorded
+                            view = HSSSubmitPromptView(session.get_logs(from_=range.start_time, to=range.end_time), _interaction.user)
+                            await interaction.followup.send(content=content, file=file, view=view)
+                        else:
+                            await interaction.followup.send(content=content, file=file)
 
+                        await interaction.delete_original_response()
+                    
                     else:
                         await interaction.edit_original_response(
                             content=None,
@@ -278,7 +624,7 @@ class exports(commands.Cog):
             )
 
         @only_once
-        async def send_scoreboard(_, range: Union[ExportRange, None], match_index: Union[int, None]):
+        async def send_scoreboard(_interaction: Interaction, range: Union[ExportRange, None], match_index: Union[int, None]):
             logs = session.get_logs()
             if not logs:
                 raise CustomException(
@@ -297,9 +643,15 @@ class exports(commands.Cog):
             content = f"Scoreboard for **{esc_md(session.name)}**"
             if range and range.map_name:
                 content += f" ({range.map_name})"
+            
+            if range.start_time and range.end_time:
+                # A full match was recorded
+                view = HSSSubmitPromptView(session.get_logs(from_=range.start_time, to=range.end_time), _interaction.user)
+                await interaction.followup.send(content=content, file=file, view=view)
+            else:
+                await interaction.followup.send(content=content, file=file)
 
             await interaction.delete_original_response()
-            await interaction.followup.send(content=content, file=file)
 
         view = ExportRangeSelectView(interaction, send_scoreboard, logs)
         await interaction.response.send_message(
@@ -307,95 +659,5 @@ class exports(commands.Cog):
             view=view, ephemeral=True
         )
 
-    @ttl_cache(size=60, seconds=60)
-    async def _hss_teams(self):
-        return await self.hss.teams()
-
-    @ExportGroup.command(name="hss", description="Export the session as a match to Hell Let Loose Skill System")
-    @app_commands.describe(
-        session="A log capture session"
-    )
-    @app_commands.autocomplete(
-        session=autocomplete_sessions
-    )
-    async def export_hss(self, interaction: Interaction, session: int):
-        session: HLLCaptureSession = SESSIONS[session]
-        logs = session.get_logs()
-        if not logs:
-            raise CustomException(
-                "Invalid session!",
-                "This session doesn't hold any logs yet"
-            )
-
-        keys = await api_keys_in_guild_ttl(interaction.guild_id)
-        if len(keys) == 0:
-            mention = await get_command_mention(self.bot.tree, 'hssapikeys', 'add')
-            raise CustomException(
-                "Missing API Keys",
-                f"You do not have an API Key for any Hell Let Loose Skill System team registered, yet. Use {mention} to add one."
-            )
-
-        teams = await self._hss_teams()
-
-        async def ask_winning_team(_, range: Union[ExportRange, None], match_index: Union[int, None]):
-            range = range or ExportRange()
-
-            if range.map_name is None:
-                await interaction.edit_original_response(
-                    content='You can only submit full matches to the Hell Let Loose Skill System.', view=None)
-                return
-
-            async def ask_opposing_team(_interaction, winning_team: str):
-                await _interaction.response.defer()
-
-                @only_once
-                async def send_logs(_interaction: Interaction, opposing_team: str):
-                    await interaction.delete_original_response()
-                    await _interaction.response.defer(thinking=True, ephemeral=True)
-
-                    logs = session.get_logs(
-                        from_=range.start_time,
-                        to=range.end_time,
-                    )
-                    converter: Converter = ExportFormats.csv.value
-
-                    if logs:
-                        fp = StringIO(converter.convert_many(logs))
-
-                        try:
-                            match_id = await self.hss.submit_match(
-                                interaction.guild_id,
-                                f'{interaction.user.name}#{interaction.user.discriminator}', winning_team,
-                                opposing_team, fp
-                            )
-                            await _interaction.delete_original_response()
-                            await interaction.followup.send(
-                                content='The match was submitted with the match ID ' + match_id, ephemeral=False)
-                        except Exception as e:
-                            await _interaction.delete_original_response()
-                            await interaction.followup.send(content=e, ephemeral=False)
-                    else:
-                        await interaction.edit_original_response(
-                            content=None,
-                            embed=get_error_embed(
-                                title="Couldn't export logs!",
-                                description="No logs were found matching the given criteria"
-                            ),
-                            view=None
-                        )
-
-                view = TeamSelectView(interaction, send_logs, teams=teams)
-                await interaction.edit_original_response(content='Select the opposing team for this match', view=view)
-
-            view = TeamSelectView(interaction, ask_opposing_team, teams=teams)
-            await interaction.edit_original_response(content='Select the winning team for this match', view=view)
-
-        view = ExportRangeSelectView(interaction, ask_winning_team, logs)
-        await interaction.response.send_message(
-            content="Select a specific match to export to Hell Let Loose Skill System. You can only submit complete matches, not partial ones.",
-            view=view, ephemeral=True
-        )
-
-
 async def setup(bot: commands.Bot):
-    await bot.add_cog(exports(bot, HSSApi(HSS_API_BASE)))
+    await bot.add_cog(exports(bot))
