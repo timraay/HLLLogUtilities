@@ -2,21 +2,15 @@ import discord
 from discord import app_commands, ui, Interaction
 from discord.ext import commands
 from discord.utils import escape_markdown as esc_md
-from ipaddress import IPv4Address
 import asyncio
 from typing import Optional
-import logging
 
-from lib.credentials import Credentials, credentials_in_guild_tll
-from lib.exceptions import HLLAuthError, HLLConnectionError, HLLConnectionRefusedError, HLLError
 from lib.hss.apikeys import ApiKeys, api_keys_in_guild_ttl
-from lib.rcon import create_plain_transport
-from discord_utils import CallableButton, get_error_embed, get_success_embed, handle_error, CustomException, only_once, View
-from utils import get_config
+from discord_utils import CallableButton, get_success_embed, handle_error, CustomException, View, Modal
 
 SECURITY_URL = "https://github.com/timraay/HLLLogUtilities/blob/main/SECURITY.md"
 
-class HSSApiKeysModal(ui.Modal):
+class HSSApiKeysModal(Modal):
     tag = ui.TextInput(label="Team Tag", required=True, max_length=10)
     key = ui.TextInput(label="Bot API Key", required=True, min_length=40, max_length=40)
 

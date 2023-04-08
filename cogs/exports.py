@@ -237,7 +237,7 @@ class exports(commands.Cog):
                             view=None
                         )
 
-                view = ui.View(timeout=300.0)
+                view = View(timeout=300.0)
                 view.add_item(CallableSelect(send_logs,
                                              placeholder="Select an export format...",
                                              options=[SelectOption(label=format.name,

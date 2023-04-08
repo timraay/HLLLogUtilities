@@ -153,7 +153,7 @@ class View(ui.View):
     async def on_error(self, interaction: Interaction, error: Exception, item, /) -> None:
         await handle_error(interaction, error)
 
-class Modal(ui.View):
+class Modal(ui.Modal):
     async def on_error(self, interaction: Interaction, error: Exception, item, /) -> None:
         await handle_error(interaction, error)
 
