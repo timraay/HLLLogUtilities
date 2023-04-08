@@ -29,15 +29,12 @@ class HSSApiKeysModal(Modal):
             )
         await interaction.response.defer(ephemeral=True, thinking=True)
 
-        async def finish_callback(_interaction):
-            await interaction.delete_original_response()
-            await self._callback(
-                _interaction,
-                tag=self.tag.value,
-                key=key,
-            )
-
-        await finish_callback(interaction)
+        await interaction.delete_original_response()
+        await self._callback(
+            interaction,
+            tag=self.tag.value,
+            key=key,
+        )
     
     async def on_error(self, interaction: Interaction, error: Exception):
         await handle_error(interaction, error)
@@ -64,7 +61,7 @@ class api_keys(commands.Cog):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @Group.command(name="remove", description="Remove API Key")
+    @Group.command(name="remove", description="Remove an API Key")
     @app_commands.describe(
         keys="API Key to access Hell Let Loose Skill System"
     )
@@ -78,8 +75,8 @@ class api_keys(commands.Cog):
             title=f"Removed API Key for team \"{key_id.tag}\"!",
         ), ephemeral=True)
     
-    @Group.command(name="add", description="Add API Key")
-    async def add_credentials(self, interaction: Interaction):
+    @Group.command(name="add", description="Add an API Key")
+    async def add_api_key(self, interaction: Interaction):
         async def on_form_request(_interaction: Interaction):
             modal = HSSApiKeysModal(on_form_submit, title="HSS API Key Form")
             await _interaction.response.send_modal(modal)
@@ -109,7 +106,7 @@ class api_keys(commands.Cog):
     @app_commands.autocomplete(
         keys=autocomplete_keys
     )
-    async def edit_credentials(self, interaction: Interaction, keys: int):
+    async def edit_api_key(self, interaction: Interaction, keys: int):
         api_key = ApiKeys.load_from_db(keys)
 
         async def on_form_submit(_interaction: Interaction, tag: str, key: str):
