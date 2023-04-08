@@ -12,7 +12,7 @@ from cogs.sessions import autocomplete_sessions
 from discord_utils import CallableButton, CallableSelect, View, only_once, CustomException, get_error_embed
 from lib.converters import ExportFormats, Converter
 from lib.hss.api import HSSApi
-from lib.hss.apikeys import api_keys_in_guild_tll
+from lib.hss.apikeys import api_keys_in_guild_ttl
 from lib.info.models import EventFlags, EventTypes
 from lib.mappings import get_map_and_mode, Map
 from lib.scores import create_scoreboard, MatchGroup
@@ -327,7 +327,7 @@ class exports(commands.Cog):
                 "This session doesn't hold any logs yet"
             )
 
-        keys = await api_keys_in_guild_tll(interaction.guild_id)
+        keys = await api_keys_in_guild_ttl(interaction.guild_id)
         if len(keys) == 0:
             raise CustomException(
                 "Missing API Keys",

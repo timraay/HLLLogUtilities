@@ -9,7 +9,7 @@ import logging
 
 from lib.credentials import Credentials, credentials_in_guild_tll
 from lib.exceptions import HLLAuthError, HLLConnectionError, HLLConnectionRefusedError, HLLError
-from lib.hss.apikeys import ApiKeys, api_keys_in_guild_tll
+from lib.hss.apikeys import ApiKeys, api_keys_in_guild_ttl
 from lib.rcon import create_plain_transport
 from discord_utils import CallableButton, get_error_embed, get_success_embed, handle_error, CustomException, only_once, View
 from utils import get_config
@@ -56,7 +56,7 @@ class api_keys(commands.Cog):
 
     async def autocomplete_keys(self, interaction: Interaction, current: str):
         return [app_commands.Choice(name=str(key), value=key.id)
-            for key in await api_keys_in_guild_tll(interaction.guild_id) if current.lower() in str(key).lower()]
+            for key in await api_keys_in_guild_ttl(interaction.guild_id) if current.lower() in str(key).lower()]
 
     @Group.command(name="list", description="Get a list of all known API Keys")
     async def list_credentials(self, interaction: Interaction):

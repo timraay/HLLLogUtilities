@@ -74,5 +74,5 @@ class ApiKeys:
         self.id = None
 
 @ttl_cache(size=15, seconds=15)
-async def api_keys_in_guild_tll(guild_id: int):
+async def api_keys_in_guild_ttl(guild_id: int):
     return ApiKeys.in_guild(guild_id)
