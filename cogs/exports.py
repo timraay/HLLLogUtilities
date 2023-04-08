@@ -9,7 +9,7 @@ from discord.utils import escape_markdown as esc_md
 from pydantic import BaseModel
 
 from cogs.sessions import autocomplete_sessions
-from discord_utils import CallableButton, CallableSelect, View, only_once, CustomException, get_error_embed
+from discord_utils import CallableButton, CallableSelect, View, only_once, CustomException, get_error_embed, get_command_mention
 from lib.converters import ExportFormats, Converter
 from lib.hss.api import HSSApi
 from lib.hss.apikeys import api_keys_in_guild_ttl
@@ -329,9 +329,10 @@ class exports(commands.Cog):
 
         keys = await api_keys_in_guild_ttl(interaction.guild_id)
         if len(keys) == 0:
+            mention = await get_command_mention(self.bot.tree, 'hssapikeys', 'add')
             raise CustomException(
                 "Missing API Keys",
-                "You do not have an API Key for any Hell Let Loose Skill System team registered, yet. Use `/hssapikeys add` to add one."
+                f"You do not have an API Key for any Hell Let Loose Skill System team registered, yet. Use {mention} to add one."
             )
 
         teams = await self._hss_teams()

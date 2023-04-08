@@ -2,8 +2,11 @@ import discord
 from discord import ui, app_commands, Interaction, ButtonStyle, Emoji, PartialEmoji, SelectOption
 from discord.ext import commands
 from discord.utils import escape_markdown as esc_md, MISSING
+
 from datetime import datetime, timedelta
 import traceback
+
+from utils import ttl_cache
 
 from typing import Callable, Optional, Union, List, Any
 
@@ -166,3 +169,12 @@ def only_once(func):
         func.__has_been_ran_once = True
         return res
     return decorated
+
+@ttl_cache(size=100, seconds=60*60)
+async def get_command_mention(tree: discord.app_commands.CommandTree, name: str, subcommands: str):
+    commands = await tree.fetch_commands()
+    command = next(cmd for cmd in commands if cmd.name == name)
+    if subcommands:
+        return f"</{command.name} {subcommands}:{command.id}>"
+    else:
+        return f"</{command.name}:{command.id}>"

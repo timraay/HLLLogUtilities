@@ -15,7 +15,7 @@ from lib.converters import Converter, ExportFormats
 from lib.storage import cursor
 from lib.modifiers import ModifierFlags
 from cogs.credentials import RCONCredentialsModal, SECURITY_URL
-from discord_utils import CallableButton, CustomException, get_success_embed, get_question_embed, only_once, View, ExpiredButtonError
+from discord_utils import CallableButton, CustomException, get_success_embed, get_question_embed, only_once, View, ExpiredButtonError, get_command_mention
 from utils import get_config
 
 MAX_SESSION_DURATION = timedelta(minutes=get_config().getint('Session', 'MaxDurationInMinutes'))
@@ -465,9 +465,10 @@ class sessions(commands.Cog):
                 for session in sessions:
                     description += f"\n> • {esc_md(session.name)} (<t:{int(session.end_time.timestamp())}:R>) **[🗑️ <t:{int((session.end_time + DELETE_SESSION_AFTER).timestamp())}:R>]**\n> ⤷ <t:{int(session.start_time.timestamp())}:f> > <t:{int(session.end_time.timestamp())}:t> ({int(session.duration.total_seconds() // 60)} min.)"
 
+        mention = await get_command_mention(self.bot.tree, 'session', 'new')
         embed = discord.Embed(
             title=f"There are {count} {'total' if filter == SessionFilters.all else filter.value} sessions",
-            description=description or "Sessions can be created with the `/session new` command."
+            description=description or f"Sessions can be created with the {mention} command."
         )
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
