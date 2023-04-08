@@ -35,11 +35,20 @@ class HLLUnpackError(HLLError):
 class NotFound(ValueError):
     """Raised when a specific object could not be found or resolved"""
 
+class DuplicationError(ValueError):
+    """Raised when attempting to instantiate a class with a custom ID for which another class is already instantiated"""
+
 class SessionDeletedError(ValueError):
     """Raised when attempting to load a session whose data has already been deleted"""
 
-class SessionAlreadyRunningError(ValueError):
+class SessionAlreadyRunningError(DuplicationError):
     """Raised when attempting to load a session twice"""
 
 class SessionMissingCredentialsError(RuntimeError):
     """Raised when trying to activate a session that doesn't have any server credentials"""
+
+class AutoSessionAlreadyCreatedError(DuplicationError):
+    """Raised when attempting to create an AutoSession for the same credentials twice"""
+
+class TemporaryCredentialsError(ValueError):
+    """Raised when the given credentials must not be but are temporary"""
