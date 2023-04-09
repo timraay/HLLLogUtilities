@@ -382,7 +382,7 @@ class HSSSubmitSelectApiKeyView(View):
         return None
     
     async def api_key_select(self, interaction: Interaction, value: str):
-        api_key = self.api_keys[int(value)]        
+        api_key = self.api_keys[int(value[0])]
         teams = await interaction.client._hss_teams()
         view = HSSSubmitSelectOpponentView(api_key, self.logs, teams)
         embed = view.get_embed()
