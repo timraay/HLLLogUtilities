@@ -206,7 +206,7 @@ class SessionCreateView(View):
             colour=discord.Colour(16746296)
         ).set_footer(
             text=str(interaction.user),
-            icon_url=interaction.user.avatar.url
+            icon_url=interaction.user.avatar.url if interaction.user.avatar else None
         )
 
         if self.modifiers:
