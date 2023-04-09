@@ -13,7 +13,7 @@ from cogs.credentials import SECURITY_URL
 from cogs.apikeys import HSSApiKeysModal
 from discord_utils import CallableButton, CallableSelect, View, only_once, CustomException, get_error_embed, get_success_embed, get_command_mention
 from lib.converters import ExportFormats, Converter
-from lib.hss.apikeys import api_keys_in_guild_ttl, ApiKeys
+from lib.hss.api_key import api_keys_in_guild_ttl, HSSApiKey, HSSTeam
 from lib.info.models import EventFlags, EventTypes
 from lib.mappings import get_map_and_mode, Map
 from lib.scores import create_scoreboard, MatchGroup
@@ -218,14 +218,14 @@ class HSSSubmitPromptApiKeyView(View):
         await interaction.response.send_modal(modal)
     
     async def submit_form(self, interaction: Interaction, key: str, tag: str):
-        api_key = ApiKeys.create_in_db(interaction.guild.id, tag, key)
+        api_key = HSSApiKey.create_in_db(interaction.guild.id, tag, key)
         teams = await interaction.client._hss_teams()
         view = HSSSubmitSelectOpponentView(api_key, self.logs, teams)
         embed = view.get_embed()
         await interaction.response.edit_message(embed=embed, view=view)
     
 class HSSSubmitSelectOpponentView(View):
-    def __init__(self, api_key: ApiKeys, logs: List[LogLine], teams: list):
+    def __init__(self, api_key: HSSApiKey, logs: List[LogLine], teams: List[HSSTeam]):
         super().__init__()
         self.api_key = api_key
         self.logs = logs
@@ -239,10 +239,12 @@ class HSSSubmitSelectOpponentView(View):
         # We can have at most 25 values per select dropdown, so we need to divide all
         # available teams in separate groups to avoid exceeding this limit
 
-        all_teams = sorted(teams, key=lambda team: team["tag"])
+        all_teams = sorted(teams, key=lambda team: str(team))
         ordered_teams = {char: list() for char in "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890?"}
         for team in all_teams:
-            char = team["tag"][0].upper()
+            if team == self.api_key.team:
+                continue
+            char = team.tag[0].upper()
             if char not in ordered_teams:
                 char = "?"
             ordered_teams[char].append(team)
@@ -301,8 +303,10 @@ class HSSSubmitSelectOpponentView(View):
             for team in group_teams
         ]
 
-    async def team_select(self, interaction: Interaction, team: str):
-        view = HSSSubmitSelectWinnerView(self.api_key, self.logs, team[0], self.map_name, self.allies_score, self.axis_score)
+    async def team_select(self, interaction: Interaction, value: List[str]):
+        tag = value[0]
+        team = HSSTeam(tag=tag) # We don't need the name so this is fine
+        view = HSSSubmitSelectWinnerView(self.api_key, self.logs, team, self.map_name, self.allies_score, self.axis_score)
         embed = view.get_embed()
         await interaction.response.edit_message(embed=embed, view=view)
 
@@ -362,7 +366,7 @@ class HSSSubmitSelectOpponentView(View):
         return embed
     
 class HSSSubmitSelectApiKeyView(View):
-    def __init__(self, api_keys: List[ApiKeys], logs: List[LogLine]):
+    def __init__(self, api_keys: List[HSSApiKey], logs: List[LogLine]):
         super().__init__()
         self.api_keys = api_keys
         self.logs = logs
@@ -389,7 +393,7 @@ class HSSSubmitSelectApiKeyView(View):
         await interaction.response.edit_message(embed=embed, view=view)
 
 class HSSSubmitSelectWinnerView(View):
-    def __init__(self, api_key: ApiKeys, logs: List[LogLine], opponent: str, map_name: str, allies_score: int, axis_score: int):
+    def __init__(self, api_key: HSSApiKey, logs: List[LogLine], opponent: HSSTeam, map_name: str, allies_score: int, axis_score: int):
         super().__init__()
         self.api_key = api_key
         self.logs = logs
@@ -405,7 +409,7 @@ class HSSSubmitSelectWinnerView(View):
             placeholder="Select the winner of the match...",
             options=[
                 SelectOption(label=self.api_key.tag, value="1"),
-                SelectOption(label=self.opponent, value="2"),
+                SelectOption(label=self.opponent.tag, value="2"),
             ]
         ))
     
@@ -432,7 +436,7 @@ class HSSSubmitSelectWinnerView(View):
         ).add_field(
             name="Team 2 (Opponent)",
             value="\n".join([
-                f"Name: **{self.opponent}**",
+                f"Name: **{self.opponent.tag}**",
                 "Faction: ???"
             ])
         )
@@ -444,7 +448,7 @@ class HSSSubmitSelectWinnerView(View):
         await interaction.response.edit_message(embed=embed, view=view)
 
 class HSSSubmitConfirmationView(View):
-    def __init__(self, api_key: ApiKeys, logs: List[LogLine], opponent: str, won: bool, map_name: str, allies_score: int, axis_score: int):
+    def __init__(self, api_key: HSSApiKey, logs: List[LogLine], opponent: HSSTeam, won: bool, map_name: str, allies_score: int, axis_score: int):
         super().__init__()
         self.api_key = api_key
         self.logs = logs
@@ -455,6 +459,7 @@ class HSSSubmitConfirmationView(View):
         self.axis_score = axis_score
     
         self.duration = logs[1].event_time - logs[0].event_time
+        self.submitted = False
 
     @property
     def winning_faction(self):
@@ -470,7 +475,7 @@ class HSSSubmitConfirmationView(View):
         ).add_field(
             name="Result",
             value="\n".join([
-                f"Winner: **{self.api_key.tag if self.won else self.opponent}**",
+                f"Winner: **{self.api_key.tag if self.won else self.opponent.tag}**",
                 "Score: " + (
                     f"**{self.allies_score} - {self.axis_score}**"
                     if abs(self.allies_score - self.axis_score) != 5
@@ -486,7 +491,7 @@ class HSSSubmitConfirmationView(View):
         ).add_field(
             name="Team 2 (Opponent)",
             value="\n".join([
-                f"Name: **{self.opponent}**",
+                f"Name: **{self.opponent.tag}**",
                 f"Faction: **{self.losing_faction if self.won else self.winning_faction}**"
             ])
         )
@@ -494,23 +499,37 @@ class HSSSubmitConfirmationView(View):
 
     @discord.ui.button(label="Confirm & Submit", style=ButtonStyle.green)
     async def confirm_button(self, interaction: Interaction, button: ui.Button):
-        await interaction.response.defer(ephemeral=True)
+        if self.submitted:
+            raise CustomException(
+                "Statistics already submitted!",
+                (
+                    "These statistics have already been or currently are being submitted."
+                    " If you haven't received a confirmation, try again in a second."
+                )
+            )
+        else:
+            self.submitted = True
 
-        converter = ExportFormats.csv.value
-        fp = StringIO(converter.convert_many(self.logs))
-        match_id = await interaction.client.hss.submit_match(
-            guild_id=interaction.guild_id,
-            submitting_user=str(interaction.user),
-            winning_team=self.api_key.tag,
-            opposing_team=self.opponent,
-            csv_export=fp,
-        )
-        await interaction.followup.send(embed=get_success_embed(
-            "Match submitted to HSS",
-            f"Your match against {self.opponent} has been submitted to the HLL Skill System (ID: #{match_id})"
-        ), view=None)
-        
+            try:
+                await interaction.response.defer(ephemeral=True)
 
+                converter = ExportFormats.csv.value
+                fp = StringIO(converter.convert_many(self.logs))
+                match_id = await interaction.client.hss.submit_match(
+                    api_key=self.api_key,
+                    opponent=self.opponent,
+                    won=self.won,
+                    submitting_user=interaction.user,
+                    csv_export=fp,
+                )
+                await interaction.followup.send(embed=get_success_embed(
+                    "Match submitted to HSS",
+                    f"Your match against {self.opponent} has been submitted to the HLL Skill System (ID: #{match_id})"
+                ), view=None)
+                
+            except:
+                self.submitted = False
+                raise
 
 class exports(commands.Cog):
     def __init__(self, bot: commands.Bot):

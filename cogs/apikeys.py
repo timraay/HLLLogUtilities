@@ -3,20 +3,19 @@ from discord import app_commands, ui, Interaction
 from discord.ext import commands
 from discord.utils import escape_markdown as esc_md
 import asyncio
+import http
 from typing import Optional
 
-from lib.hss.apikeys import ApiKeys, api_keys_in_guild_ttl
-from discord_utils import CallableButton, get_success_embed, handle_error, CustomException, View, Modal
+from lib.hss.api_key import HSSApiKey, api_keys_in_guild_ttl
+from lib.exceptions import HTTPException
+from discord_utils import CallableButton, get_success_embed, get_error_embed, CustomException, View, Modal
 
 SECURITY_URL = "https://github.com/timraay/HLLLogUtilities/blob/main/SECURITY.md"
 
 class HSSApiKeysModal(Modal):
-    tag = ui.TextInput(label="Team Tag", required=True, max_length=10)
-    key = ui.TextInput(label="Bot API Key", required=True, min_length=40, max_length=40)
+    key = ui.TextInput(label="API Key", required=True, min_length=40, max_length=40)
 
-    def __init__(self, callback, *, title: str = ..., defaults: 'ApiKeys' = None, timeout: Optional[float] = None, **kwargs) -> None:
-        if defaults:
-            self.tag.default = defaults.tag
+    def __init__(self, callback, *, title: str = ..., timeout: Optional[float] = None, **kwargs) -> None:
         super().__init__(title=title, timeout=timeout, **kwargs)
         self._callback = callback
 
@@ -27,17 +26,28 @@ class HSSApiKeysModal(Modal):
                 "Invalid API key!",
                 "API Key must not contain spaces."
             )
+
         await interaction.response.defer(ephemeral=True, thinking=True)
 
-        await interaction.delete_original_response()
-        await self._callback(
-            interaction,
-            tag=self.tag.value,
+        try:
+            team = await interaction.client.hss.resolve_token(key)
+        except Exception as exc:
+            if isinstance(exc, HTTPException) and exc.status == http.HTTPStatus.UNAUTHORIZED:
+                raise CustomException(
+                    "Invalid API key!",
+                    "This API key does not belong to any team."
+                )
+            else:
+                raise exc
+            
+        api_key = HSSApiKey.create_temporary(
+            guild_id=interaction.guild_id,
+            team=team,
             key=key,
         )
-    
-    async def on_error(self, interaction: Interaction, error: Exception):
-        await handle_error(interaction, error)
+
+        await interaction.delete_original_response()
+        await self._callback(interaction, api_key)
 
 class api_keys(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -51,7 +61,7 @@ class api_keys(commands.Cog):
 
     @Group.command(name="list", description="Get a list of all known API Keys")
     async def list_credentials(self, interaction: Interaction):
-        all_keys = ApiKeys.in_guild(interaction.guild_id)
+        all_keys = HSSApiKey.in_guild(interaction.guild_id)
         embed = discord.Embed(
             title="API Keys for Teams",
             description="\n".join([
@@ -69,24 +79,24 @@ class api_keys(commands.Cog):
         keys=autocomplete_keys
     )
     async def remove_api_key(self, interaction: Interaction, keys: int):
-        key_id = ApiKeys.load_from_db(keys)
-        key_id.delete()
+        api_key = HSSApiKey.load_from_db(keys)
+        api_key.delete()
         await interaction.response.send_message(embed=get_success_embed(
-            title=f"Removed API Key for team \"{key_id.tag}\"!",
+            title=f"Removed API Key for {api_key.tag}!",
         ), ephemeral=True)
     
     @Group.command(name="add", description="Add an API Key")
     async def add_api_key(self, interaction: Interaction):
         async def on_form_request(_interaction: Interaction):
-            modal = HSSApiKeysModal(on_form_submit, title="HSS API Key Form")
+            modal = HSSApiKeysModal(on_form_submit, title="Submit HSS API key...")
             await _interaction.response.send_modal(modal)
 
-        async def on_form_submit(_interaction: Interaction, tag: str, key: str):
-            key = ApiKeys.create_in_db(_interaction.guild_id, tag=tag, key=key)
+        async def on_form_submit(_interaction: Interaction, api_key: HSSApiKey):
+            api_key.insert_in_db()
 
             await asyncio.gather(
                 _interaction.followup.send(embed=get_success_embed(
-                    title=f"Added API Key for team \"{key.tag}\"!",
+                    title=f"Added API Key for {api_key.team}!",
                 ), ephemeral=True),
                 interaction.edit_original_response(view=None)
             )
@@ -107,19 +117,46 @@ class api_keys(commands.Cog):
         keys=autocomplete_keys
     )
     async def edit_api_key(self, interaction: Interaction, keys: int):
-        api_key = ApiKeys.load_from_db(keys)
+        api_key = HSSApiKey.load_from_db(keys)
 
-        async def on_form_submit(_interaction: Interaction, tag: str, key: str):
-            api_key.tag = tag
-            api_key.key = key
-            api_key.save()
+        async def on_form_submit(interaction: Interaction, new_key: HSSApiKey):
+            if api_key.team == new_key.team:
+                await self.update_key(interaction, api_key, new_key)
 
-            await _interaction.followup.send(embed=get_success_embed(
-                title=f"Edited API Key for team \"{api_key.tag}\"!",
-            ), ephemeral=True)
+            else:
+                async def on_overwrite_key(interaction: Interaction):
+                    await self.update_key(interaction, api_key, new_key)
 
-        modal = HSSApiKeysModal(on_form_submit, title="HSS API Key Form", defaults=api_key)
+                async def on_add_separate_key(interaction: Interaction):
+                    new_key.insert_in_db()
+                    await interaction.response.edit_message(embed=get_success_embed(
+                        title=f"Added API Key for {api_key.team}!",
+                    ), ephemeral=True)
+
+                view = View()
+                view.add_item(CallableButton(on_overwrite_key, label="Overwrite key", style=discord.ButtonStyle.gray))
+                view.add_item(CallableButton(on_add_separate_key, label="Add as separate key", style=discord.ButtonStyle.gray))
+                await interaction.followup.send(embed=get_error_embed(
+                    "New key belongs to a different team!",
+                    (
+                        f"The old key belonged to {api_key.tag}, whereas the new key belongs to"
+                        f" {new_key.tag}. Are you sure you still want to overwrite the current key?"
+                    )
+                ))
+
+        modal = HSSApiKeysModal(on_form_submit, title="Editing API key for %s..." % api_key.team.tag)
         await interaction.response.send_modal(modal)
+    
+    async def update_key(self, interaction: Interaction, old_key: HSSApiKey, new_key: HSSApiKey):
+        old_key.team = new_key.team
+        old_key.key = new_key.key
+        old_key.save()
+
+        embed = get_success_embed(f"Edited API Key for {old_key.team}!")
+        if interaction.response.is_done():
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        else:
+            await interaction.response.edit_message(embed=embed)
 
 
 async def setup(bot):
