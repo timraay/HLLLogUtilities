@@ -299,7 +299,7 @@ class HSSSubmitSelectOpponentView(View):
         group_name = tuple(self.grouped_teams.keys())[self.group_index]
         group_teams = self.grouped_teams[group_name]
         self.select.options = [
-            SelectOption(label=f"{team['tag']} ({team['name']})" if "name" in team else team["tag"], value=team["tag"])
+            SelectOption(label=str(team), value=team.tag)
             for team in group_teams
         ]
 
