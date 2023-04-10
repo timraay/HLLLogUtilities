@@ -13,7 +13,7 @@ from discord_utils import CallableButton, get_success_embed, get_error_embed, Cu
 SECURITY_URL = "https://github.com/timraay/HLLLogUtilities/blob/main/SECURITY.md"
 
 class HSSApiKeysModal(Modal):
-    key = ui.TextInput(label="API Key", required=True, min_length=40, max_length=40)
+    key = ui.TextInput(label="API Key", required=True, min_length=45, max_length=55)
 
     def __init__(self, callback, *, title: str = ..., timeout: Optional[float] = None, **kwargs) -> None:
         super().__init__(title=title, timeout=timeout, **kwargs)
