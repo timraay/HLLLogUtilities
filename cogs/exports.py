@@ -443,11 +443,11 @@ class HSSSubmitSelectWinnerView(View):
         return embed
     
     async def winner_select(self, interaction: Interaction, value: str):
-        view = HSSSubmitConfirmationView(self.api_key, self.logs, self.opponent, value[0] == "1", self.map_name, self.allies_score, self.axis_score)
+        view = HSSSubmitSelectGameTypeView(self.api_key, self.logs, self.opponent, value[0] == "1", self.map_name, self.allies_score, self.axis_score)
         embed = view.get_embed()
         await interaction.response.edit_message(embed=embed, view=view)
 
-class HSSSubmitConfirmationView(View):
+class HSSSubmitSelectGameTypeView(View):
     def __init__(self, api_key: HSSApiKey, logs: List[LogLine], opponent: HSSTeam, won: bool, map_name: str, allies_score: int, axis_score: int):
         super().__init__()
         self.api_key = api_key
@@ -497,6 +497,69 @@ class HSSSubmitConfirmationView(View):
         )
         return embed
 
+    @discord.ui.select(
+        placeholder="Select what type of match this was...",
+        options=[
+            SelectOption(value="friendly", label="Friendly", description="A friendly scrim of which the outcome doesn't matter as much"),
+            SelectOption(value="competitive", label="Tournament Match", description="A competitive match with both teams playing at their best"),
+        ]
+    )
+    async def game_type_select(self, interaction: Interaction, values: List[str]):
+        game_type = values[0]
+        view = HSSSubmitConfirmationView(self.api_key, self.logs, self.opponent, self.won, game_type, self.map_name, self.allies_score, self.axis_score)
+        embed = view.get_embed()
+        await interaction.response.edit_message(embed=embed, view=view)
+
+class HSSSubmitConfirmationView(View):
+    def __init__(self, api_key: HSSApiKey, logs: List[LogLine], opponent: HSSTeam, won: bool, game_type: str, map_name: str, allies_score: int, axis_score: int):
+        super().__init__()
+        self.api_key = api_key
+        self.logs = logs
+        self.opponent = opponent
+        self.won = won
+        self.game_type = game_type
+        self.map_name = map_name
+        self.allies_score = allies_score
+        self.axis_score = axis_score
+    
+        self.duration = logs[1].event_time - logs[0].event_time
+        self.submitted = False
+
+    @property
+    def winning_faction(self):
+        return "Allies" if self.allies_score > self.axis_score else "Axis"
+    @property
+    def losing_faction(self):
+        return "Allies" if self.allies_score < self.axis_score else "Axis"
+    
+    def get_embed(self):
+        embed = discord.Embed(
+            title=f"Match Overview - {self.map_name} ({format_dt(self.logs[0].event_time, 'f')}) [`{self.game_type.capitalize()}`]"
+        ).add_field(
+            name="Result",
+            value="\n".join([
+                f"Winner: **{self.api_key.tag if self.won else self.opponent.tag}**",
+                "Score: " + (
+                    f"**{self.allies_score} - {self.axis_score}**"
+                    if abs(self.allies_score - self.axis_score) != 5
+                    else f"**{self.allies_score} - {self.axis_score} ({int(self.duration.total_seconds() // 60)} mins.)**"
+                )
+            ])
+        ).add_field(
+            name="Team 1 (You)",
+            value="\n".join([
+                f"Name: **{self.api_key.tag}**",
+                f"Faction: **{self.winning_faction if self.won else self.losing_faction}**"
+            ])
+        ).add_field(
+            name="Team 2 (Opponent)",
+            value="\n".join([
+                f"Name: **{self.opponent.tag}**",
+                f"Faction: **{self.losing_faction if self.won else self.winning_faction}**"
+            ])
+        )
+        return embed
+
     @discord.ui.button(label="Confirm & Submit", style=ButtonStyle.green)
     async def confirm_button(self, interaction: Interaction, button: ui.Button):
         if self.submitted:
@@ -519,12 +582,13 @@ class HSSSubmitConfirmationView(View):
                     api_key=self.api_key,
                     opponent=self.opponent,
                     won=self.won,
+                    kind=self.game_type,
                     submitting_user=interaction.user,
                     csv_export=fp,
                 )
                 await interaction.followup.send(embed=get_success_embed(
                     "Match submitted to HSS",
-                    f"Your match against {self.opponent} has been submitted to the HLL Skill System (ID: #{match_id})"
+                    f"Your {self.game_type} match against {self.opponent} has been submitted to the HLL Skill System (ID: #{match_id})"
                 ), view=None)
                 
             except:

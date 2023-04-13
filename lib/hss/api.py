@@ -13,13 +13,16 @@ class HSSApi:
     def __init__(self, api_url: str):
         self.api_url = api_url
 
-    async def submit_match(self, api_key: HSSApiKey, opponent: HSSTeam, won: bool, submitting_user: discord.User, csv_export: StringIO) -> str:
+    async def submit_match(self, api_key: HSSApiKey, opponent: HSSTeam, won: bool, kind: str, submitting_user: discord.User, csv_export: StringIO) -> str:
         teams = [api_key.tag, opponent.tag]
         if not won:
             teams.reverse()
         
         data = FormData()
-        data.add_field("data", json.dumps({'teams': teams}))
+        data.add_field("data", json.dumps({
+            'teams': teams,
+            'kind': kind,
+        }))
         data.add_field("username", str(submitting_user))
         data.add_field("file", csv_export, filename="export.csv")
         async with aiohttp.ClientSession() as sess:
