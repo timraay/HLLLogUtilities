@@ -52,8 +52,8 @@ class HSSApiKeysModal(Modal):
 class api_keys(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-    
-    Group = app_commands.Group(name="hssapikeys", description="Manage API keys for Hell Let Loose Skill System")
+
+    Group = app_commands.Group(name="heloapikeys", description="Manage API keys for Hell Let Loose Skill System (HeLO)")
 
     async def autocomplete_keys(self, interaction: Interaction, current: str):
         return [app_commands.Choice(name=str(key), value=key.id)
@@ -84,11 +84,11 @@ class api_keys(commands.Cog):
         await interaction.response.send_message(embed=get_success_embed(
             title=f"Removed API Key for {api_key.tag}!",
         ), ephemeral=True)
-    
+
     @Group.command(name="add", description="Add an API Key")
     async def add_api_key(self, interaction: Interaction):
         async def on_form_request(_interaction: Interaction):
-            modal = HSSApiKeysModal(on_form_submit, title="Submit HSS API key...")
+            modal = HSSApiKeysModal(on_form_submit, title="Submit HeLO API key...")
             await _interaction.response.send_modal(modal)
 
         async def on_form_submit(_interaction: Interaction, api_key: HSSApiKey):

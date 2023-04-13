@@ -5,6 +5,7 @@ from typing import Callable, List, Optional, Union
 import discord
 from discord import app_commands, Interaction, ui, ButtonStyle, SelectOption
 from discord.ext import commands
+from discord.ui import Select
 from discord.utils import escape_markdown as esc_md, format_dt
 from pydantic import BaseModel
 
@@ -175,7 +176,7 @@ class HSSSubmitPromptView(View):
         self.logs = logs
         self.user = user
     
-    @discord.ui.button(label="Submit to HSS", style=ButtonStyle.green)
+    @discord.ui.button(label="Submit to HeLO", style=ButtonStyle.green)
     async def submit_button(self, interaction: Interaction, button: ui.Button):
         if interaction.user != self.user and not interaction.channel.permissions_for(interaction.user).manage_guild:
             raise CustomException(
@@ -214,7 +215,7 @@ class HSSSubmitPromptApiKeyView(View):
 
     @discord.ui.button(label="Open form", emoji="📝", style=ButtonStyle.gray)
     async def open_form_button(self, interaction: Interaction, button: ui.Button):
-        modal = HSSApiKeysModal(self.submit_form, title="Submit HSS API key...")
+        modal = HSSApiKeysModal(self.submit_form, title="Submit HeLO API key...")
         await interaction.response.send_modal(modal)
     
     async def submit_form(self, interaction: Interaction, key: str, tag: str):
@@ -504,8 +505,8 @@ class HSSSubmitSelectGameTypeView(View):
             SelectOption(value="competitive", label="Tournament Match", description="A competitive match with both teams playing at their best"),
         ]
     )
-    async def game_type_select(self, interaction: Interaction, values: List[str]):
-        game_type = values[0]
+    async def game_type_select(self, interaction: Interaction, select: Select):
+        game_type = select.values[0]
         view = HSSSubmitConfirmationView(self.api_key, self.logs, self.opponent, self.won, game_type, self.map_name, self.allies_score, self.axis_score)
         embed = view.get_embed()
         await interaction.response.edit_message(embed=embed, view=view)
@@ -587,9 +588,9 @@ class HSSSubmitConfirmationView(View):
                     csv_export=fp,
                 )
                 await interaction.followup.send(embed=get_success_embed(
-                    "Match submitted to HSS",
+                    "Match submitted to HeLO",
                     f"Your {self.game_type} match against {self.opponent} has been submitted to the HLL Skill System (ID: #{match_id})"
-                ), view=None)
+                ))
                 
             except:
                 self.submitted = False
