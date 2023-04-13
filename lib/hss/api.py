@@ -2,17 +2,34 @@ import http
 import json
 import discord
 from io import StringIO
+from functools import wraps
 
 import aiohttp
 from aiohttp import FormData
 
 from lib.hss.api_key import HSSApiKey, HSSTeam
-from lib.exceptions import HTTPException
+from lib.exceptions import HTTPException, HSSConnectionError
+
+def retry_then_raise(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        err = None
+        for _ in range(2):
+            try:
+                return await func(*args, **kwargs)
+            except aiohttp.ClientError as exc:
+                err = HSSConnectionError(exc)
+            except Exception as exc:
+                err = exc
+        raise err
+    return wrapper
+
 
 class HSSApi:
     def __init__(self, api_url: str):
         self.api_url = api_url
 
+    @retry_then_raise
     async def submit_match(self, api_key: HSSApiKey, opponent: HSSTeam, won: bool, kind: str, submitting_user: discord.User, csv_export: StringIO) -> str:
         teams = [api_key.tag, opponent.tag]
         if not won:
@@ -39,6 +56,7 @@ class HSSApi:
                         'You do not have a valid authorization for either the winning or opposing team.')
                 raise HTTPException(resp.status, 'An unknown error occurred submitting your match. Error: ' + body.get('error'))
 
+    @retry_then_raise
     async def teams(self) -> list[HSSTeam]:
         async with aiohttp.ClientSession() as sess:
             async with sess.get('{0}/teams'.format(self.api_url)) as resp:
@@ -53,6 +71,7 @@ class HSSApi:
                     ))
                 return teams
 
+    @retry_then_raise
     async def resolve_token(self, key: str):
         async with aiohttp.ClientSession() as sess:
             async with sess.get('{0}/users/@me'.format(self.api_url),

@@ -432,11 +432,12 @@ class HSSSubmitSelectApiKeyView(View):
         return None
     
     async def api_key_select(self, interaction: Interaction, value: str):
+        await interaction.response.defer()
         api_key = self.api_keys[int(value[0])]
         teams = await interaction.client._hss_teams()
         view = HSSSubmitSelectOpponentView(api_key, self.logs, teams)
         embed = view.get_embed()
-        await interaction.response.edit_message(embed=embed, view=view)
+        await interaction.edit_original_response(embed=embed, view=view)
 
 class HSSSubmitSelectWinnerView(View):
     def __init__(self, api_key: HSSApiKey, logs: List[LogLine], opponent: HSSTeam, map_name: str, allies_score: int, axis_score: int):

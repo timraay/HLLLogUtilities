@@ -6,6 +6,7 @@ from discord.utils import escape_markdown as esc_md, MISSING
 from datetime import datetime, timedelta
 import traceback
 
+from lib.exceptions import HSSConnectionError
 from utils import ttl_cache
 
 from typing import Callable, Optional, Union, List, Any
@@ -136,6 +137,8 @@ async def handle_error(interaction: Interaction, error: Exception):
         embed.description = str(error)
     elif isinstance(error, commands.BadArgument):
         embed = get_error_embed(title="Invalid argument!", description=esc_md(str(error)))
+    elif isinstance(error, HSSConnectionError):
+        embed = get_error_embed(title="Couldn't connect to HLL Skill System!", description=esc_md(str(error)))
     else:
         embed = get_error_embed(title="An unexpected error occured!", description=esc_md(str(error)))
         try:
@@ -145,7 +148,7 @@ async def handle_error(interaction: Interaction, error: Exception):
 
     if isinstance(interaction, Interaction):
         if interaction.response.is_done() or interaction.is_expired():
-            await interaction.followup.send(embed=embed)
+            await interaction.followup.send(embed=embed, ephemeral=True)
         else:
             await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
