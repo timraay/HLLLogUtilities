@@ -359,6 +359,10 @@ class MatchData(DataStore):
                 else:
                     weapon = mappings.WEAPONS[weapon]
 
+            # Update player score
+            if log.player_combat_score is not None:
+                killer_data.update_score(log)
+
             # Process event
             if log_type == EventTypes.player_kill:
                 killer_data.update_faction(killer_faction)
@@ -380,10 +384,6 @@ class MatchData(DataStore):
                 killer_data.join(log.event_time)
             elif log_type == EventTypes.player_leave_server:
                 killer_data.leave(log.event_time)
-            
-            # Update player score
-            if log.player_combat_score is not None:
-                killer_data.update_score(log)
 
             # Update player faction
             elif log_type == EventTypes.player_switch_team:
