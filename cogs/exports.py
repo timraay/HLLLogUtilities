@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from cogs.sessions import autocomplete_sessions
 from cogs.credentials import SECURITY_URL
 from cogs.apikeys import HSSApiKeysModal
-from discord_utils import CallableButton, CallableSelect, View, only_once, CustomException, get_error_embed, get_success_embed, get_command_mention
+from discord_utils import CallableButton, CallableSelect, View, only_once, CustomException, get_error_embed, get_success_embed
 from lib.converters import ExportFormats, Converter
 from lib.hss.api_key import api_keys_in_guild_ttl, HSSApiKey, HSSTeam
 from lib.info.models import EventFlags, EventTypes
@@ -20,12 +20,34 @@ from lib.mappings import get_map_and_mode, Map
 from lib.scores import create_scoreboard, MatchGroup
 from lib.session import HLLCaptureSession, SESSIONS
 from lib.storage import LogLine
-from utils import ttl_cache
 
 class ExportRange(BaseModel):
     start_time: Optional[datetime]
     end_time: Optional[datetime]
+    unload_time: Optional[datetime]
     map_name: Optional[str]
+
+    @property
+    def shortest_end_time(self):
+        if not self.end_time and not self.unload_time:
+            return None
+        elif not self.unload_time:
+            return self.end_time
+        elif not self.end_time:
+            return self.unload_time
+        else:
+            return min(self.end_time, self.unload_time)
+    
+    @property
+    def longest_end_time(self):
+        if not self.end_time and not self.unload_time:
+            return None
+        elif not self.unload_time:
+            return self.end_time
+        elif not self.end_time:
+            return self.unload_time
+        else:
+            return max(self.end_time, self.unload_time)
 
     @property
     def duration(self):
@@ -100,18 +122,29 @@ class ExportRangeSelectView(View):
             if log_type == EventTypes.server_match_ended:
                 if not self.ranges[-1].map_name:
                     self.ranges[-1].map_name = " ".join(get_map_and_mode(log.new))
+                    self.ranges[-1].end_time = log.event_time
 
             elif log_type == EventTypes.server_match_started:
-                self.ranges[-1].end_time = log.event_time
+                self.ranges[-1].unload_time = log.event_time
                 self.ranges.append(ExportRange(
                     start_time=log.event_time,
                     map_name=" ".join(get_map_and_mode(log.new))
                 ))
 
             elif log_type == EventTypes.server_map_changed:
-                if len(self.ranges) >= 2 and (log.event_time - self.ranges[-1].start_time) < timedelta(seconds=30):
+                if not self.ranges[-1].start_time:
+                    last_start = None
+                else:
+                    last_start = (log.event_time - self.ranges[-1].start_time).total_seconds()
+
+                if len(self.ranges) >= 2 and last_start and last_start < 30:
+                    # The line appeared after the server_match_ended event
                     self.ranges[-2].map_name = Map.load(log.old).pretty()
                     self.ranges[-1].map_name = Map.load(log.new).pretty()
+                
+                elif last_start > 60:
+                    # The line appeared before the server_match_ended event
+                    self.ranges[-1].map_name = Map.load(log.old)
 
         if len(self.ranges) == 1:
             self.ranges.clear()
@@ -122,8 +155,8 @@ class ExportRangeSelectView(View):
             description = "..."
             if range.start_time:
                 description = range.start_time.strftime(range.start_time.strftime('%H:%Mh')) + description
-            if range.end_time:
-                description = description + range.end_time.strftime(range.end_time.strftime('%H:%Mh'))
+            if range.shortest_end_time:
+                description = description + range.shortest_end_time.strftime(range.shortest_end_time.strftime('%H:%Mh'))
 
             options.append(SelectOption(
                 label=range.map_name or "Unknown",
@@ -633,7 +666,7 @@ class exports(commands.Cog):
 
                     logs = session.get_logs(
                         from_=range.start_time,
-                        to=range.end_time,
+                        to=range.longest_end_time,
                         filter=flags
                     )
                     converter: Converter = ExportFormats[format[0]].value
@@ -648,9 +681,9 @@ class exports(commands.Cog):
                         if flags != flags.all():
                             content += f"\n> Includes: **{'**, **'.join([option[0] for option in ExportFilterView.options if option[2] <= flags])}**"
 
-                        if range.start_time and range.end_time:
+                        if range.start_time and range.longest_end_time:
                             # The full match was recorded
-                            view = HSSSubmitPromptView(session.get_logs(from_=range.start_time, to=range.end_time), _interaction.user)
+                            view = HSSSubmitPromptView(session.get_logs(from_=range.start_time, to=range.longest_end_time), _interaction.user)
                             await interaction.followup.send(content=content, file=file, view=view)
                         else:
                             await interaction.followup.send(content=content, file=file)
@@ -728,9 +761,9 @@ class exports(commands.Cog):
             if range and range.map_name:
                 content += f" ({range.map_name})"
             
-            if range.start_time and range.end_time:
+            if range.start_time and range.longest_end_time:
                 # A full match was recorded
-                view = HSSSubmitPromptView(session.get_logs(from_=range.start_time, to=range.end_time), _interaction.user)
+                view = HSSSubmitPromptView(session.get_logs(from_=range.start_time, to=range.longest_end_time), _interaction.user)
                 await interaction.followup.send(content=content, file=file, view=view)
             else:
                 await interaction.followup.send(content=content, file=file)
