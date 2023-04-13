@@ -9,7 +9,7 @@ from lib.rcon import HLLRcon
 from lib.credentials import Credentials
 from lib.storage import LogLine, database, cursor, insert_many_logs, delete_logs
 from lib.exceptions import NotFound, SessionDeletedError, SessionAlreadyRunningError, SessionMissingCredentialsError
-from lib.modifiers import ModifierFlags
+from lib.modifiers import ModifierFlags, INTERNAL_MODIFIERS
 from lib.info.models import EventFlags, EventModel, ActivationEvent, IterationEvent, DeactivationEvent, InfoHopper, PrivateEventModel
 from lib.info.events import EventListener
 from utils import get_config, schedule_coro, get_logger
@@ -55,10 +55,9 @@ class HLLCaptureSession:
         self.rcon = None
         self.info = None
 
-        self.modifiers = [modifier(self) for modifier in modifiers.get_modifier_types()]
+        self.modifiers = [modifier(self) for modifier in INTERNAL_MODIFIERS] + [modifier(self) for modifier in modifiers.get_modifier_types()]
         self.modifier_flags = modifiers.copy()
-        if self.modifiers:
-            self.logger.info("Installed modifiers: %s", ", ".join([modifier.config.name for modifier in self.modifiers]))
+        self.logger.info("Installed modifiers: %s", ", ".join([modifier.config.name for modifier in self.modifiers]))
         
         if self.active_in():
             self._start_task = schedule_coro(self.start_time, self.activate, error_logger=self.logger)

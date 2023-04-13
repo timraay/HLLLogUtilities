@@ -9,9 +9,15 @@ if TYPE_CHECKING:
 
 class ModifierConfig(BasicConfig):
     id: str
+    """A unique identifier of this modifier"""
     name: str
+    """The name of the modifier"""
     description: str
+    """A short description of the modifier's purpose"""
     emoji: str
+    """An emoji that best represents the modifier"""
+    hidden: bool = False
+    """Whether the modifier is intended for internal use, by default False"""
 
 class Modifier(Configurable):
     """The base class for modifiers. Modifiers contain event listeners
