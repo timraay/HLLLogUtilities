@@ -1,6 +1,8 @@
+import asyncio
+
 from .base import Modifier
-from lib.info.events import on_activation, on_player_join_server, add_condition
-from lib.info.models import ActivationEvent, PlayerJoinServerEvent
+from lib.info.events import on_iteration, add_condition
+from lib.info.models import IterationEvent
 
 MODIFIER_NOTIFICATION_MSG = (
     "This server is using a custom ruleset! The following modifiers are"
@@ -27,21 +29,26 @@ class ModifierNotifModifier(Modifier):
                 modifiers.append(modifier.config.name.upper() + "\n" + modifier.config.description)
         return MODIFIER_NOTIFICATION_MSG.format("\n\n".join(modifiers))
 
-    @on_activation()
-    @has_other_modifiers_condition
-    async def notify_all_on_activation(self, event: ActivationEvent):
-        message = self.get_modifier_notif_msg()
-        await self.rcon.send_direct_message(
-            message=message,
-            target=None
-        )
-    
-    @on_player_join_server()
-    @has_other_modifiers_condition
-    async def notify_player_on_join(self, event: PlayerJoinServerEvent):
-        message = self.get_modifier_notif_msg()
-        await self.rcon.send_direct_message(
-            message=message,
-            target=event.player
-        )
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.steamids = set()
 
+    @on_iteration()
+    @has_other_modifiers_condition
+    async def notify_players_of_active_mods(self, event: IterationEvent):
+        all_players = event.root.get('players', ())
+        players = list()
+        for player in all_players:
+            if player.steamid not in self.steamids:
+                players.append(player)
+        
+        if players:
+            message = self.get_modifier_notif_msg()
+            await asyncio.gather(*[
+                self.rcon.send_direct_message(
+                    message=message,
+                    target=player
+                ) for player in players
+            ])
+        
+        self.steamids = {player.steamid for player in all_players}
