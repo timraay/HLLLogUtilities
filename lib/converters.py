@@ -182,8 +182,8 @@ class JSONConverter(Converter):
     def convert_many(cls, logs: List['LogLine']):
         converted = [log for log in [cls.convert(log) for log in logs] if log is not None]
         obj = dict(
-            start_time=str([converted[0]]) if converted else None,
-            end_time=str([converted[-1]]) if converted else None,
+            start_time=logs[0].event_time if converted else None,
+            end_time=logs[-1].event_time if converted else None,
             logs=converted
         )
         return json.dumps(obj, indent=2, default=lambda x: x.isoformat() if isinstance(x, datetime) else str(x))

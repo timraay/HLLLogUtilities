@@ -52,3 +52,14 @@ class AutoSessionAlreadyCreatedError(DuplicationError):
 
 class TemporaryCredentialsError(ValueError):
     """Raised when the given credentials must not be but are temporary"""
+
+
+class HTTPException(Exception):
+    """Raised when an unexpected response was received from a web API"""
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+from aiohttp import ClientError
+class HSSConnectionError(ClientError):
+    """Raised when an error occurs connecting to HSS"""

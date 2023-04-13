@@ -518,7 +518,7 @@ class HLLRcon:
                             self.info.events.add(PlayerExitAdminCamEvent(self.info, event_time=time, player=player))
 
                     elif log.startswith('MATCH START'):
-                        map_name = log[12:]
+                        map_name = log[12:].strip()
                         self.info.events.add(
                             ServerMatchStartedEvent(self.info, event_time=time, map=map_name)
                         )

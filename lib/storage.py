@@ -154,6 +154,13 @@ CREATE TABLE IF NOT EXISTS "credentials" (
 );
 """)
 cursor.execute("""
+CREATE TABLE IF NOT EXISTS "hss_api_keys" (
+	"guild_id"	VARCHAR(18) NOT NULL,
+	"tag"	VARCHAR(10) NOT NULL,
+	"key"	VARCHAR(55)
+);
+""")
+cursor.execute("""
 CREATE TABLE IF NOT EXISTS "sessions" (
 	"guild_id"	INTEGER NOT NULL,
 	"name"	VARCHAR(40) NOT NULL,

@@ -2,8 +2,12 @@ import discord
 from discord import ui, app_commands, Interaction, ButtonStyle, Emoji, PartialEmoji, SelectOption
 from discord.ext import commands
 from discord.utils import escape_markdown as esc_md, MISSING
+
 from datetime import datetime, timedelta
 import traceback
+
+from lib.exceptions import HSSConnectionError
+from utils import ttl_cache
 
 from typing import Callable, Optional, Union, List, Any
 
@@ -133,6 +137,8 @@ async def handle_error(interaction: Interaction, error: Exception):
         embed.description = str(error)
     elif isinstance(error, commands.BadArgument):
         embed = get_error_embed(title="Invalid argument!", description=esc_md(str(error)))
+    elif isinstance(error, HSSConnectionError):
+        embed = get_error_embed(title="Couldn't connect to HLL Skill System!", description=esc_md(str(error)))
     else:
         embed = get_error_embed(title="An unexpected error occured!", description=esc_md(str(error)))
         try:
@@ -141,8 +147,8 @@ async def handle_error(interaction: Interaction, error: Exception):
             traceback.print_exc()
 
     if isinstance(interaction, Interaction):
-        if interaction.response.is_done():
-            await interaction.followup.send(embed=embed)
+        if interaction.response.is_done() or interaction.is_expired():
+            await interaction.followup.send(embed=embed, ephemeral=True)
         else:
             await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
@@ -153,7 +159,7 @@ class View(ui.View):
     async def on_error(self, interaction: Interaction, error: Exception, item, /) -> None:
         await handle_error(interaction, error)
 
-class Modal(ui.View):
+class Modal(ui.Modal):
     async def on_error(self, interaction: Interaction, error: Exception, item, /) -> None:
         await handle_error(interaction, error)
 
@@ -166,3 +172,12 @@ def only_once(func):
         func.__has_been_ran_once = True
         return res
     return decorated
+
+@ttl_cache(size=100, seconds=60*60)
+async def get_command_mention(tree: discord.app_commands.CommandTree, name: str, subcommands: str):
+    commands = await tree.fetch_commands()
+    command = next(cmd for cmd in commands if cmd.name == name)
+    if subcommands:
+        return f"</{command.name} {subcommands}:{command.id}>"
+    else:
+        return f"</{command.name}:{command.id}>"
