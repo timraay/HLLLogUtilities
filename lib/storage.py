@@ -157,7 +157,7 @@ cursor.execute("""
 CREATE TABLE IF NOT EXISTS "hss_api_keys" (
 	"guild_id"	VARCHAR(18) NOT NULL,
 	"tag"	VARCHAR(10) NOT NULL,
-	"key"	VARCHAR(40)
+	"key"	VARCHAR(55)
 );
 """)
 cursor.execute("""
