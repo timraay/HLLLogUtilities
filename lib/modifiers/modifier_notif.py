@@ -5,9 +5,11 @@ from lib.info.events import on_iteration, add_condition
 from lib.info.models import IterationEvent
 
 MODIFIER_NOTIFICATION_MSG = (
-    "This server is using a custom ruleset! The following modifiers are"
-    " currently active:\n\n{}\n\nFor more information, look up HLL Log"
-    " Utilities online."
+    "[  HLL LOG UTILITIES  ]\n"
+    "This server is using a custom ruleset! The following modifiers are currently active:\n\n"
+    "---------------------------------------------------"
+    "\n\n{}\n\n"
+    "---------------------------------------------------"
 )
 
 def has_other_modifiers_condition(func):
