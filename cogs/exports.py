@@ -20,6 +20,7 @@ from lib.mappings import get_map_and_mode, Map
 from lib.scores import create_scoreboard, MatchGroup
 from lib.session import HLLCaptureSession, SESSIONS
 from lib.storage import LogLine
+from lib.exceptions import HSSConnectionError
 
 class ExportRange(BaseModel):
     start_time: Optional[datetime]
@@ -209,7 +210,8 @@ class TeamSelectView(View):
 
 class HSSSubmitPromptView(View):
     def __init__(self, logs: List[LogLine], user: discord.Member):
-        super().__init__()
+        super().__init__(timeout=60 * 10)
+        self.message: discord.Message = None
         self.logs = logs
         self.user = user
     
@@ -231,6 +233,12 @@ class HSSSubmitPromptView(View):
             view = HSSSubmitSelectApiKeyView(api_keys, self.logs)
         embed = view.get_embed()
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    async def on_timeout(self):
+        if self.message:
+            for item in self.children:
+                item.disabled = True
+            await self.message.edit(view=self)
 
 class HSSSubmitPromptApiKeyView(View):
     def __init__(self, logs: List[LogLine]):
@@ -688,7 +696,7 @@ class exports(commands.Cog):
                         if range.start_time and range.has_end_time:
                             # The full match was recorded
                             view = HSSSubmitPromptView(session.get_logs(from_=range.start_time, to=range.unload_time), _interaction.user)
-                            await interaction.followup.send(content=content, file=file, view=view)
+                            view.message = await _interaction.followup.send(content=content, file=file, view=view, wait=True)
                         else:
                             await interaction.followup.send(content=content, file=file)
 
@@ -768,7 +776,7 @@ class exports(commands.Cog):
             if range.start_time and range.has_end_time:
                 # A full match was recorded
                 view = HSSSubmitPromptView(session.get_logs(from_=range.start_time, to=range.unload_time), _interaction.user)
-                await interaction.followup.send(content=content, file=file, view=view)
+                view.message = await interaction.followup.send(content=content, file=file, view=view, wait=True)
             else:
                 await interaction.followup.send(content=content, file=file)
 
