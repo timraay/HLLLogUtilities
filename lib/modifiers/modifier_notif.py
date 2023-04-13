@@ -14,10 +14,10 @@ def has_other_modifiers_condition(func):
 class ModifierNotifModifier(Modifier):
 
     class Config:
-        id = "_internal"
-        name = "Internal HLU Mechanics"
+        id = "modifier_notif"
+        name = "Modifier Notifications"
         emoji = "⚙️"
-        description = "A collection of functions used internally by HLU"
+        description = "Notify players of active modifiers"
         hidden = True
 
     def get_modifier_notif_msg(self):
