@@ -28,8 +28,12 @@ class ExportRange(BaseModel):
     map_name: Optional[str]
 
     @property
+    def has_end_time(self):
+        return self.end_time or self.unload_time
+
+    @property
     def shortest_end_time(self):
-        if not self.end_time and not self.unload_time:
+        if not self.has_end_time:
             return None
         elif not self.unload_time:
             return self.end_time
@@ -40,7 +44,7 @@ class ExportRange(BaseModel):
     
     @property
     def longest_end_time(self):
-        if not self.end_time and not self.unload_time:
+        if not self.has_end_time:
             return None
         elif not self.unload_time:
             return self.end_time
@@ -51,8 +55,8 @@ class ExportRange(BaseModel):
 
     @property
     def duration(self):
-        if self.start_time and self.end_time:
-            return self.end_time - self.start_time
+        if self.start_time and self.has_end_time:
+            return self.shortest_end_time - self.start_time
         else:
             return None
 
@@ -120,9 +124,9 @@ class ExportRangeSelectView(View):
                 continue
 
             if log_type == EventTypes.server_match_ended:
+                self.ranges[-1].end_time = log.event_time
                 if not self.ranges[-1].map_name:
                     self.ranges[-1].map_name = " ".join(get_map_and_mode(log.new))
-                    self.ranges[-1].end_time = log.event_time
 
             elif log_type == EventTypes.server_match_started:
                 self.ranges[-1].unload_time = log.event_time
@@ -155,7 +159,7 @@ class ExportRangeSelectView(View):
             description = "..."
             if range.start_time:
                 description = range.start_time.strftime(range.start_time.strftime('%H:%Mh')) + description
-            if range.shortest_end_time:
+            if range.has_end_time:
                 description = description + range.shortest_end_time.strftime(range.shortest_end_time.strftime('%H:%Mh'))
 
             options.append(SelectOption(
@@ -666,7 +670,7 @@ class exports(commands.Cog):
 
                     logs = session.get_logs(
                         from_=range.start_time,
-                        to=range.longest_end_time,
+                        to=range.unload_time,
                         filter=flags
                     )
                     converter: Converter = ExportFormats[format[0]].value
@@ -681,9 +685,9 @@ class exports(commands.Cog):
                         if flags != flags.all():
                             content += f"\n> Includes: **{'**, **'.join([option[0] for option in ExportFilterView.options if option[2] <= flags])}**"
 
-                        if range.start_time and range.longest_end_time:
+                        if range.start_time and range.has_end_time:
                             # The full match was recorded
-                            view = HSSSubmitPromptView(session.get_logs(from_=range.start_time, to=range.longest_end_time), _interaction.user)
+                            view = HSSSubmitPromptView(session.get_logs(from_=range.start_time, to=range.unload_time), _interaction.user)
                             await interaction.followup.send(content=content, file=file, view=view)
                         else:
                             await interaction.followup.send(content=content, file=file)
@@ -761,9 +765,9 @@ class exports(commands.Cog):
             if range and range.map_name:
                 content += f" ({range.map_name})"
             
-            if range.start_time and range.longest_end_time:
+            if range.start_time and range.has_end_time:
                 # A full match was recorded
-                view = HSSSubmitPromptView(session.get_logs(from_=range.start_time, to=range.longest_end_time), _interaction.user)
+                view = HSSSubmitPromptView(session.get_logs(from_=range.start_time, to=range.unload_time), _interaction.user)
                 await interaction.followup.send(content=content, file=file, view=view)
             else:
                 await interaction.followup.send(content=content, file=file)
