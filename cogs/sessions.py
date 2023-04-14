@@ -5,15 +5,13 @@ from discord.utils import escape_markdown as esc_md
 from datetime import datetime, timedelta, timezone
 from dateutil.parser import parse as dt_parse
 from enum import Enum
-from io import StringIO
 from traceback import print_exc
 
 from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions, assert_name
-from lib.credentials import Credentials, credentials_in_guild_tll
-from lib.converters import Converter, ExportFormats
+from lib.credentials import Credentials
 from lib.storage import cursor
 from lib.modifiers import ModifierFlags
-from cogs.credentials import RCONCredentialsModal, SessionModifierView, SECURITY_URL, MODIFIERS_URL
+from cogs.credentials import RCONCredentialsModal, SessionModifierView, SECURITY_URL, MODIFIERS_URL, autocomplete_credentials
 from discord_utils import CallableButton, CustomException, get_success_embed, get_question_embed, only_once, View, ExpiredButtonError, get_command_mention
 from utils import get_config
 
@@ -25,12 +23,6 @@ class SessionFilters(Enum):
     ongoing = "ongoing"
     finished = "finished"
 
-
-async def autocomplete_credentials(interaction: Interaction, current: str):
-    choices = [app_commands.Choice(name=str(credentials), value=credentials.id)
-        for credentials in await credentials_in_guild_tll(interaction.guild_id) if current.lower() in str(credentials).lower()]
-    choices.append(app_commands.Choice(name="Custom", value=0))
-    return choices
 
 async def autocomplete_end_time(_: Interaction, current: str):
     if current != "":

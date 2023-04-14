@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from io import StringIO
 from typing import Callable, List, Optional, Union
 
@@ -20,7 +20,6 @@ from lib.mappings import get_map_and_mode, Map
 from lib.scores import create_scoreboard, MatchGroup
 from lib.session import HLLCaptureSession, SESSIONS
 from lib.storage import LogLine
-from lib.exceptions import HSSConnectionError
 
 class ExportRange(BaseModel):
     start_time: Optional[datetime]

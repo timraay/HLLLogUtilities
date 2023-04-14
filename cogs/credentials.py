@@ -13,7 +13,7 @@ from lib.exceptions import HLLAuthError, HLLConnectionError, HLLConnectionRefuse
 from lib.rcon import create_plain_transport
 from lib.autosession import MIN_PLAYERS_TO_START, MIN_PLAYERS_UNTIL_STOP, SECONDS_BETWEEN_ITERATIONS, MAX_DURATION_MINUTES
 from lib.modifiers import ModifierFlags
-from discord_utils import CallableButton, get_error_embed, get_success_embed, get_question_embed, handle_error, CustomException, only_once, View, Modal
+from discord_utils import CallableButton, get_error_embed, get_success_embed, handle_error, CustomException, View, Modal
 
 MIN_ALLOWED_PORT = 1025
 MAX_ALLOWED_PORT = 65536
@@ -279,15 +279,21 @@ class SessionModifierView(View):
     async def callback(self, interaction: Interaction):
         return await self._callback(interaction, self.flags)
 
+async def autocomplete_credentials(interaction: Interaction, current: str):
+    choices = [app_commands.Choice(name=str(credentials), value=credentials.id)
+        for credentials in await credentials_in_guild_tll(interaction.guild_id) if current.lower() in str(credentials).lower()]
+    choices.append(app_commands.Choice(name="Custom", value=0))
+    return choices
+
+async def autocomplete_credentials_no_custom(interaction: Interaction, current: str):
+    return [app_commands.Choice(name=str(credentials), value=credentials.id)
+        for credentials in await credentials_in_guild_tll(interaction.guild_id) if current.lower() in str(credentials).lower()]
+
 class credentials(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
     Group = app_commands.Group(name="credentials", description="Manage your credentials")
-
-    async def autocomplete_credentials(self, interaction: Interaction, current: str):
-        return [app_commands.Choice(name=str(credentials), value=credentials.id)
-            for credentials in await credentials_in_guild_tll(interaction.guild_id) if current.lower() in str(credentials).lower()]
 
     @Group.command(name="list", description="Get a list of all known credentials")
     async def list_credentials(self, interaction: Interaction):
@@ -306,7 +312,7 @@ class credentials(commands.Cog):
         credentials="Credentials for RCON access"
     )
     @app_commands.autocomplete(
-        credentials=autocomplete_credentials
+        credentials=autocomplete_credentials_no_custom
     )
     async def remove_credentials(self, interaction: Interaction, credentials: int):
         credentials = Credentials.load_from_db(credentials)
@@ -346,7 +352,7 @@ class credentials(commands.Cog):
         credentials="Credentials for RCON access"
     )
     @app_commands.autocomplete(
-        credentials=autocomplete_credentials
+        credentials=autocomplete_credentials_no_custom
     )
     async def edit_credentials(self, interaction: Interaction, credentials: int):
         credentials = Credentials.load_from_db(credentials)
@@ -371,7 +377,7 @@ class credentials(commands.Cog):
         credentials="A server's credentials"
     )
     @app_commands.autocomplete(
-        credentials=autocomplete_credentials
+        credentials=autocomplete_credentials_no_custom
     )
     async def manage_autosession(self, interaction: Interaction, credentials: int):
         credentials: Credentials = Credentials.load_from_db(credentials)
