@@ -24,7 +24,7 @@ This is a non-exhaustive list in no particular order of everything I *may* add o
 - [x] Exporting statistics from a session or match
 - [x] Framework for custom match modifiers
 - [x] Automatic session scheduling
-- [ ] HeLO integration
+- [x] HeLO integration
 - [ ] Command localization
 
 # **Quickstart**
