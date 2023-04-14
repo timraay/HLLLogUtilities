@@ -183,7 +183,7 @@ class ExportRangeSelectView(View):
 
 
 class TeamSelectView(View):
-    def __init__(self, interaction: Interaction, callback: Callable, teams: list[dict], *args, timeout: float = 300.0,
+    def __init__(self, interaction: Interaction, callback: Callable, teams: List[dict], *args, timeout: float = 300.0,
                  **kwargs):
         super().__init__(*args, timeout=timeout, **kwargs)
         self.interaction = interaction
