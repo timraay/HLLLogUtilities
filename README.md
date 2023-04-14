@@ -61,6 +61,40 @@ If you want sessions to be automatically started instead of having to manually s
 
 > **NOTE:** All commands require **Manage Server permissions**. You can add exceptions for specific roles, channels and/or users under *Server Settings > Integrations > HLL Log Utilities*.
 
+# **Automatic session scheduling**
+
+Manually having to schedule sessions can be tedious and can be forgotten. That is why **AutoSession** exists! With AutoSession enabled, HLU will keep polling your server's player count even when no session is active, and start one once more than 70 players get online. When the player count drops below 30 again, or the session has been active for more than 5 hours, it will be stopped again.
+
+Manually starting a session will interrupt any automatically created session for that same server. When a session is ended, AutoSession will wait for the server to drop below the 30 player threshold first before any new automatic session can be started again.
+
+## Enabling AutoSession
+
+You can enable AutoSession with just a single click! To get started, just run the `/autosession` command and select the credentials of a server. Keep in mind that AutoSession is only able to work when you let HLU store your server's credentials. If you have not yet saved any, you can add credentials with the `/credentials add` command.
+
+## Full-time coverage
+
+Due to performance concerns, the public instance of the bot limits the duration of automatically created sessions to a maximum 5 hours, to avoid being able to provide full-time coverage of public servers, which, if enough communities were to enable, may negatively impact the bot's performance as a whole. As such, I kindly ask you to only use this feature for event servers and not public servers.
+
+A lot of the variables that make up AutoSession are exposed to people that [host their own instance of the bot](#setup-guide), however! So if you want full-time coverage for your public servers as well, you can simply increase the maximum duration and minimum player requirements!
+
+# **Game Modifiers**
+
+When creating a new session, you are given the option to enable modifiers. These modifiers can be used to enforce certain rules and track additional information, by listening and responding to incoming events from the game server.
+
+A list of available modifiers, including what they do and how they work, can be found below.
+
+- ## **No Panther**
+
+    The "No Panther" modifier aims to reduce faction imbalance by disallowing the use of Panther tanks. Getting a kill with a Panther will kill its entire crew, as well as their team's commander.
+
+- ## **One-man arty**
+
+    The "One-man Arty" modifiers aims to assist with the enforcement of rules that limit the use of artillery down to one gunner per team. The moment a player gets a kill with artillery, they become slotted in as that team's designated artillery gunner.
+
+    While this modifier is active, artillery gunners cannot be killed. Similarly, artillery players may not use any weapons other than artillery to target infantry.
+
+    If any of the above rules are violated, including having a second player jump on artillery and getting a kill with it, up to 10 random players on that team will be admin-killed. Only when the team's artillery gunner stays disconnected for more than 5 minutes will the commander get a message that someone new may now jump on artillery.
+
 # **Setup Guide**
 
 > **NOTE:** You don't need to set up your own instance of the bot! You can use the public instance as well, the invite link for which can be found in the guide above. Self-hosting does provide you with a little more security though, as well as a handful of extra configuration options.
@@ -116,40 +150,6 @@ python bot.py
 > **NOTE:** The exact command may vary per installation. On Windows it often will be `py` instead of `python`, and on Unix-like systems it is often `python3`.
 
 This terminal will need to stay open for the bot to work. Closing down this terminal will also shut down the bot.
-
-# **Automatic session scheduling**
-
-Manually having to schedule sessions can be tedious and can be forgotten. That is why **AutoSession** exists! With AutoSession enabled, HLU will keep polling your server's player count even when no session is active, and start one once more than 70 players get online. When the player count drops below 30 again, or the session has been active for more than 5 hours, it will be stopped again.
-
-Manually starting a session will interrupt any automatically created session for that same server. When a session is ended, AutoSession will wait for the server to drop below the 30 player threshold first before any new automatic session can be started again.
-
-## Enabling AutoSession
-
-You can enable AutoSession with just a single click! To get started, just run the `/autosession` command and select the credentials of a server. Keep in mind that AutoSession is only able to work when you let HLU store your server's credentials. If you have not yet saved any, you can add credentials with the `/credentials add` command.
-
-## Full-time coverage
-
-Due to performance concerns, the public instance of the bot limits the duration of automatically created sessions to a maximum 5 hours, to avoid being able to provide full-time coverage of public servers, which, if enough communities were to enable, may negatively impact the bot's performance as a whole. As such, I kindly ask you to only use this feature for event servers and not public servers.
-
-A lot of the variables that make up AutoSession are exposed to people that [host their own instance of the bot](#setup-guide), however! So if you want full-time coverage for your public servers as well, you can simply increase the maximum duration and minimum player requirements!
-
-# **Game Modifiers**
-
-When creating a new session, you are given the option to enable modifiers. These modifiers can be used to enforce certain rules and track additional information, by listening and responding to incoming events from the game server.
-
-A list of available modifiers, including what they do and how they work, can be found below.
-
-- ## **No Panther**
-
-    The "No Panther" modifier aims to reduce faction imbalance by disallowing the use of Panther tanks. Getting a kill with a Panther will kill its entire crew, as well as their team's commander.
-
-- ## **One-man arty**
-
-    The "One-man Arty" modifiers aims to assist with the enforcement of rules that limit the use of artillery down to one gunner per team. The moment a player gets a kill with artillery, they become slotted in as that team's designated artillery gunner.
-
-    While this modifier is active, artillery gunners cannot be killed. Similarly, artillery players may not use any weapons other than artillery to target infantry.
-
-    If any of the above rules are violated, including having a second player jump on artillery and getting a kill with it, up to 10 random players on that team will be admin-killed. Only when the team's artillery gunner stays disconnected for more than 5 minutes will the commander get a message that someone new may now jump on artillery.
 
 <br>
 
