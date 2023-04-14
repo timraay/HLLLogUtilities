@@ -3,6 +3,7 @@ import json
 import discord
 from io import StringIO
 from functools import wraps
+from typing import List
 
 import aiohttp
 from aiohttp import FormData
@@ -57,7 +58,7 @@ class HSSApi:
                 raise HTTPException(resp.status, 'An unknown error occurred submitting your match. Error: ' + body.get('error'))
 
     @retry_then_raise
-    async def teams(self) -> list[HSSTeam]:
+    async def teams(self) -> List[HSSTeam]:
         async with aiohttp.ClientSession() as sess:
             async with sess.get('{0}/teams'.format(self.api_url)) as resp:
                 if resp.status != http.HTTPStatus.OK:
