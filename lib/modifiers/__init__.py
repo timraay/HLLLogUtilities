@@ -1,22 +1,30 @@
 from .base import Modifier
+from .modifier_notif import ModifierNotifModifier
 from .no_panther import NoPantherModifier
 from .one_arty import OneArtyModifier
 
-from typing import TYPE_CHECKING, Tuple, Type, Union
-
-if TYPE_CHECKING:
-    from lib.session import HLLCaptureSession
+from typing import Tuple, Type
 
 __all__ = (
     'ALL_MODIFIERS',
     'get_modifier',
     'Modifier',
     'ModifierFlags',
+
+    'ModifierNotifModifier',
+    'NoPantherModifier',
+    'OneArtyModifier',
 )
 
 ALL_MODIFIERS: Tuple[Type[Modifier], ...] = (
+    ModifierNotifModifier,
     NoPantherModifier,
     OneArtyModifier,
+)
+
+INTERNAL_MODIFIERS: Tuple[Type[Modifier], ...] = tuple(
+    modifier for modifier in ALL_MODIFIERS
+    if modifier.config.hidden
 )
 
 

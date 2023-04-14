@@ -6,8 +6,8 @@ import logging
 
 from lib.info.models import *
 
-DB_VERSION = 3
-HLU_VERSION = "v1.5.0"
+DB_VERSION = 5
+HLU_VERSION = "v2.0.0"
 
 class LogLine(BaseModel):
     event_time: datetime = None
@@ -154,6 +154,13 @@ CREATE TABLE IF NOT EXISTS "credentials" (
 );
 """)
 cursor.execute("""
+CREATE TABLE IF NOT EXISTS "hss_api_keys" (
+	"guild_id"	VARCHAR(18) NOT NULL,
+	"tag"	VARCHAR(10) NOT NULL,
+	"key"	VARCHAR(55)
+);
+""")
+cursor.execute("""
 CREATE TABLE IF NOT EXISTS "sessions" (
 	"guild_id"	INTEGER NOT NULL,
 	"name"	VARCHAR(40) NOT NULL,
@@ -233,6 +240,32 @@ elif db_version < DB_VERSION:
                      'player_offense_score', 'player_defense_score', 'player_support_score', 'player2_name', 'player2_steamid', 'player2_team',
                      'player2_role', 'weapon', 'old', 'new', 'team_name', 'squad_name', 'message']
             )
+    
+    if db_version < 4:
+        # Add a "default_modifiers" column to the "credentials" table
+        cursor.execute('ALTER TABLE "credentials" ADD "default_modifiers" INTEGER DEFAULT 0 NOT NULL;')
+
+    if db_version < 5:
+        # Add a "autosession_enabled" column to the "credentials" table
+        cursor.execute('ALTER TABLE "credentials" ADD "autosession_enabled" BOOLEAN NOT NULL CHECK ("autosession_enabled" IN (0, 1)) DEFAULT 0;')
+
+        # Remove NOT NULL constraint from "end_time" column of the "sessions" table
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS "sessions_new" (
+            "guild_id"	INTEGER NOT NULL,
+            "name"	VARCHAR(40) NOT NULL,
+            "start_time"	VARCHAR(30) NOT NULL,
+            "end_time"	VARCHAR(30),
+            "deleted"	BOOLEAN NOT NULL CHECK ("deleted" IN (0, 1)) DEFAULT 0,
+            "credentials_id"	INTEGER,
+            "modifiers" INTEGER DEFAULT 0 NOT NULL,
+            FOREIGN KEY(credentials_id) REFERENCES credentials(ROWID) ON DELETE SET NULL
+        );
+        """)
+        cursor.execute('INSERT INTO "sessions_new" SELECT * FROM "sessions";')
+        cursor.execute(str(Query.drop_table("sessions")))
+        cursor.execute('ALTER TABLE "sessions_new" RENAME TO "sessions";')
+
 
     cursor.execute('UPDATE "db_version" SET "format_version" = ?', (DB_VERSION,))
     database.commit()

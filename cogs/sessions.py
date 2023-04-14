@@ -5,22 +5,17 @@ from discord.utils import escape_markdown as esc_md
 from datetime import datetime, timedelta, timezone
 from dateutil.parser import parse as dt_parse
 from enum import Enum
-from io import StringIO
 from traceback import print_exc
-from typing import Callable
 
 from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions, assert_name
-from lib.credentials import Credentials, credentials_in_guild_tll
-from lib.converters import Converter, ExportFormats
+from lib.credentials import Credentials
 from lib.storage import cursor
 from lib.modifiers import ModifierFlags
-from cogs.credentials import RCONCredentialsModal, SECURITY_URL
-from discord_utils import CallableButton, CustomException, get_success_embed, only_once, View, ExpiredButtonError
+from cogs.credentials import RCONCredentialsModal, SessionModifierView, SECURITY_URL, MODIFIERS_URL, autocomplete_credentials
+from discord_utils import CallableButton, CustomException, get_success_embed, get_question_embed, only_once, View, ExpiredButtonError, get_command_mention
 from utils import get_config
 
 MAX_SESSION_DURATION = timedelta(minutes=get_config().getint('Session', 'MaxDurationInMinutes'))
-
-MODIFIERS_URL = "https://github.com/timraay/HLLLogUtilities/blob/main/README.md"
 
 class SessionFilters(Enum):
     all = "all"
@@ -28,12 +23,6 @@ class SessionFilters(Enum):
     ongoing = "ongoing"
     finished = "finished"
 
-
-async def autocomplete_credentials(interaction: Interaction, current: str):
-    choices = [app_commands.Choice(name=str(credentials), value=credentials.id)
-        for credentials in await credentials_in_guild_tll(interaction.guild_id) if current.lower() in str(credentials).lower()]
-    choices.append(app_commands.Choice(name="Custom", value=0))
-    return choices
 
 async def autocomplete_end_time(_: Interaction, current: str):
     if current != "":
@@ -96,7 +85,7 @@ class SessionCreateView(View):
         self.start_time = start_time
         self.end_time = end_time
 
-        self.modifiers = ModifierFlags()
+        self.modifiers = credentials.default_modifiers.copy()
         self._message = None
         self.__created = False
     
@@ -239,47 +228,33 @@ class SessionCreateView(View):
         view = SessionModifierView(self._message, self.updated_modifiers, flags=self.modifiers)
         await interaction.response.edit_message(content="Select all of the modifiers you want to enable by clicking on the buttons below", view=view, embed=None)
     
-    async def updated_modifiers(self, interaction: discord.Interaction, modifiers: ModifierFlags):
-        self.modifiers = modifiers
-        await interaction.response.edit_message(content=None, view=self, embed=self.get_embed())
+    async def updated_modifiers(self, interaction: discord.Interaction, modifiers: ModifierFlags, _skip_save_default=False):
+        if (not _skip_save_default
+            and not self.credentials.temporary
+            and modifiers != self.credentials.default_modifiers):
+            
+            @only_once
+            async def save_as_default(interaction: Interaction):
+                self.credentials.default_modifiers = modifiers.copy()
+                self.credentials.save()
+                await self.updated_modifiers(interaction, modifiers, _skip_save_default=True)
 
+            @only_once
+            async def skip_save_default(interaction: Interaction):
+                await self.updated_modifiers(interaction, modifiers, _skip_save_default=True)
 
-class SessionModifierView(View):
-    def __init__(self, message: discord.InteractionMessage, callback: Callable, flags: ModifierFlags = None, timeout: float = 300.0, **kwargs):
-        super().__init__(timeout=timeout, **kwargs)
-        self.message = message
-        self._callback = callback
-        self.flags = flags or ModifierFlags()
-        self.update_self()
-    
-    options = []
-    for m_id, _ in ModifierFlags():
-        flag = ModifierFlags(**{m_id: True})
-        m = next(flag.get_modifier_types())
-        options.append((m.config.name, m.config.emoji, flag))
-    
-    async def toggle_value(self, interaction: Interaction, flags: ModifierFlags, enable: bool):
-        if enable:
-            self.flags |= flags
+            view = View()
+            view.add_item(CallableButton(save_as_default, style=ButtonStyle.blurple, label="Set as default"))
+            view.add_item(CallableButton(skip_save_default, style=ButtonStyle.gray, label="Skip"))
+
+            await interaction.response.edit_message(content=None, view=view, embed=get_question_embed(
+                "Do you want to save these modifiers as the default for this server?",
+                "That way you don't have to re-enable them for every session. You can always change your preferences again later."
+            ))
+
         else:
-            self.flags ^= (self.flags & flags)
-        
-        await self.message.edit(view=self.update_self())
-        await interaction.response.defer()
-
-    def update_self(self):
-        self.clear_items()
-        for (name, emoji, flags) in self.options:
-            enabled = (flags <= self.flags) # Subset of
-            style = ButtonStyle.green if enabled else ButtonStyle.red
-            self.add_item(CallableButton(self.toggle_value, flags, not enabled, label=name, emoji=emoji, style=style))
-        self.add_item(CallableButton(self.callback, label="Back...", style=ButtonStyle.gray))
-
-        return self
-    
-    async def callback(self, interaction: Interaction):
-        return await self._callback(interaction, self.flags)
-
+            self.modifiers = modifiers
+            await interaction.response.edit_message(content=None, view=self, embed=self.get_embed())
 
 class sessions(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -293,7 +268,8 @@ class sessions(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        """Initialize all sessions"""
+        """Initialize all sessions and autosessions"""
+
         cursor.execute("SELECT ROWID FROM sessions WHERE deleted = 0")
         for (id_,) in cursor.fetchall():
             if id_ not in SESSIONS:
@@ -301,6 +277,15 @@ class sessions(commands.Cog):
                     HLLCaptureSession.load_from_db(id_)
                 except:
                     print('Failed to load session', id_)
+                    print_exc()
+        
+        cursor.execute("SELECT ROWID FROM credentials WHERE autosession_enabled = 1")
+        for (id_,) in cursor.fetchall():
+            if id_ not in SESSIONS:
+                try:
+                    Credentials.load_from_db(id_)
+                except:
+                    print('Failed to load credentials and initialize autosession', id_)
                     print_exc()
 
         if not self.session_manager.is_running():
@@ -431,9 +416,10 @@ class sessions(commands.Cog):
                 for session in sessions:
                     description += f"\n> • {esc_md(session.name)} (<t:{int(session.end_time.timestamp())}:R>) **[🗑️ <t:{int((session.end_time + DELETE_SESSION_AFTER).timestamp())}:R>]**\n> ⤷ <t:{int(session.start_time.timestamp())}:f> > <t:{int(session.end_time.timestamp())}:t> ({int(session.duration.total_seconds() // 60)} min.)"
 
+        mention = await get_command_mention(self.bot.tree, 'session', 'new')
         embed = discord.Embed(
             title=f"There are {count} {'total' if filter == SessionFilters.all else filter.value} sessions",
-            description=description or "Sessions can be created with the `/session new` command."
+            description=description or f"Sessions can be created with the {mention} command."
         )
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -496,29 +482,6 @@ class sessions(commands.Cog):
         view.add_item(CallableButton(on_confirm, label="Confirm", style=ButtonStyle.gray))
 
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-
-    @SessionGroup.command(name="logs", description="DEPRECATED: Use the /export command instead")
-    @app_commands.describe(
-        session="A log capture session",
-        format="The format the logs should be exported in"
-    )
-    @app_commands.autocomplete(
-        session=autocomplete_sessions
-    )
-    async def get_logs_from_session(self, interaction: Interaction, session: int, format: ExportFormats = ExportFormats.text):
-        session: HLLCaptureSession = SESSIONS[session]
-        converter: Converter = format.value
-
-        logs = session.get_logs()
-        fp = StringIO(converter.convert_many(logs))
-        file = discord.File(fp, filename=session.name + '.' + converter.ext())
-
-        await interaction.response.send_message(
-            content=f"Logs for **{esc_md(session.name)}**\n> *NOTE: This command has been deprecated and will be removed in the future. Use the `/export` command instead.*",
-            file=file
-        )
-
 
 async def setup(bot):
     await bot.add_cog(sessions(bot))

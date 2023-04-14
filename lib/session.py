@@ -9,7 +9,7 @@ from lib.rcon import HLLRcon
 from lib.credentials import Credentials
 from lib.storage import LogLine, database, cursor, insert_many_logs, delete_logs
 from lib.exceptions import NotFound, SessionDeletedError, SessionAlreadyRunningError, SessionMissingCredentialsError
-from lib.modifiers import ModifierFlags
+from lib.modifiers import ModifierFlags, INTERNAL_MODIFIERS
 from lib.info.models import EventFlags, EventModel, ActivationEvent, IterationEvent, DeactivationEvent, InfoHopper, PrivateEventModel
 from lib.info.events import EventListener
 from utils import get_config, schedule_coro, get_logger
@@ -17,6 +17,9 @@ from utils import get_config, schedule_coro, get_logger
 SECONDS_BETWEEN_ITERATIONS = get_config().getint('Session', 'SecondsBetweenIterations')
 NUM_LOGS_REQUIRED_FOR_INSERT = get_config().getint('Session', 'NumLogsRequiredForInsert')
 DELETE_SESSION_AFTER = timedelta(days=get_config().getint('Session', 'DeleteAfterDays'))
+MIN_PLAYERS_UNTIL_AUTOSESSION_STOP = get_config().getint('AutoSession', 'MinPlayersUntilStop')
+MAX_AUTOSESSION_DURATION_MINUTES = get_config().getint('AutoSession', 'MaxDurationInMinutes')
+MIN_PLAYERS_ITERATIONS_UNTIL_STOP = 10
 SESSIONS: Dict[int, 'HLLCaptureSession'] = dict()
 
 def assert_name(name: str):
@@ -26,7 +29,7 @@ def get_sessions(guild_id: int):
     return sorted([sess for sess in SESSIONS.values() if sess.guild_id == guild_id], key=lambda sess: sess.start_time)
 
 class HLLCaptureSession:
-    def __init__(self, id: int, guild_id: int, name: str, start_time: datetime, end_time: datetime,
+    def __init__(self, id: int, guild_id: int, name: str, start_time: datetime, end_time: Union[datetime, None],
             credentials: Credentials, modifiers: ModifierFlags = ModifierFlags(), loop: asyncio.AbstractEventLoop = None):
         self.id = id
         self.guild_id = guild_id
@@ -36,6 +39,13 @@ class HLLCaptureSession:
         self.credentials = credentials
         self.loop = loop or asyncio.get_running_loop()
         self._logs = list()
+        self._session_expiration_count = 0
+
+        if not self.end_time:
+            self.is_auto_session = True
+            self.end_time = self.start_time + timedelta(minutes=MAX_AUTOSESSION_DURATION_MINUTES)
+        else:
+            self.is_auto_session = False
 
         if self.id in SESSIONS:
             raise SessionAlreadyRunningError("A session with ID %s is already running")
@@ -45,10 +55,9 @@ class HLLCaptureSession:
         self.rcon = None
         self.info = None
 
-        self.modifiers = [modifier(self) for modifier in modifiers.get_modifier_types()]
+        self.modifiers = [modifier(self) for modifier in INTERNAL_MODIFIERS] + [modifier(self) for modifier in modifiers.get_modifier_types()]
         self.modifier_flags = modifiers.copy()
-        if self.modifiers:
-            self.logger.info("Installed modifiers: %s", ", ".join([modifier.config.name for modifier in self.modifiers]))
+        self.logger.info("Installed modifiers: %s", ", ".join([modifier.config.name for modifier in self.modifiers]))
         
         if self.active_in():
             self._start_task = schedule_coro(self.start_time, self.activate, error_logger=self.logger)
@@ -84,14 +93,14 @@ class HLLCaptureSession:
             guild_id=int(res[1]),
             name=str(res[2]),
             start_time=datetime.fromisoformat(res[3]),
-            end_time=datetime.fromisoformat(res[4]),
+            end_time=datetime.fromisoformat(res[4]) if res[4] else None,
             credentials=credentials,
             modifiers=ModifierFlags(int(res[7]))
         )
     
     @classmethod
     def create_in_db(cls, guild_id: int, name: str, start_time: datetime, end_time: datetime, credentials: Credentials, modifiers: ModifierFlags = ModifierFlags()):
-        if datetime.now(tz=timezone.utc) > end_time:
+        if end_time is not None and datetime.now(tz=timezone.utc) > end_time:
             raise ValueError('This capture session would have already ended')
 
         name = assert_name(name)
@@ -122,9 +131,15 @@ class HLLCaptureSession:
     def __str__(self):
         return f"{self.name} ({self.credentials.name})" if self.credentials else f"{self.name} (⚠️)"
 
+    def __eq__(self, other):
+        if isinstance(other, HLLCaptureSession):
+            return self.id == other.id
+        return False
+
     def save(self):
         cursor.execute("""UPDATE sessions SET name = ?, start_time = ?, end_time = ?, credentials_id = ?, modifiers = ? WHERE ROWID = ?""",
-            (self.name, self.start_time, self.end_time, self.credentials.id if self.credentials else None, self.modifier_flags.value, self.id))
+            (self.name, self.start_time, self.end_time if not self.is_auto_session else None, self.credentials.id if self.credentials else None,
+             self.modifier_flags.value, self.id))
         database.commit()
 
     def active_in(self) -> Union[timedelta, bool]:
@@ -140,8 +155,10 @@ class HLLCaptureSession:
         now = datetime.now(tz=timezone.utc)
         if self.start_time > now:
             return now - self.start_time
-        else:
+        elif self.end_time:
             return self.end_time > now
+        else:
+            return True
     
     def should_delete(self):
         return datetime.now(tz=timezone.utc) > (self.end_time + DELETE_SESSION_AFTER)
@@ -149,6 +166,15 @@ class HLLCaptureSession:
     async def activate(self):
         if not self.credentials:
             raise SessionMissingCredentialsError(f"Session with ID {self.id} does not have server credentials")
+        
+        autosession = next((
+            session for session in get_sessions(self.credentials.guild_id)
+            if session.credentials == self.credentials and session != self and session.is_auto_session
+        ), None)
+        if autosession:
+            autosession.credentials.autosession.logger.info("Disabling active session since a manual session was started")
+            await autosession.stop()
+
         if self.rcon is None:
             self.rcon = HLLRcon(session=self)
         self.gatherer.start()
@@ -157,6 +183,7 @@ class HLLCaptureSession:
         # self.push_to_db()   This is handled by the gather after_loop
 
     async def stop(self):
+        self.is_auto_session = False
         active = self.active_in()
 
         if active == False:
@@ -175,31 +202,46 @@ class HLLCaptureSession:
     async def gatherer(self):
         info = await self.rcon.update()
 
-        if not info:
-            return
+        if info:
+            if self.info:
+                info.compare_older(self.info, event_time=self.rcon._logs_seen_time)
 
-        if self.info:
-            info.compare_older(self.info, event_time=self.rcon._logs_seen_time)
-        self.info = info
+            self.info = info
+            
+            events = list(info.events.flatten())
+            events.insert(0, IterationEvent(info))
+            for event in events:
+                if not isinstance(event, PrivateEventModel):
+                    try:
+                        log = LogLine.from_event(event)
+                        # print(event.to_dict(exclude_unset=True))
+                    except:
+                        self.logger.exception('Failed to cast event to log line: %s %s' % (type(event).__name__, event.to_dict(exclude_unset=True)))
+                    else:
+                        self._logs.append(log)
+                
+                for modifier in self.modifiers:
+                    for listener in modifier.get_listeners_for_event(event):
+                        asyncio.create_task(listener.invoke(modifier, event))
+                
+            if len(self._logs) > NUM_LOGS_REQUIRED_FOR_INSERT:
+                self.push_to_db()
         
-        events = list(info.events.flatten())
-        events.insert(0, IterationEvent(info))
-        for event in events:
-            if not isinstance(event, PrivateEventModel):
-                try:
-                    log = LogLine.from_event(event)
-                    # print(event.to_dict(exclude_unset=True))
-                except:
-                    self.logger.exception('Failed to cast event to log line: %s %s' % (type(event).__name__, event.to_dict(exclude_unset=True)))
-                else:
-                    self._logs.append(log)
+        if self.is_auto_session:
+            playercount = len(info.get('players', [])) if info else 0
+            if playercount < MIN_PLAYERS_UNTIL_AUTOSESSION_STOP:
+                self._session_expiration_count += 1
+                self.credentials.autosession.logger.info("%s/%s players online, session will expire after %s more iterations",
+                    playercount, MIN_PLAYERS_UNTIL_AUTOSESSION_STOP, MIN_PLAYERS_ITERATIONS_UNTIL_STOP - self._session_expiration_count)
+            else:
+                if self._session_expiration_count != 0:
+                    self.credentials.autosession.logger.info("%s/%s players online, session expiration has been cancelled",
+                        playercount, MIN_PLAYERS_UNTIL_AUTOSESSION_STOP)
+                self._session_expiration_count = 0
             
-            for modifier in self.modifiers:
-                for listener in modifier.get_listeners_for_event(event):
-                    asyncio.create_task(listener.invoke(modifier, event))
-            
-        if len(self._logs) > NUM_LOGS_REQUIRED_FOR_INSERT:
-            self.push_to_db()
+            if self._session_expiration_count >= MIN_PLAYERS_ITERATIONS_UNTIL_STOP:
+                self.logger.info("The session has expired and will be stopped")
+                await self.stop()
 
     @gatherer.before_loop
     async def before_gatherer_start(self):
@@ -208,6 +250,8 @@ class HLLCaptureSession:
         except Exception:
             self.logger.exception('Failed to start RCON')
         
+        self._session_expiration_count = 0
+
         event = ActivationEvent(InfoHopper())
         coros = list()
         for modifier in self.modifiers:

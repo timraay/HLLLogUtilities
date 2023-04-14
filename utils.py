@@ -136,10 +136,23 @@ logging.basicConfig(
 )
 if not LOGS_FOLDER.exists():
     LOGS_FOLDER.mkdir()
+
+def _assert_filename(text: str):
+    return text.encode('utf-8', errors='ignore').decode('ascii', errors='ignore').replace(' ', '_')
+
 def get_logger(session):
     logger = logging.getLogger(str(session.id))
     if not logger.handlers:
-        name = f"sess{session.id}_{session.name.encode('utf-8', errors='ignore').decode('ascii', errors='ignore').replace(' ', '_')}.log"
+        name = f"sess{session.id}_{_assert_filename(session.name)}.log"
+        handler = logging.FileHandler(filename=LOGS_FOLDER / name, encoding='utf-8')
+        handler.setFormatter(logging.Formatter(LOGS_FORMAT))
+        logger.addHandler(handler)
+    return logger
+
+def get_autosession_logger(autosession):
+    logger = logging.getLogger(f"auto_{autosession.id}")
+    if not logger.handlers:
+        name = f"auto{autosession.id}_{_assert_filename(autosession.credentials.name)}.log"
         handler = logging.FileHandler(filename=LOGS_FOLDER / name, encoding='utf-8')
         handler.setFormatter(logging.Formatter(LOGS_FORMAT))
         logger.addHandler(handler)

@@ -1,8 +1,6 @@
 import discord
-from discord import Interaction, app_commands
+from discord import Interaction
 from discord.ext import commands, tasks
-import random
-from datetime import datetime, timedelta
 
 from discord_utils import handle_error
 from lib.session import SESSIONS

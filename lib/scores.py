@@ -276,8 +276,8 @@ class DataStore:
     def to_text(self, single_match: bool = True):
         data = sorted(self.players, key=lambda player: player.kills_per_minute*1000000-player.deaths, reverse=True)
     
-        headers = ['RANK', 'NAME', 'KILLS', 'DEATHS', 'K/D', 'TKS', 'SUIC', 'STREAK', 'WEAPON', 'VICTIM', 'NEMESIS', 'COMB', 'DEF', 'OFF', 'SUPP', 'PLAYTIME'] if single_match else \
-            ['RANK', 'STEAMID', 'PLAYED', 'NAME', 'KILLS', 'DEATHS', 'K/D', 'TKS', 'SUIC', 'STREAK', 'WEAPON', 'VICTIM', 'NEMESIS', 'COMB', 'DEF', 'OFF', 'SUPP', 'PLAYTIME', 'K/MIN']
+        headers = ['RANK', 'NAME', 'KILLS', 'DEATHS', 'K/D', 'TKS', 'SUIC', 'STREAK', 'WEAPON', 'VICTIM', 'NEMESIS', 'COMB', 'OFF', 'DEF', 'SUPP', 'PLAYTIME'] if single_match else \
+            ['RANK', 'STEAMID', 'PLAYED', 'NAME', 'KILLS', 'DEATHS', 'K/D', 'TKS', 'SUIC', 'STREAK', 'WEAPON', 'VICTIM', 'NEMESIS', 'COMB', 'OFF', 'DEF', 'SUPP', 'PLAYTIME', 'K/MIN']
 
         if single_match:
             output = "{: <5} {: <25} {: <6} {: <6} {: <5} {: <5} {: <5} {: <6} {: <27} {: <25} {: <25} {: <4} {: <4} {: <4} {: <4} {}".format(*headers)
@@ -359,6 +359,10 @@ class MatchData(DataStore):
                 else:
                     weapon = mappings.WEAPONS[weapon]
 
+            # Update player score
+            if log.player_combat_score is not None:
+                killer_data.update_score(log)
+
             # Process event
             if log_type == EventTypes.player_kill:
                 killer_data.update_faction(killer_faction)
@@ -380,10 +384,6 @@ class MatchData(DataStore):
                 killer_data.join(log.event_time)
             elif log_type == EventTypes.player_leave_server:
                 killer_data.leave(log.event_time)
-            
-            # Update player score
-            if log.player_combat_score is not None:
-                killer_data.update_score(log)
 
             # Update player faction
             elif log_type == EventTypes.player_switch_team:

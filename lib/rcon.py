@@ -68,7 +68,7 @@ def update_method(func):
             try:
                 await self.start(force=True)
                 self.logger.info('Reconnected %r!', self)
-            except:
+            except Exception:
                 self.logger.exception('Failed to reconnect %r. Missed %s consecutive gathers.', self, self._missed_gathers + 1)
 
         if not self.connected:
@@ -79,7 +79,7 @@ def update_method(func):
         if self.connected:
             try:
                 res = await asyncio.wait_for(func(self, *args, **kwargs), timeout=10)
-            except:
+            except Exception:
                 self._missed_gathers += 1
                 self.logger.exception('Missed %s consecutive updates for %r, %s attempts left', self._missed_gathers, self, 20-self._missed_gathers)
                 if self._missed_gathers in (4, 8, 12, 16, 20) or self._missed_gathers % 20 == 0:
@@ -127,7 +127,7 @@ class HLLRcon:
                 worker = HLLRconWorker(parent=self, name=f"Worker #{num}")
                 await worker.start()
                 self.logger.info('Started worker %s', worker.name)
-            except:
+            except Exception:
                 if i == 0:
                     raise
                 else:
@@ -518,7 +518,7 @@ class HLLRcon:
                             self.info.events.add(PlayerExitAdminCamEvent(self.info, event_time=time, player=player))
 
                     elif log.startswith('MATCH START'):
-                        map_name = log[12:]
+                        map_name = log[12:].strip()
                         self.info.events.add(
                             ServerMatchStartedEvent(self.info, event_time=time, map=map_name)
                         )

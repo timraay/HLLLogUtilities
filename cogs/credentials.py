@@ -1,24 +1,27 @@
 import discord
-from discord import app_commands, ui, Interaction
+from discord import app_commands, ui, Interaction, ButtonStyle
 from discord.ext import commands
 from discord.utils import escape_markdown as esc_md
 from ipaddress import IPv4Address
+from datetime import timedelta
 import asyncio
-from typing import Optional
+from typing import Optional, Callable
 import logging
 
 from lib.credentials import Credentials, credentials_in_guild_tll
 from lib.exceptions import HLLAuthError, HLLConnectionError, HLLConnectionRefusedError, HLLError
 from lib.rcon import create_plain_transport
-from discord_utils import CallableButton, get_error_embed, get_success_embed, handle_error, CustomException, only_once, View
-from utils import get_config
+from lib.autosession import MIN_PLAYERS_TO_START, MIN_PLAYERS_UNTIL_STOP, SECONDS_BETWEEN_ITERATIONS, MAX_DURATION_MINUTES
+from lib.modifiers import ModifierFlags
+from discord_utils import CallableButton, get_error_embed, get_success_embed, handle_error, CustomException, View, Modal
 
 MIN_ALLOWED_PORT = 1025
 MAX_ALLOWED_PORT = 65536
 
 SECURITY_URL = "https://github.com/timraay/HLLLogUtilities/blob/main/SECURITY.md"
+MODIFIERS_URL = "https://github.com/timraay/HLLLogUtilities/blob/main/README.md"
 
-class RCONCredentialsModal(ui.Modal):
+class RCONCredentialsModal(Modal):
     name = ui.TextInput(label="Server Name - How I should call this server", placeholder="My HLL Server #1", required=True, max_length=60)
     address = ui.TextInput(label="RCON Address - To connect to RCON", placeholder="XXX.XXX.XXX.XXX:XXXXX", required=True, min_length=12, max_length=21)
     password = ui.TextInput(label="RCON Password - For authentication", required=True, max_length=40)
@@ -107,15 +110,190 @@ class RCONCredentialsModal(ui.Modal):
     async def on_error(self, interaction: Interaction, error: Exception):
         await handle_error(interaction, error)
 
+class AutoSessionView(View):
+    def __init__(self, credentials: Credentials, guild: discord.Guild):
+        super().__init__()
+        self.credentials = credentials
+        self.guild = guild
+        self.modifiers = credentials.default_modifiers.copy()
+        self.message = None
+
+        if self.enabled:
+            self.button = CallableButton(self.disable_button_cb, label="Disable", style=discord.ButtonStyle.red)
+        else:
+            self.button = CallableButton(self.enable_button_cb, label="Enable", style=discord.ButtonStyle.green)
+        
+        self.add_item(self.button)
+        self.add_item(CallableButton(self.select_modifiers_cb, label="Modifiers...", style=discord.ButtonStyle.blurple))
+        self.add_item(ui.Button(label="Docs", style=discord.ButtonStyle.blurple, url="https://github.com/timraay/HLLLogUtilities#automatic-session-scheduling"))
+        self.add_item(CallableButton(self.update, emoji="🔄", style=discord.ButtonStyle.gray))
+    
+    @property
+    def autosession(self):
+        return self.credentials.autosession
+    
+    @property
+    def enabled(self):
+        return self.autosession.enabled
+
+    def get_embed(self):
+        if self.guild.icon is not None:
+            icon_url = self.guild.icon.url
+        else:
+            icon_url = None
+        
+        embed = discord.Embed(
+            description="⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯",
+        ).set_author(
+            name=str(self.credentials),
+            icon_url=icon_url
+        ).set_footer(
+            text=(
+                "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+                f"Automatically start sessions with AutoSession! As soon as {MIN_PLAYERS_TO_START}\n"
+                "or more players get online a new session will automatically be\n"
+                f"started, which automatically ends after {(MAX_DURATION_MINUTES+59) // 60} hours or when the\n"
+                f"server drops below {MIN_PLAYERS_UNTIL_STOP} players again."
+            )
+        )
+
+        if self.credentials.autosession_enabled:
+            session = self.autosession.get_active_session()
+
+            if session:
+                ts = int(session.start_time.timestamp())
+                embed.title = "AutoSession is currently enabled."
+                embed.color = discord.Colour.from_rgb(52,205,43)
+                embed.add_field(name="Status", value="\🟢Enabled", inline=True)
+                embed.add_field(name="Currently recording...", value=f"<t:{ts}:t> (<t:{ts}:R>)", inline=True)
+            
+            elif self.autosession.is_slowed:
+                ts = int(self.autosession.last_seen_time.timestamp())
+                embed.title = "AutoSession is having issues!"
+                embed.color = discord.Colour.from_rgb(235,49,64)
+                embed.add_field(name="Status", value="\🟠Problems", inline=True)
+                embed.add_field(name="Last successful update", value=f"<t:{ts}:t> (<t:{ts}:R>)", inline=True)
+                embed.add_field(name="Most recent error", value=self.autosession.last_error, inline=False)
+            
+            elif not self.autosession._cooldown:
+                ts = int(self.autosession.last_seen_time.timestamp())
+                embed.title = "AutoSession is currently enabled."
+                embed.color = discord.Colour.from_rgb(52,205,43)
+                embed.add_field(name="Status", value="\🟢Enabled", inline=True)
+                embed.add_field(name="Waiting for players...", value=f"{self.autosession.last_seen_playercount}/{MIN_PLAYERS_TO_START} players (<t:{ts}:R>)", inline=True)
+            
+            elif self.autosession.last_seen_playercount >= MIN_PLAYERS_UNTIL_STOP:
+                ts = int(self.autosession.last_seen_time.timestamp())
+                embed.title = "AutoSession is currently enabled."
+                embed.color = discord.Colour.from_rgb(255,243,33)
+                embed.add_field(name="Status", value="\🟡Cooldown", inline=True)
+                embed.add_field(name="Waiting for players...", value=f"{self.autosession.last_seen_playercount}/{MIN_PLAYERS_UNTIL_STOP} players (<t:{ts}:R>)", inline=True)
+            
+            else:
+                ts = int((self.autosession.last_seen_time + self.autosession._cooldown * timedelta(SECONDS_BETWEEN_ITERATIONS)).timestamp())
+                embed.title = "AutoSession is currently enabled."
+                embed.color = discord.Colour.from_rgb(255,243,33)
+                embed.add_field(name="Status", value="\🟡Cooldown", inline=True)
+                embed.add_field(name="Available soon...", value=f"<t:{ts}:t> (<t:{ts}:R>)", inline=True)
+
+        else:
+            embed.title = "AutoSession is currently disabled!"
+            embed.add_field(name="Status", value="\🔴Disabled", inline=True)
+            embed.add_field(name="Documentation", value="[View on GitHub](https://github.com/timraay/HLLLogUtilities#automatic-session-scheduling)", inline=True)
+
+        if self.modifiers:
+            embed.add_field(name=f"Enabled modifiers ({len(self.modifiers)})", value="\n".join([
+                f"{m.config.emoji} [**{m.config.name}**]({MODIFIERS_URL}#{m.config.name.lower().replace(' ', '-')}) - {m.config.description}"
+                for m in self.modifiers.get_modifier_types()
+            ]), inline=False)
+
+        return embed
+        
+    async def enable_button_cb(self, interaction: Interaction):
+        if not self.autosession.enabled:
+            await self.autosession.enable()
+        await self.update(interaction)
+
+    async def disable_button_cb(self, interaction: Interaction):
+        if self.autosession.enabled:
+            await self.autosession.disable()
+        await self.update(interaction)
+    
+    async def update(self, interaction: Interaction):
+        if self.enabled:
+            self.button.callback = self.disable_button_cb
+            self.button.label = "Disable"
+            self.button.style = discord.ButtonStyle.red
+        else:
+            self.button.callback = self.enable_button_cb
+            self.button.label = "Enable"
+            self.button.style = discord.ButtonStyle.green
+        
+        embed = self.get_embed()
+
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    async def select_modifiers_cb(self, interaction: Interaction):
+        view = SessionModifierView(self.message, self.updated_modifiers_cb, flags=self.modifiers)
+        await interaction.response.edit_message(content="Select all of the modifiers you want to enable by clicking on the buttons below", view=view, embed=None)
+    
+    async def updated_modifiers_cb(self, interaction: discord.Interaction, modifiers: ModifierFlags):
+        self.credentials.default_modifiers = modifiers.copy()
+        self.credentials.save()
+        self.modifiers = modifiers
+        await interaction.response.edit_message(content=None, view=self, embed=self.get_embed())
+
+class SessionModifierView(View):
+    def __init__(self, message: discord.InteractionMessage, callback: Callable, flags: ModifierFlags = None, timeout: float = 300.0, **kwargs):
+        super().__init__(timeout=timeout, **kwargs)
+        self.message = message
+        self._callback = callback
+        self.flags = flags or ModifierFlags()
+        self.update_self()
+    
+    options = []
+    for m_id, _ in ModifierFlags():
+        flag = ModifierFlags(**{m_id: True})
+        m = next(flag.get_modifier_types())
+        options.append((m.config.name, m.config.emoji, flag))
+    
+    async def toggle_value(self, interaction: Interaction, flags: ModifierFlags, enable: bool):
+        if enable:
+            self.flags |= flags
+        else:
+            self.flags ^= (self.flags & flags)
+        
+        await self.message.edit(view=self.update_self())
+        await interaction.response.defer()
+
+    def update_self(self):
+        self.clear_items()
+        for (name, emoji, flags) in self.options:
+            enabled = (flags <= self.flags) # Subset of
+            style = ButtonStyle.green if enabled else ButtonStyle.red
+            self.add_item(CallableButton(self.toggle_value, flags, not enabled, label=name, emoji=emoji, style=style))
+        self.add_item(CallableButton(self.callback, label="Back...", style=ButtonStyle.gray))
+
+        return self
+    
+    async def callback(self, interaction: Interaction):
+        return await self._callback(interaction, self.flags)
+
+async def autocomplete_credentials(interaction: Interaction, current: str):
+    choices = [app_commands.Choice(name=str(credentials), value=credentials.id)
+        for credentials in await credentials_in_guild_tll(interaction.guild_id) if current.lower() in str(credentials).lower()]
+    choices.append(app_commands.Choice(name="Custom", value=0))
+    return choices
+
+async def autocomplete_credentials_no_custom(interaction: Interaction, current: str):
+    return [app_commands.Choice(name=str(credentials), value=credentials.id)
+        for credentials in await credentials_in_guild_tll(interaction.guild_id) if current.lower() in str(credentials).lower()]
+
 class credentials(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
     
     Group = app_commands.Group(name="credentials", description="Manage your credentials")
-
-    async def autocomplete_credentials(self, interaction: Interaction, current: str):
-        return [app_commands.Choice(name=str(credentials), value=credentials.id)
-            for credentials in await credentials_in_guild_tll(interaction.guild_id) if current.lower() in str(credentials).lower()]
 
     @Group.command(name="list", description="Get a list of all known credentials")
     async def list_credentials(self, interaction: Interaction):
@@ -134,7 +312,7 @@ class credentials(commands.Cog):
         credentials="Credentials for RCON access"
     )
     @app_commands.autocomplete(
-        credentials=autocomplete_credentials
+        credentials=autocomplete_credentials_no_custom
     )
     async def remove_credentials(self, interaction: Interaction, credentials: int):
         credentials = Credentials.load_from_db(credentials)
@@ -174,7 +352,7 @@ class credentials(commands.Cog):
         credentials="Credentials for RCON access"
     )
     @app_commands.autocomplete(
-        credentials=autocomplete_credentials
+        credentials=autocomplete_credentials_no_custom
     )
     async def edit_credentials(self, interaction: Interaction, credentials: int):
         credentials = Credentials.load_from_db(credentials)
@@ -194,5 +372,20 @@ class credentials(commands.Cog):
         modal = RCONCredentialsModal(on_form_submit, title="RCON Credentials Form", defaults=credentials)
         await interaction.response.send_modal(modal)
 
+    @app_commands.command(name="autosession", description="Manage AutoSession for a server")
+    @app_commands.describe(
+        credentials="A server's credentials"
+    )
+    @app_commands.autocomplete(
+        credentials=autocomplete_credentials_no_custom
+    )
+    async def manage_autosession(self, interaction: Interaction, credentials: int):
+        credentials: Credentials = Credentials.load_from_db(credentials)
+        
+        view = AutoSessionView(credentials, interaction.guild)
+        embed = view.get_embed()
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        view.message = await interaction.original_response()
+        
 async def setup(bot):
     await bot.add_cog(credentials(bot))
