@@ -1,24 +1,25 @@
 import discord
-from discord import app_commands, ui, Interaction
+from discord import app_commands, ui, Interaction, ButtonStyle
 from discord.ext import commands
 from discord.utils import escape_markdown as esc_md
 from ipaddress import IPv4Address
 from datetime import timedelta
 import asyncio
-from typing import Optional
+from typing import Optional, Callable
 import logging
 
 from lib.credentials import Credentials, credentials_in_guild_tll
 from lib.exceptions import HLLAuthError, HLLConnectionError, HLLConnectionRefusedError, HLLError
 from lib.rcon import create_plain_transport
 from lib.autosession import MIN_PLAYERS_TO_START, MIN_PLAYERS_UNTIL_STOP, SECONDS_BETWEEN_ITERATIONS, MAX_DURATION_MINUTES
-from discord_utils import CallableButton, get_error_embed, get_success_embed, handle_error, CustomException, only_once, View, Modal
-from utils import get_config
+from lib.modifiers import ModifierFlags
+from discord_utils import CallableButton, get_error_embed, get_success_embed, get_question_embed, handle_error, CustomException, only_once, View, Modal
 
 MIN_ALLOWED_PORT = 1025
 MAX_ALLOWED_PORT = 65536
 
 SECURITY_URL = "https://github.com/timraay/HLLLogUtilities/blob/main/SECURITY.md"
+MODIFIERS_URL = "https://github.com/timraay/HLLLogUtilities/blob/main/README.md"
 
 class RCONCredentialsModal(Modal):
     name = ui.TextInput(label="Server Name - How I should call this server", placeholder="My HLL Server #1", required=True, max_length=60)
@@ -114,6 +115,8 @@ class AutoSessionView(View):
         super().__init__()
         self.credentials = credentials
         self.guild = guild
+        self.modifiers = credentials.default_modifiers.copy()
+        self.message = None
 
         if self.enabled:
             self.button = CallableButton(self.disable_button_cb, label="Disable", style=discord.ButtonStyle.red)
@@ -121,6 +124,7 @@ class AutoSessionView(View):
             self.button = CallableButton(self.enable_button_cb, label="Enable", style=discord.ButtonStyle.green)
         
         self.add_item(self.button)
+        self.add_item(CallableButton(label="Modifiers...", style=discord.ButtonStyle.blurple))
         self.add_item(ui.Button(label="Docs", style=discord.ButtonStyle.blurple, url="https://github.com/timraay/HLLLogUtilities#automatic-session-scheduling"))
         self.add_item(CallableButton(self.update, emoji="🔄", style=discord.ButtonStyle.gray))
     
@@ -197,6 +201,12 @@ class AutoSessionView(View):
             embed.add_field(name="Status", value="\🔴Disabled", inline=True)
             embed.add_field(name="Documentation", value="[View on GitHub](https://github.com/timraay/HLLLogUtilities#automatic-session-scheduling)", inline=True)
 
+        if self.modifiers:
+            embed.add_field(name=f"Enabled modifiers ({len(self.modifiers)})", value="\n".join([
+                f"{m.config.emoji} [**{m.config.name}**]({MODIFIERS_URL}#{m.config.name.lower().replace(' ', '-')}) - {m.config.description}"
+                for m in self.modifiers.get_modifier_types()
+            ]), inline=False)
+
         return embed
         
     async def enable_button_cb(self, interaction: Interaction):
@@ -222,6 +232,54 @@ class AutoSessionView(View):
         embed = self.get_embed()
 
         await interaction.response.edit_message(embed=embed, view=self)
+
+    async def select_modifiers(self, interaction: Interaction):
+        if not self.message:
+            self.message = await interaction.original_response()
+        view = SessionModifierView(self.message, self.updated_modifiers, flags=self.modifiers)
+        await interaction.response.edit_message(content="Select all of the modifiers you want to enable by clicking on the buttons below", view=view, embed=None)
+    
+    async def updated_modifiers(self, interaction: discord.Interaction, modifiers: ModifierFlags):
+        self.credentials.default_modifiers = modifiers.copy()
+        self.credentials.save()
+        self.modifiers = modifiers
+        await interaction.response.edit_message(content=None, view=self, embed=self.get_embed())
+
+class SessionModifierView(View):
+    def __init__(self, message: discord.InteractionMessage, callback: Callable, flags: ModifierFlags = None, timeout: float = 300.0, **kwargs):
+        super().__init__(timeout=timeout, **kwargs)
+        self.message = message
+        self._callback = callback
+        self.flags = flags or ModifierFlags()
+        self.update_self()
+    
+    options = []
+    for m_id, _ in ModifierFlags():
+        flag = ModifierFlags(**{m_id: True})
+        m = next(flag.get_modifier_types())
+        options.append((m.config.name, m.config.emoji, flag))
+    
+    async def toggle_value(self, interaction: Interaction, flags: ModifierFlags, enable: bool):
+        if enable:
+            self.flags |= flags
+        else:
+            self.flags ^= (self.flags & flags)
+        
+        await self.message.edit(view=self.update_self())
+        await interaction.response.defer()
+
+    def update_self(self):
+        self.clear_items()
+        for (name, emoji, flags) in self.options:
+            enabled = (flags <= self.flags) # Subset of
+            style = ButtonStyle.green if enabled else ButtonStyle.red
+            self.add_item(CallableButton(self.toggle_value, flags, not enabled, label=name, emoji=emoji, style=style))
+        self.add_item(CallableButton(self.callback, label="Back...", style=ButtonStyle.gray))
+
+        return self
+    
+    async def callback(self, interaction: Interaction):
+        return await self._callback(interaction, self.flags)
 
 class credentials(commands.Cog):
     def __init__(self, bot: commands.Bot):

@@ -7,20 +7,17 @@ from dateutil.parser import parse as dt_parse
 from enum import Enum
 from io import StringIO
 from traceback import print_exc
-from typing import Callable
 
 from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions, assert_name
 from lib.credentials import Credentials, credentials_in_guild_tll
 from lib.converters import Converter, ExportFormats
 from lib.storage import cursor
 from lib.modifiers import ModifierFlags
-from cogs.credentials import RCONCredentialsModal, SECURITY_URL
+from cogs.credentials import RCONCredentialsModal, SessionModifierView, SECURITY_URL, MODIFIERS_URL
 from discord_utils import CallableButton, CustomException, get_success_embed, get_question_embed, only_once, View, ExpiredButtonError, get_command_mention
 from utils import get_config
 
 MAX_SESSION_DURATION = timedelta(minutes=get_config().getint('Session', 'MaxDurationInMinutes'))
-
-MODIFIERS_URL = "https://github.com/timraay/HLLLogUtilities/blob/main/README.md"
 
 class SessionFilters(Enum):
     all = "all"
@@ -266,44 +263,6 @@ class SessionCreateView(View):
         else:
             self.modifiers = modifiers
             await interaction.response.edit_message(content=None, view=self, embed=self.get_embed())
-
-
-class SessionModifierView(View):
-    def __init__(self, message: discord.InteractionMessage, callback: Callable, flags: ModifierFlags = None, timeout: float = 300.0, **kwargs):
-        super().__init__(timeout=timeout, **kwargs)
-        self.message = message
-        self._callback = callback
-        self.flags = flags or ModifierFlags()
-        self.update_self()
-    
-    options = []
-    for m_id, _ in ModifierFlags():
-        flag = ModifierFlags(**{m_id: True})
-        m = next(flag.get_modifier_types())
-        options.append((m.config.name, m.config.emoji, flag))
-    
-    async def toggle_value(self, interaction: Interaction, flags: ModifierFlags, enable: bool):
-        if enable:
-            self.flags |= flags
-        else:
-            self.flags ^= (self.flags & flags)
-        
-        await self.message.edit(view=self.update_self())
-        await interaction.response.defer()
-
-    def update_self(self):
-        self.clear_items()
-        for (name, emoji, flags) in self.options:
-            enabled = (flags <= self.flags) # Subset of
-            style = ButtonStyle.green if enabled else ButtonStyle.red
-            self.add_item(CallableButton(self.toggle_value, flags, not enabled, label=name, emoji=emoji, style=style))
-        self.add_item(CallableButton(self.callback, label="Back...", style=ButtonStyle.gray))
-
-        return self
-    
-    async def callback(self, interaction: Interaction):
-        return await self._callback(interaction, self.flags)
-
 
 class sessions(commands.Cog):
     def __init__(self, bot: commands.Bot):
