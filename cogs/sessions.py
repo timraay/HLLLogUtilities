@@ -491,28 +491,5 @@ class sessions(commands.Cog):
 
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-
-    @SessionGroup.command(name="logs", description="DEPRECATED: Use the /export command instead")
-    @app_commands.describe(
-        session="A log capture session",
-        format="The format the logs should be exported in"
-    )
-    @app_commands.autocomplete(
-        session=autocomplete_sessions
-    )
-    async def get_logs_from_session(self, interaction: Interaction, session: int, format: ExportFormats = ExportFormats.text):
-        session: HLLCaptureSession = SESSIONS[session]
-        converter: Converter = format.value
-
-        logs = session.get_logs()
-        fp = StringIO(converter.convert_many(logs))
-        file = discord.File(fp, filename=session.name + '.' + converter.ext())
-
-        await interaction.response.send_message(
-            content=f"Logs for **{esc_md(session.name)}**\n> *NOTE: This command has been deprecated and will be removed in the future. Use the `/export` command instead.*",
-            file=file
-        )
-
-
 async def setup(bot):
     await bot.add_cog(sessions(bot))
