@@ -124,7 +124,7 @@ class AutoSessionView(View):
             self.button = CallableButton(self.enable_button_cb, label="Enable", style=discord.ButtonStyle.green)
         
         self.add_item(self.button)
-        self.add_item(CallableButton(label="Modifiers...", style=discord.ButtonStyle.blurple))
+        self.add_item(CallableButton(self.select_modifiers_cb, label="Modifiers...", style=discord.ButtonStyle.blurple))
         self.add_item(ui.Button(label="Docs", style=discord.ButtonStyle.blurple, url="https://github.com/timraay/HLLLogUtilities#automatic-session-scheduling"))
         self.add_item(CallableButton(self.update, emoji="🔄", style=discord.ButtonStyle.gray))
     
@@ -233,13 +233,11 @@ class AutoSessionView(View):
 
         await interaction.response.edit_message(embed=embed, view=self)
 
-    async def select_modifiers(self, interaction: Interaction):
-        if not self.message:
-            self.message = await interaction.original_response()
-        view = SessionModifierView(self.message, self.updated_modifiers, flags=self.modifiers)
+    async def select_modifiers_cb(self, interaction: Interaction):
+        view = SessionModifierView(self.message, self.updated_modifiers_cb, flags=self.modifiers)
         await interaction.response.edit_message(content="Select all of the modifiers you want to enable by clicking on the buttons below", view=view, embed=None)
     
-    async def updated_modifiers(self, interaction: discord.Interaction, modifiers: ModifierFlags):
+    async def updated_modifiers_cb(self, interaction: discord.Interaction, modifiers: ModifierFlags):
         self.credentials.default_modifiers = modifiers.copy()
         self.credentials.save()
         self.modifiers = modifiers
@@ -381,6 +379,7 @@ class credentials(commands.Cog):
         view = AutoSessionView(credentials, interaction.guild)
         embed = view.get_embed()
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        view.message = await interaction.original_response()
         
 async def setup(bot):
     await bot.add_cog(credentials(bot))
