@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import asyncio
 from pathlib import Path
+import re
 
 def to_timedelta(value):
     if not value:
@@ -138,7 +139,7 @@ if not LOGS_FOLDER.exists():
     LOGS_FOLDER.mkdir()
 
 def _assert_filename(text: str):
-    return text.encode('utf-8', errors='ignore').decode('ascii', errors='ignore').replace(' ', '_')
+    return re.sub(r"[^\w\(\)_\-,\. ]", "_", text.replace(' ', '_'))
 
 def get_logger(session):
     logger = logging.getLogger(str(session.id))

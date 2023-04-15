@@ -8,7 +8,7 @@ from enum import Enum
 from traceback import print_exc
 from typing import Union
 
-from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions, assert_name
+from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions
 from lib.credentials import Credentials
 from lib.storage import cursor
 from lib.modifiers import ModifierFlags
@@ -80,7 +80,7 @@ class SessionCreateView(View):
         self.add_item(CallableButton(self.on_confirm, label="Confirm", style=ButtonStyle.green))
         self.add_item(CallableButton(self.select_modifiers, label="Modifiers...", style=ButtonStyle.gray))
 
-        self.name = assert_name(name)
+        self.name = name
         self.guild = guild
         self.credentials = credentials
         self.start_time = start_time
