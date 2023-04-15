@@ -131,6 +131,7 @@ import logging
 
 LOGS_FOLDER = Path('logs')
 LOGS_FORMAT = '[%(asctime)s][%(levelname)s][%(module)s.%(funcName)s:%(lineno)s] %(message)s'
+LOGS_FORMATTER = logging.Formatter(LOGS_FORMAT)
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s][%(levelname)s][%(module)s.%(funcName)s:%(lineno)s] %(message)s',
@@ -146,16 +147,24 @@ def get_logger(session):
     if not logger.handlers:
         name = f"sess{session.id}_{_assert_filename(session.name)}.log"
         handler = logging.FileHandler(filename=LOGS_FOLDER / name, encoding='utf-8')
-        handler.setFormatter(logging.Formatter(LOGS_FORMAT))
+        handler.setFormatter(LOGS_FORMATTER)
         logger.addHandler(handler)
     return logger
 
 def get_autosession_logger(autosession):
     logger = logging.getLogger(f"auto_{autosession.id}")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
     if not logger.handlers:
         name = f"auto{autosession.id}_{_assert_filename(autosession.credentials.name)}.log"
+        
         handler = logging.FileHandler(filename=LOGS_FOLDER / name, encoding='utf-8')
-        handler.setFormatter(logging.Formatter(LOGS_FORMAT))
+        handler.setFormatter(LOGS_FORMATTER)
+        logger.addHandler(handler)
+        
+        handler = logging.StreamHandler()
+        handler.setFormatter(LOGS_FORMATTER)
+        handler.setLevel(logging.WARN)
         logger.addHandler(handler)
     return logger
 
