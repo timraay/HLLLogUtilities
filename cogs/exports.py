@@ -148,7 +148,7 @@ class ExportRangeSelectView(View):
                 
                 elif last_start > 60:
                     # The line appeared before the server_match_ended event
-                    self.ranges[-1].map_name = Map.load(log.old)
+                    self.ranges[-1].map_name = Map.load(log.old).pretty()
 
         if len(self.ranges) == 1:
             self.ranges.clear()
