@@ -279,7 +279,7 @@ class HSSSubmitSelectOpponentView(View):
         self.map_name = get_map_and_mode(end_log.new)[0]
         self.allies_score = int(end_log.message.split(' - ')[0])
         self.axis_score = int(end_log.message.split(' - ')[1])
-        self.duration = logs[1].event_time - logs[0].event_time
+        self.duration = logs[-1].event_time - logs[0].event_time
 
         # We can have at most 25 values per select dropdown, so we need to divide all
         # available teams in separate groups to avoid exceeding this limit
@@ -416,7 +416,7 @@ class HSSSubmitSelectApiKeyView(View):
         self.api_keys = api_keys
         self.logs = logs
 
-        self.duration = logs[1].event_time - logs[0].event_time
+        self.duration = logs[-1].event_time - logs[0].event_time
         
         self.add_item(CallableSelect(
             self.api_key_select,
@@ -448,7 +448,7 @@ class HSSSubmitSelectWinnerView(View):
         self.allies_score = allies_score
         self.axis_score = axis_score
 
-        self.duration = logs[1].event_time - logs[0].event_time
+        self.duration = logs[-1].event_time - logs[0].event_time
 
         self.add_item(CallableSelect(
             self.winner_select,
@@ -504,7 +504,7 @@ class HSSSubmitSelectGameTypeView(View):
         self.allies_score = allies_score
         self.axis_score = axis_score
     
-        self.duration = logs[1].event_time - logs[0].event_time
+        self.duration = logs[-1].event_time - logs[0].event_time
         self.submitted = False
 
     @property
@@ -568,7 +568,7 @@ class HSSSubmitConfirmationView(View):
         self.allies_score = allies_score
         self.axis_score = axis_score
     
-        self.duration = logs[1].event_time - logs[0].event_time
+        self.duration = logs[-1].event_time - logs[0].event_time
         self.submitted = False
 
     @property
