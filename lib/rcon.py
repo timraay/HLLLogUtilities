@@ -446,7 +446,6 @@ class HLLRcon:
 
     def __parse_logs(self, logs: str):
         if logs != 'EMPTY':
-            logs = logs.strip('\n')
             logs = re.split(r"^\[.+? \((\d+)\)\] ", logs, flags=re.M)
             logs = zip(logs[1::2], logs[2::2])
             skip = True
@@ -468,6 +467,7 @@ class HLLRcon:
                 try:
                     timestamp = int(timestamp)
                     time = datetime.fromtimestamp(timestamp).astimezone(timezone.utc)
+                    log = log.rstrip('\n')
 
                     if skip:
                         # Avoid duplicates

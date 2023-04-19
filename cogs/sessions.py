@@ -6,8 +6,9 @@ from datetime import datetime, timedelta, timezone
 from dateutil.parser import parse as dt_parse
 from enum import Enum
 from traceback import print_exc
+from typing import Union
 
-from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions, assert_name
+from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions
 from lib.credentials import Credentials
 from lib.storage import cursor
 from lib.modifiers import ModifierFlags
@@ -74,18 +75,21 @@ async def autocomplete_active_sessions(interaction: Interaction, current: str):
 
 
 class SessionCreateView(View):
-    def __init__(self, name: str, guild: discord.Guild, credentials: Credentials, start_time: datetime, end_time: datetime, timeout: float = 180):
+    def __init__(self, name: str, guild: discord.Guild, credentials: Union[Credentials, None], start_time: datetime, end_time: datetime, timeout: float = 180):
         super().__init__(timeout=timeout)
         self.add_item(CallableButton(self.on_confirm, label="Confirm", style=ButtonStyle.green))
         self.add_item(CallableButton(self.select_modifiers, label="Modifiers...", style=ButtonStyle.gray))
 
-        self.name = assert_name(name)
+        self.name = name
         self.guild = guild
         self.credentials = credentials
         self.start_time = start_time
         self.end_time = end_time
 
-        self.modifiers = credentials.default_modifiers.copy()
+        if credentials:
+            self.modifiers = credentials.default_modifiers.copy()
+        else:
+            self.modifiers = ModifierFlags()
         self._message = None
         self.__created = False
     
@@ -195,7 +199,7 @@ class SessionCreateView(View):
             colour=discord.Colour(16746296)
         ).set_footer(
             text=str(interaction.user),
-            icon_url=interaction.user.avatar.url
+            icon_url=interaction.user.avatar.url if interaction.user.avatar else None
         )
 
         if self.modifiers:
@@ -230,7 +234,7 @@ class SessionCreateView(View):
     
     async def updated_modifiers(self, interaction: discord.Interaction, modifiers: ModifierFlags, _skip_save_default=False):
         if (not _skip_save_default
-            and not self.credentials.temporary
+            and self.credentials and not self.credentials.temporary
             and modifiers != self.credentials.default_modifiers):
             
             @only_once

@@ -160,7 +160,7 @@ class View(ui.View):
         await handle_error(interaction, error)
 
 class Modal(ui.Modal):
-    async def on_error(self, interaction: Interaction, error: Exception, item, /) -> None:
+    async def on_error(self, interaction: Interaction, error: Exception, /) -> None:
         await handle_error(interaction, error)
 
 def only_once(func):

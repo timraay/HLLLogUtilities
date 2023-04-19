@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import asyncio
 from pathlib import Path
+import re
 
 def to_timedelta(value):
     if not value:
@@ -130,6 +131,7 @@ import logging
 
 LOGS_FOLDER = Path('logs')
 LOGS_FORMAT = '[%(asctime)s][%(levelname)s][%(module)s.%(funcName)s:%(lineno)s] %(message)s'
+LOGS_FORMATTER = logging.Formatter(LOGS_FORMAT)
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s][%(levelname)s][%(module)s.%(funcName)s:%(lineno)s] %(message)s',
@@ -138,23 +140,31 @@ if not LOGS_FOLDER.exists():
     LOGS_FOLDER.mkdir()
 
 def _assert_filename(text: str):
-    return text.encode('utf-8', errors='ignore').decode('ascii', errors='ignore').replace(' ', '_')
+    return re.sub(r"[^\w\(\)_\-,\. ]", "_", text.replace(' ', '_'))
 
 def get_logger(session):
     logger = logging.getLogger(str(session.id))
     if not logger.handlers:
         name = f"sess{session.id}_{_assert_filename(session.name)}.log"
         handler = logging.FileHandler(filename=LOGS_FOLDER / name, encoding='utf-8')
-        handler.setFormatter(logging.Formatter(LOGS_FORMAT))
+        handler.setFormatter(LOGS_FORMATTER)
         logger.addHandler(handler)
     return logger
 
 def get_autosession_logger(autosession):
     logger = logging.getLogger(f"auto_{autosession.id}")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
     if not logger.handlers:
         name = f"auto{autosession.id}_{_assert_filename(autosession.credentials.name)}.log"
+        
         handler = logging.FileHandler(filename=LOGS_FOLDER / name, encoding='utf-8')
-        handler.setFormatter(logging.Formatter(LOGS_FORMAT))
+        handler.setFormatter(LOGS_FORMATTER)
+        logger.addHandler(handler)
+        
+        handler = logging.StreamHandler()
+        handler.setFormatter(LOGS_FORMATTER)
+        handler.setLevel(logging.WARN)
         logger.addHandler(handler)
     return logger
 

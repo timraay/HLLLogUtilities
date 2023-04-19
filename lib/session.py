@@ -22,9 +22,6 @@ MAX_AUTOSESSION_DURATION_MINUTES = get_config().getint('AutoSession', 'MaxDurati
 MIN_PLAYERS_ITERATIONS_UNTIL_STOP = 10
 SESSIONS: Dict[int, 'HLLCaptureSession'] = dict()
 
-def assert_name(name: str):
-    return re.sub(r"[^\w\(\)_\-,\.]", "_", name)
-
 def get_sessions(guild_id: int):
     return sorted([sess for sess in SESSIONS.values() if sess.guild_id == guild_id], key=lambda sess: sess.start_time)
 
@@ -33,7 +30,7 @@ class HLLCaptureSession:
             credentials: Credentials, modifiers: ModifierFlags = ModifierFlags(), loop: asyncio.AbstractEventLoop = None):
         self.id = id
         self.guild_id = guild_id
-        self.name = assert_name(name)
+        self.name = name
         self.start_time = start_time
         self.end_time = end_time
         self.credentials = credentials
@@ -102,8 +99,6 @@ class HLLCaptureSession:
     def create_in_db(cls, guild_id: int, name: str, start_time: datetime, end_time: datetime, credentials: Credentials, modifiers: ModifierFlags = ModifierFlags()):
         if end_time is not None and datetime.now(tz=timezone.utc) > end_time:
             raise ValueError('This capture session would have already ended')
-
-        name = assert_name(name)
 
         cursor.execute('INSERT INTO sessions (guild_id, name, start_time, end_time, credentials_id, modifiers) VALUES (?,?,?,?,?,?)',
             (guild_id, name, start_time, end_time, credentials.id, modifiers.value))
