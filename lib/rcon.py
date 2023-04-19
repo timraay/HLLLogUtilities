@@ -1,7 +1,9 @@
 import asyncio
+import aiohttp
 from datetime import datetime, timedelta
 from functools import wraps
 import re
+import math
 
 from typing import List, TYPE_CHECKING
 
@@ -15,7 +17,8 @@ if TYPE_CHECKING:
     from lib.session import HLLCaptureSession
 
 NUM_WORKERS_PER_INSTANCE = get_config().getint('Session', 'NumRCONWorkers')
-
+STEAM_API_KEY = get_config().get('Session', 'SteamApiKey')
+KICK_INCOMPATIBLE_NAMES = get_config().getboolean('Session', 'KickIncompatibleNames')
 
 def target_to_players(target: Union[Player, Squad, Team, None]) -> Union[List[Player], None]:
     if not target:
@@ -25,6 +28,21 @@ def target_to_players(target: Union[Player, Squad, Team, None]) -> Union[List[Pl
     elif target.has('players'):
         return [player for player in target.players if player]
     raise ValueError(f'{target.__class__.__name__} is not a valid target')
+
+@ttl_cache(100, 60*60*2) # 2 hours
+async def get_name_from_steam(steamid: str, __name: str = None) -> str:
+    if not STEAM_API_KEY:
+        raise RuntimeError("Steam Api Key not set")
+    
+    params = dict(
+        key=STEAM_API_KEY,
+        steamids=steamid,
+        format='json'
+    )
+    async with aiohttp.ClientSession() as session:
+        res = await session.get("https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/", params=params)
+        data = await res.json()
+        return data['response']['players'][0]['personaname']
 
 
 # --- Wrappers to help manage the connection
@@ -310,9 +328,31 @@ class HLLRcon:
             name can no longer be used to find players via RCON. Since the playerinfo command does not accept
             steam IDs and we don't have any way of knowing the full name, the best we can do is skip the playerinfo
             command completely, and work with what we've got. #9
+
+            Each character can be up to 3 bytes. If it is more, a character will be treated as multiple. Thus, a
+            truncated name doesn't have to be 20 characters long, and can end with an incomplete character, which
+            is then replaced simply with a question mark. In such a case, the playerinfo command will also fail.
             """
             name, steamid = playerid.rsplit(' : ', 1)
+            problematic = False
+
             if name.endswith(' '):
+                name = await get_name_from_steam(steamid, name)
+                problematic = True
+            elif name.endswith('?') and STEAM_API_KEY:
+                name = await get_name_from_steam(steamid, name)
+                chars = 0
+                for char in name:
+                    char_size = math.ceil(len(char.encode()) / 3)
+                    chars += char_size
+
+                    if char_size > 1 and chars > 20:
+                        problematic = True
+
+                    if chars >= 20:
+                        break
+
+            if problematic:
                 playerids_problematic[steamid] = name
             else:
                 playerids_normal[steamid] = name
