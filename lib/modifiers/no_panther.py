@@ -13,6 +13,7 @@ class NoPantherModifier(Modifier):
         name = "No Panther"
         emoji = "🚜"
         description = "Panther tanks cannot be used during the match"
+        enforce_name_validity = True
 
     @on_player_any_kill()
     @add_condition(lambda _, event: VEHICLES.get(WEAPONS.get(event.weapon, event.weapon)) == "Panther")

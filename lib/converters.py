@@ -103,6 +103,7 @@ class TextConverter(Converter):
     arty_unassigned         = "ARTILLERY UNASSIGNED\t{player_name} ({player_team}/{player_steamid}): {message}"
     start_arty_cooldown     = "COOLDOWN STARTED    \t{player_name} ({player_team}/{player_steamid}): {message}"
     cancel_arty_cooldown    = "COOLDOWN CANCELED   \t{player_name} ({player_steamid}): {message}"
+    player_kicked           = "KICKED              \t{player_name} ({player_steamid}): {message}"
 
     @staticmethod
     def player_message(log: 'LogLine'):

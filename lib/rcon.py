@@ -337,12 +337,11 @@ class HLLRcon:
             problematic = False
 
             if name.endswith(' '):
-                name = await get_name_from_steam(steamid, name)
                 problematic = True
             elif name.endswith('?') and STEAM_API_KEY:
-                name = await get_name_from_steam(steamid, name)
+                full_name = await get_name_from_steam(steamid, name)
                 chars = 0
-                for char in name:
+                for char in full_name:
                     char_size = math.ceil(len(char.encode()) / 3)
                     chars += char_size
 
@@ -430,7 +429,8 @@ class HLLRcon:
         for steamid, name in playerids_problematic.items():
             data = dict(
                 name=name,
-                steamid=steamid
+                steamid=steamid,
+                is_incompatible_name=True
             )
             players.append(data)
 
@@ -672,20 +672,22 @@ class HLLRcon:
         if time:
             hours = int(time.total_seconds() / (60*60))
             if not hours: hours = 1
-            await self.exec_command(f'tempban {player.steamid} {hours} "{reason}" "Gamewatch"')
+            await self.exec_command(f'tempban {player.steamid} {hours} "{reason}" "HLU"')
         else:
-            await self.exec_command(f'permaban {player.steamid} "{reason}" "Gamewatch"')
+            await self.exec_command(f'permaban {player.steamid} "{reason}" "HLU"')
 
     async def unban_player(self, steamid: str):
         temps, perms = await self.__fetch_bans()
 
-        ban_log = temps.get(steamid)
-        if ban_log:
-            await self.exec_command(f'pardontempban {ban_log}')
-
-        ban_log = perms.get(steamid)
-        if ban_log:
-            await self.exec_command(f'pardonpermaban {ban_log}')
+        temp_ban_log = temps.get(steamid)
+        perm_ban_log = perms.get(steamid)
+        if temp_ban_log:
+            await self.exec_command(f'pardontempban {steamid}')
+        elif perm_ban_log:
+            await self.exec_command(f'pardonpermaban {steamid}')
+        else:
+            # Just try to remove a temp ban and pray it works
+            await self.exec_command(f'pardontempban {steamid}')
     
     async def kill_player(self, player: Player, reason: str = "") -> bool:
         return await self.exec_command(f'punish "{player.name}" "{reason}"', can_fail=True)

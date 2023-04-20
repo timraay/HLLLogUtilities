@@ -68,6 +68,9 @@ class Player(InfoModel):
     is_spectator: bool = UnsetField
     """Whether the player is currently spectating"""
 
+    is_incompatible_name: bool = False
+    """Whether the name is expected to cause incompatibility issues"""
+
     def is_squad_leader(self) -> Union[bool, None]:
         """Whether the player is a squad leader, or None if not part of a squad"""
         squad = self.get('squad')
