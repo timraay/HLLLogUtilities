@@ -158,7 +158,7 @@ class CSVConverter(Converter):
     @classmethod
     def convert(cls, log: 'LogLine'):
         values = list()
-        values = ['"' + (str(val).replace('"', '\"') if val is not None else '') + '"' for val in log.dict().values()]
+        values = ['"' + (str(val).replace('"', '""') if val is not None else '') + '"' for val in log.dict().values()]
         return ",".join(values)
     
     @staticmethod
