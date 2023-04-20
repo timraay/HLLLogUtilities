@@ -85,7 +85,10 @@ class AutoSessionManager:
                 logger=self.logger,
             )
         
-        resp = await self.protocol.execute("get slots")
+        resp = await asyncio.wait_for(
+            self.protocol.execute("get slots"),
+            timeout=5
+        )
         playercount, _ = resp.split('/', 1)
         playercount = int(playercount)
 
@@ -113,8 +116,9 @@ class AutoSessionManager:
             return
         
         for i in range(NUM_ATTEMPTS_PER_ITERATION):
+            is_final_attempt = (i == (NUM_ATTEMPTS_PER_ITERATION - 1))
 
-            if i == (NUM_ATTEMPTS_PER_ITERATION - 1):
+            if is_final_attempt:
                 # If on its third attempt, force the connection to be
                 # reopened, hoping that that might resolve the issue
                 self.close_protocol()
@@ -131,10 +135,11 @@ class AutoSessionManager:
                 break
 
             except Exception as exc:
-                self.logger.exception("Failed to receive player count, %s attempts left", 2 - i)
-
-                if i == (NUM_ATTEMPTS_PER_ITERATION - 1):
+                if is_final_attempt:
+                    self.logger.exception("Failed to receive player count, %s attempts left", 2 - i)
                     self._failed_attempts += 1
+                else:
+                    self.logger.error("Failed to receive player count, %s attempts left", 2 - i)
 
                 if isinstance(exc, HLLConnectionError):
                     self.close_protocol()
