@@ -127,27 +127,41 @@ def schedule_coro(dt: datetime, coro_func, *args, error_logger = None): # How do
     return asyncio.create_task(scheduled_coro())
 
 
-import logging
-
 LOGS_FOLDER = Path('logs')
-LOGS_FORMAT = '[%(asctime)s][%(levelname)s][%(module)s.%(funcName)s:%(lineno)s] %(message)s'
-LOGS_FORMATTER = logging.Formatter(LOGS_FORMAT)
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s][%(levelname)s][%(module)s.%(funcName)s:%(lineno)s] %(message)s',
-)
 if not LOGS_FOLDER.exists():
     LOGS_FOLDER.mkdir()
 
+def _get_logs_formatter(name: str = None, as_str: bool = False):
+    if name:
+        fmt = '[%(asctime)s][{}][%(levelname)s][%(module)s.%(funcName)s:%(lineno)s] %(message)s'.format(name)
+    else:
+        fmt = '[%(asctime)s][%(levelname)s][%(module)s.%(funcName)s:%(lineno)s] %(message)s'
+    if as_str:
+        return fmt
+    else:
+        return logging.Formatter(fmt)
 def _assert_filename(text: str):
     return re.sub(r"[^\w\(\)_\-,\. ]", "_", text.replace(' ', '_'))
 
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format=_get_logs_formatter(name='other', as_str=True),
+)
+
 def get_logger(session):
     logger = logging.getLogger(str(session.id))
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
     if not logger.handlers:
         name = f"sess{session.id}_{_assert_filename(session.name)}.log"
+
         handler = logging.FileHandler(filename=LOGS_FOLDER / name, encoding='utf-8')
-        handler.setFormatter(LOGS_FORMATTER)
+        handler.setFormatter(_get_logs_formatter())
+        logger.addHandler(handler)
+
+        handler = logging.StreamHandler()
+        handler.setFormatter(_get_logs_formatter(f'sess{session.id}'))
         logger.addHandler(handler)
     return logger
 
@@ -157,13 +171,13 @@ def get_autosession_logger(autosession):
     logger.propagate = False
     if not logger.handlers:
         name = f"auto{autosession.id}_{_assert_filename(autosession.credentials.name)}.log"
-        
+
         handler = logging.FileHandler(filename=LOGS_FOLDER / name, encoding='utf-8')
-        handler.setFormatter(LOGS_FORMATTER)
+        handler.setFormatter(_get_logs_formatter())
         logger.addHandler(handler)
         
         handler = logging.StreamHandler()
-        handler.setFormatter(LOGS_FORMATTER)
+        handler.setFormatter(_get_logs_formatter(f'auto{autosession.id}'))
         handler.setLevel(logging.WARN)
         logger.addHandler(handler)
     return logger
