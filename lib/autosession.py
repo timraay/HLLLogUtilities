@@ -34,7 +34,8 @@ class AutoSessionManager:
         if self.id in AUTOSESSIONS:
             raise AutoSessionAlreadyCreatedError("An auto-session with ID %s is already known" % self.id)
 
-        self.logger = get_autosession_logger(self)
+        self._logger = None
+
         self.protocol = None
         self._failed_attempts = 0
         self._cooldown = 0
@@ -53,6 +54,12 @@ class AutoSessionManager:
     @property
     def enabled(self):
         return self.__enabled
+
+    @property
+    def logger(self):
+        if self._logger is None:
+            self._logger = get_autosession_logger(self)
+        return self._logger
     
     async def enable(self):
         if not self.enabled:
@@ -171,10 +178,12 @@ class AutoSessionManager:
     async def before_gatherer_start(self):
         self.close_protocol()
         self._failed_attempts = 0
+        self.logger.info('Started AutoSession for %s', self.credentials.name)
 
     @gatherer.after_loop
     async def after_gatherer_stop(self):
         self.close_protocol()
+        self.logger.info('Stopped AutoSession for %s', self.credentials.name)
 
 
     def create_session(self):
