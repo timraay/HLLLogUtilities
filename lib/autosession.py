@@ -34,7 +34,8 @@ class AutoSessionManager:
         if self.id in AUTOSESSIONS:
             raise AutoSessionAlreadyCreatedError("An auto-session with ID %s is already known" % self.id)
 
-        self.logger = get_autosession_logger(self)
+        self._logger = None
+
         self.protocol = None
         self._failed_attempts = 0
         self._cooldown = 0
@@ -53,6 +54,12 @@ class AutoSessionManager:
     @property
     def enabled(self):
         return self.__enabled
+
+    @property
+    def logger(self):
+        if self._logger is None:
+            self._logger = get_autosession_logger(self)
+        return self._logger
     
     async def enable(self):
         if not self.enabled:
@@ -85,7 +92,10 @@ class AutoSessionManager:
                 logger=self.logger,
             )
         
-        resp = await self.protocol.execute("get slots")
+        resp = await asyncio.wait_for(
+            self.protocol.execute("get slots"),
+            timeout=5
+        )
         playercount, _ = resp.split('/', 1)
         playercount = int(playercount)
 
@@ -113,8 +123,9 @@ class AutoSessionManager:
             return
         
         for i in range(NUM_ATTEMPTS_PER_ITERATION):
+            is_final_attempt = (i == (NUM_ATTEMPTS_PER_ITERATION - 1))
 
-            if i == (NUM_ATTEMPTS_PER_ITERATION - 1):
+            if is_final_attempt:
                 # If on its third attempt, force the connection to be
                 # reopened, hoping that that might resolve the issue
                 self.close_protocol()
@@ -131,10 +142,11 @@ class AutoSessionManager:
                 break
 
             except Exception as exc:
-                self.logger.exception("Failed to receive player count, %s attempts left", 2 - i)
-
-                if i == (NUM_ATTEMPTS_PER_ITERATION - 1):
+                if is_final_attempt:
+                    self.logger.exception("Failed to receive player count, %s attempts left", 2 - i)
                     self._failed_attempts += 1
+                else:
+                    self.logger.error("Failed to receive player count, %s attempts left", 2 - i)
 
                 if isinstance(exc, HLLConnectionError):
                     self.close_protocol()
@@ -166,10 +178,12 @@ class AutoSessionManager:
     async def before_gatherer_start(self):
         self.close_protocol()
         self._failed_attempts = 0
+        self.logger.info('Started AutoSession for %s', self.credentials.name)
 
     @gatherer.after_loop
     async def after_gatherer_stop(self):
         self.close_protocol()
+        self.logger.info('Stopped AutoSession for %s', self.credentials.name)
 
 
     def create_session(self):

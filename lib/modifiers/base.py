@@ -18,6 +18,8 @@ class ModifierConfig(BasicConfig):
     """An emoji that best represents the modifier"""
     hidden: bool = False
     """Whether the modifier is intended for internal use, by default False"""
+    enforce_name_validity: bool = False
+    """Whether players with problematic names should be kicked while active, by default False"""
 
 class Modifier(Configurable):
     """The base class for modifiers. Modifiers contain event listeners

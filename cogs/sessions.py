@@ -8,7 +8,7 @@ from enum import Enum
 from traceback import print_exc
 from typing import Union
 
-from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions
+from lib.session import DELETE_SESSION_AFTER, KICK_INCOMPATIBLE_NAMES, SESSIONS, HLLCaptureSession, get_sessions
 from lib.credentials import Credentials
 from lib.storage import cursor
 from lib.modifiers import ModifierFlags

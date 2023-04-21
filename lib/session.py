@@ -17,9 +17,12 @@ from utils import get_config, schedule_coro, get_logger
 SECONDS_BETWEEN_ITERATIONS = get_config().getint('Session', 'SecondsBetweenIterations')
 NUM_LOGS_REQUIRED_FOR_INSERT = get_config().getint('Session', 'NumLogsRequiredForInsert')
 DELETE_SESSION_AFTER = timedelta(days=get_config().getint('Session', 'DeleteAfterDays'))
-MIN_PLAYERS_UNTIL_AUTOSESSION_STOP = get_config().getint('AutoSession', 'MinPlayersUntilStop')
+KICK_INCOMPATIBLE_NAMES = get_config().getboolean('Session', 'KickIncompatibleNames')
+
 MAX_AUTOSESSION_DURATION_MINUTES = get_config().getint('AutoSession', 'MaxDurationInMinutes')
+MIN_PLAYERS_UNTIL_AUTOSESSION_STOP = get_config().getint('AutoSession', 'MinPlayersUntilStop')
 MIN_PLAYERS_ITERATIONS_UNTIL_STOP = 10
+
 SESSIONS: Dict[int, 'HLLCaptureSession'] = dict()
 
 def get_sessions(guild_id: int):
@@ -122,6 +125,13 @@ class HLLCaptureSession:
     @property
     def duration(self):
         return self.end_time - self.start_time
+
+    @property
+    def kick_incompatible_names(self):
+        return KICK_INCOMPATIBLE_NAMES or any([
+            modifier.config.enforce_name_validity
+            for modifier in self.modifiers
+        ])
 
     def __str__(self):
         return f"{self.name} ({self.credentials.name})" if self.credentials else f"{self.name} (⚠️)"
