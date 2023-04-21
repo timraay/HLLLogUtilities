@@ -151,6 +151,9 @@ python bot.py
 
 This terminal will need to stay open for the bot to work. Closing down this terminal will also shut down the bot.
 
+# **FAQ**
+Frequently Asked Questions can be found [here](https://github.com/timraay/HLLLogUtilities/blob/main/FAQ.md)!
+
 <br>
 
 <div align=center>
