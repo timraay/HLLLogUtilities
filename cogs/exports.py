@@ -262,8 +262,8 @@ class HSSSubmitPromptApiKeyView(View):
         modal = HSSApiKeysModal(self.submit_form, title="Submit HeLO API key...")
         await interaction.response.send_modal(modal)
     
-    async def submit_form(self, interaction: Interaction, key: str, tag: str):
-        api_key = HSSApiKey.create_in_db(interaction.guild.id, tag, key)
+    async def submit_form(self, interaction: Interaction, api_key: HSSApiKey):
+        api_key.insert_in_db()
         teams = await interaction.client._hss_teams()
         view = HSSSubmitSelectOpponentView(api_key, self.logs, teams)
         embed = view.get_embed()
