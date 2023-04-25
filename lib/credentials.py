@@ -110,7 +110,7 @@ class Credentials:
         return bool(self.autosession and self.autosession.enabled)
 
     def __str__(self):
-        return f"{self.name} - {self.address}:{self.port}"
+        return f"[#{self.id}] {self.name} - {self.address}:{self.port}"
 
     def __eq__(self, other):
         if isinstance(other, Credentials) and not self.temporary:

@@ -134,7 +134,7 @@ class HLLCaptureSession:
         ])
 
     def __str__(self):
-        return f"{self.name} ({self.credentials.name})" if self.credentials else f"{self.name} (⚠️)"
+        return f"[#{self.id}] {self.name} ({self.credentials.name if self.credentials else '⚠️'})"
 
     def __eq__(self, other):
         if isinstance(other, HLLCaptureSession):
