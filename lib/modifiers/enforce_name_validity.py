@@ -52,7 +52,7 @@ class EnforceNameValidityModifier(Modifier):
         players = event.root.get('players', ())
         for player in players:
             if player.is_incompatible_name:
-                print(player.name)
+                self.logger.info('Kicking player %s with incompatible name %s', player.steamid, player.name)
                 
                 # Find character that has to be replaced
                 name = player.name
