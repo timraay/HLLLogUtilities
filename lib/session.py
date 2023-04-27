@@ -86,7 +86,10 @@ class HLLCaptureSession:
         if credentials_id is None:
             credentials = None
         else:
-            credentials = Credentials.load_from_db(credentials_id)
+            try:
+                credentials = Credentials.load_from_db(credentials_id)
+            except NotFound:
+                credentials = None
 
         return cls(
             id=int(res[0]),
