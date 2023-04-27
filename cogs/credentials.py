@@ -115,7 +115,6 @@ class AutoSessionView(View):
         super().__init__()
         self.credentials = credentials
         self.guild = guild
-        self.modifiers = credentials.default_modifiers.copy()
         self.message = None
 
         if self.enabled:
@@ -201,10 +200,11 @@ class AutoSessionView(View):
             embed.add_field(name="Status", value="\🔴Disabled", inline=True)
             embed.add_field(name="Documentation", value="[View on GitHub](https://github.com/timraay/HLLLogUtilities#automatic-session-scheduling)", inline=True)
 
-        if self.modifiers:
-            embed.add_field(name=f"Enabled modifiers ({len(self.modifiers)})", value="\n".join([
+        modifiers = self.credentials.default_modifiers
+        if modifiers:
+            embed.add_field(name=f"Enabled modifiers ({len(modifiers)})", value="\n".join([
                 f"{m.config.emoji} [**{m.config.name}**]({MODIFIERS_URL}#{m.config.name.lower().replace(' ', '-')}) - {m.config.description}"
-                for m in self.modifiers.get_modifier_types()
+                for m in modifiers.get_modifier_types()
             ]), inline=False)
 
         return embed
@@ -234,13 +234,12 @@ class AutoSessionView(View):
         await interaction.response.edit_message(embed=embed, view=self)
 
     async def select_modifiers_cb(self, interaction: Interaction):
-        view = SessionModifierView(self.message, self.updated_modifiers_cb, flags=self.modifiers)
+        view = SessionModifierView(self.message, self.updated_modifiers_cb, flags=self.credentials.default_modifiers)
         await interaction.response.edit_message(content="Select all of the modifiers you want to enable by clicking on the buttons below", view=view, embed=None)
     
     async def updated_modifiers_cb(self, interaction: discord.Interaction, modifiers: ModifierFlags):
         self.credentials.default_modifiers = modifiers.copy()
         self.credentials.save()
-        self.modifiers = modifiers
         await interaction.response.edit_message(content=None, view=self, embed=self.get_embed())
 
 class SessionModifierView(View):
@@ -297,7 +296,7 @@ class credentials(commands.Cog):
 
     @Group.command(name="list", description="Get a list of all known credentials")
     async def list_credentials(self, interaction: Interaction):
-        all_credentials = Credentials.in_guild(interaction.guild_id)
+        all_credentials = list(Credentials.in_guild(interaction.guild_id))
         embed = discord.Embed(
             title="Credentials",
             description="\n".join([
@@ -315,8 +314,8 @@ class credentials(commands.Cog):
         credentials=autocomplete_credentials_no_custom
     )
     async def remove_credentials(self, interaction: Interaction, credentials: int):
-        credentials = Credentials.load_from_db(credentials)
-        credentials.delete()
+        credentials = Credentials.get(credentials)
+        await credentials.delete()
         await interaction.response.send_message(embed=get_success_embed(
             title=f"Removed \"{credentials.name}\"!",
             description=f"⤷ {credentials.address}:{credentials.port}"
@@ -355,7 +354,7 @@ class credentials(commands.Cog):
         credentials=autocomplete_credentials_no_custom
     )
     async def edit_credentials(self, interaction: Interaction, credentials: int):
-        credentials = Credentials.load_from_db(credentials)
+        credentials = Credentials.get(credentials)
 
         async def on_form_submit(_interaction: Interaction, name: str, address: str, port: int, password: str):
             credentials.name = name
@@ -380,7 +379,7 @@ class credentials(commands.Cog):
         credentials=autocomplete_credentials_no_custom
     )
     async def manage_autosession(self, interaction: Interaction, credentials: int):
-        credentials: Credentials = Credentials.load_from_db(credentials)
+        credentials: Credentials = Credentials.get(credentials)
         
         view = AutoSessionView(credentials, interaction.guild)
         embed = view.get_embed()

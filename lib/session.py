@@ -87,7 +87,7 @@ class HLLCaptureSession:
             credentials = None
         else:
             try:
-                credentials = Credentials.load_from_db(credentials_id)
+                credentials = Credentials.get(credentials_id)
             except NotFound:
                 credentials = None
 

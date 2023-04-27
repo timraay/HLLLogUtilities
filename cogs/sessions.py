@@ -8,8 +8,8 @@ from enum import Enum
 from traceback import print_exc
 from typing import Union
 
-from lib.session import DELETE_SESSION_AFTER, KICK_INCOMPATIBLE_NAMES, SESSIONS, HLLCaptureSession, get_sessions
-from lib.credentials import Credentials
+from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions
+from lib.credentials import Credentials, CREDENTIALS
 from lib.storage import cursor
 from lib.modifiers import ModifierFlags
 from cogs.credentials import RCONCredentialsModal, SessionModifierView, SECURITY_URL, MODIFIERS_URL, autocomplete_credentials
@@ -285,7 +285,7 @@ class sessions(commands.Cog):
         
         cursor.execute("SELECT ROWID FROM credentials WHERE autosession_enabled = 1")
         for (id_,) in cursor.fetchall():
-            if id_ not in SESSIONS:
+            if id_ not in CREDENTIALS:
                 try:
                     Credentials.load_from_db(id_)
                 except:
@@ -354,7 +354,7 @@ class sessions(commands.Cog):
         end_time = end_time.replace(microsecond=0, tzinfo=end_time.tzinfo or timezone.utc)
 
         if server:
-            credentials = Credentials.load_from_db(server)
+            credentials = Credentials.get(server)
         else:
             credentials = None
 
