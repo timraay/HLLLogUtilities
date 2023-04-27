@@ -805,6 +805,7 @@ class EventFlags(Flags):
         self.arty_unassigned = True
         self.start_arty_cooldown = True
         self.cancel_arty_cooldown = True
+        self.player_kicked = True
         return self
     
 
@@ -915,6 +916,10 @@ class EventFlags(Flags):
     @flag_value
     def player_score_update(self):
         return 1 << 26
+    
+    @flag_value
+    def player_kicked(self):
+        return 1 << 27
 
 
     def filter_logs(self, logs: Sequence['LogLine']):
