@@ -119,6 +119,12 @@ class Credentials:
                     default_modifiers=ModifierFlags(default_modifiers),
                 )
     
+    def get_sessions(self):
+        from lib.session import SESSIONS
+        for session in SESSIONS.values():
+            if session.credentials == self:
+                yield session
+    
     @property
     def temporary(self):
         return not bool(self.id)
@@ -147,6 +153,8 @@ class Credentials:
             default_modifiers=self.default_modifiers,
         )
 
+        CREDENTIALS[self.id] = self
+
     def save(self):
         cursor.execute('UPDATE credentials SET name = ?, address = ?, port = ?, password = ?, default_modifiers = ?, autosession_enabled = ? WHERE ROWID = ?',
             (self.name, self.address, self.port, self.password, self.default_modifiers.value, self.autosession_enabled, self.id))
@@ -157,13 +165,13 @@ class Credentials:
             raise TypeError('These credentials are already unsaved')
         
         if self.autosession:
-            await self.autosession.disable()
+            await self.autosession.delete()
         
         cursor.execute('DELETE FROM credentials WHERE ROWID = ?', (self.id,))
         database.commit()
-        self.id = None
         
         del CREDENTIALS[self.id]
+        self.id = None
 
 @ttl_cache(size=15, seconds=15)
 async def credentials_in_guild_tll(guild_id: int):

@@ -76,6 +76,11 @@ class AutoSessionManager:
                 self.credentials.save()
         
         self.gatherer.stop()
+    
+    async def delete(self):
+        await self.disable()
+        del AUTOSESSIONS[self.id]
+        self.id = None
 
     def close_protocol(self):
         if self.protocol and self.protocol._transport:

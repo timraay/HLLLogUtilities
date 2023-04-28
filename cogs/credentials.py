@@ -5,15 +5,16 @@ from discord.utils import escape_markdown as esc_md
 from ipaddress import IPv4Address
 from datetime import timedelta
 import asyncio
+from functools import wraps
 from typing import Optional, Callable
 import logging
 
 from lib.credentials import Credentials, credentials_in_guild_tll
-from lib.exceptions import HLLAuthError, HLLConnectionError, HLLConnectionRefusedError, HLLError
+from lib.exceptions import HLLAuthError, HLLConnectionError, HLLConnectionRefusedError
 from lib.rcon import create_plain_transport
 from lib.autosession import MIN_PLAYERS_TO_START, MIN_PLAYERS_UNTIL_STOP, SECONDS_BETWEEN_ITERATIONS, MAX_DURATION_MINUTES
 from lib.modifiers import ModifierFlags
-from discord_utils import CallableButton, get_error_embed, get_success_embed, handle_error, CustomException, View, Modal
+from discord_utils import CallableButton, get_error_embed, get_success_embed, get_question_embed, handle_error, CustomException, View, Modal, only_once, ExpiredButtonError
 
 MIN_ALLOWED_PORT = 1025
 MAX_ALLOWED_PORT = 65536
@@ -208,17 +209,28 @@ class AutoSessionView(View):
             ]), inline=False)
 
         return embed
-        
+    
+    def __credentials_still_exist(func):
+        @wraps(func)
+        async def wrapper(self, *args, **kwargs):
+            if self.autosession.id is None:
+                raise ExpiredButtonError
+            return await func(self, *args, **kwargs)
+        return wrapper
+
+    @__credentials_still_exist
     async def enable_button_cb(self, interaction: Interaction):
         if not self.autosession.enabled:
             await self.autosession.enable()
         await self.update(interaction)
 
+    @__credentials_still_exist
     async def disable_button_cb(self, interaction: Interaction):
         if self.autosession.enabled:
             await self.autosession.disable()
         await self.update(interaction)
     
+    @__credentials_still_exist
     async def update(self, interaction: Interaction):
         if self.enabled:
             self.button.callback = self.disable_button_cb
@@ -233,21 +245,49 @@ class AutoSessionView(View):
 
         await interaction.response.edit_message(embed=embed, view=self)
 
+    @__credentials_still_exist
     async def select_modifiers_cb(self, interaction: Interaction):
         view = SessionModifierView(self.message, self.updated_modifiers_cb, flags=self.credentials.default_modifiers)
         await interaction.response.edit_message(content="Select all of the modifiers you want to enable by clicking on the buttons below", view=view, embed=None)
     
+    @__credentials_still_exist
     async def updated_modifiers_cb(self, interaction: discord.Interaction, modifiers: ModifierFlags):
+        changed = (modifiers != self.credentials.default_modifiers)
+
         self.credentials.default_modifiers = modifiers.copy()
         self.credentials.save()
-        await interaction.response.edit_message(content=None, view=self, embed=self.get_embed())
+        self.modifiers = modifiers
+        
+        session = self.autosession.get_active_session()
+        if changed and session and (modifiers != session.modifier_flags):
+            
+            @only_once
+            async def do_edit_ongoing_session(interaction: Interaction):
+                await session.edit(modifiers=modifiers)
+                await interaction.response.edit_message(content=None, view=self, embed=self.get_embed())                
+
+            @only_once
+            async def skip_edit_ongoing_session(interaction: Interaction):
+                await interaction.response.edit_message(content=None, view=self, embed=self.get_embed())
+
+            view = View()
+            view.add_item(CallableButton(do_edit_ongoing_session, style=ButtonStyle.blurple, label="Update session"))
+            view.add_item(CallableButton(skip_edit_ongoing_session, style=ButtonStyle.gray, label="Skip"))
+
+            await interaction.response.edit_message(content=None, view=view, embed=get_question_embed(
+                "Do you want to apply these new modifiers to the ongoing session?",
+                f"You currently have a session, **{esc_md(session.name)}**, already active. Do you want its active modifiers to be updated, or leave it as is?"
+            ))
+
+        else:
+            await interaction.response.edit_message(content=None, view=self, embed=self.get_embed())
 
 class SessionModifierView(View):
     def __init__(self, message: discord.InteractionMessage, callback: Callable, flags: ModifierFlags = None, timeout: float = 300.0, **kwargs):
         super().__init__(timeout=timeout, **kwargs)
         self.message = message
         self._callback = callback
-        self.flags = flags or ModifierFlags()
+        self.flags = flags.copy() or ModifierFlags()
         self.update_self()
     
     options = []
@@ -280,13 +320,13 @@ class SessionModifierView(View):
 
 async def autocomplete_credentials(interaction: Interaction, current: str):
     choices = [app_commands.Choice(name=str(credentials), value=credentials.id)
-        for credentials in await credentials_in_guild_tll(interaction.guild_id) if current.lower() in str(credentials).lower()]
+        for credentials in await credentials_in_guild_tll(interaction.guild_id) if current.lower() in str(credentials).lower() and credentials.id]
     choices.append(app_commands.Choice(name="Custom", value=0))
     return choices
 
 async def autocomplete_credentials_no_custom(interaction: Interaction, current: str):
     return [app_commands.Choice(name=str(credentials), value=credentials.id)
-        for credentials in await credentials_in_guild_tll(interaction.guild_id) if current.lower() in str(credentials).lower()]
+        for credentials in await credentials_in_guild_tll(interaction.guild_id) if current.lower() in str(credentials).lower() and credentials.id]
 
 class credentials(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -314,12 +354,68 @@ class credentials(commands.Cog):
         credentials=autocomplete_credentials_no_custom
     )
     async def remove_credentials(self, interaction: Interaction, credentials: int):
-        credentials = Credentials.get(credentials)
-        await credentials.delete()
-        await interaction.response.send_message(embed=get_success_embed(
-            title=f"Removed \"{credentials.name}\"!",
-            description=f"⤷ {credentials.address}:{credentials.port}"
-        ), ephemeral=True)
+        credentials: Credentials = Credentials.get(credentials)
+
+        scheduled = list()
+        ongoing = list()
+        autosession_enabled = credentials.autosession.enabled
+
+        for session in credentials.get_sessions():
+            if session.active_in() is True:
+                ongoing.append(session)
+            elif session.active_in():
+                scheduled.append(session)
+
+        @only_once
+        async def _delete_credentials(_interaction: Interaction, do_edit=True):
+            embed = get_success_embed(
+                title=f"Removed \"{credentials.name}\"!",
+                description=f"⤷ {credentials.address}:{credentials.port}"
+            )
+
+            for session in scheduled:
+                session.logger.info("Deleting scheduled session since its credentials are also being deleted")
+                session.delete()
+            
+            coros = []
+            for session in ongoing:
+                session.logger.info("Stopping ongoing session since its credentials are being deleted")
+                coros.append(session.stop())
+            if credentials.autosession.enabled:
+                credentials.autosession.logger.info("Disabling AutoSession since its credentials are being deleted")
+                coros.append(credentials.autosession.disable())
+            if coros:
+                await asyncio.gather(*coros)                            
+
+            await credentials.delete()
+
+            if do_edit:
+                await interaction.response.edit_message(embed=embed, view=None)
+            else:
+                await _interaction.response.send_message(embed=embed, ephemeral=True)
+
+        if scheduled or ongoing or autosession_enabled:
+            embed = get_question_embed(
+                "Are you sure?",
+                "When you delete these credentials, the following actions will be taken:\n"
+            )
+
+            for session in ongoing:
+                embed.description += f"\n• Stop ongoing session **{esc_md(session.name)}**"
+            for session in scheduled:
+                embed.description += f"\n• Delete scheduled session **{esc_md(session.name)}**"
+            if autosession_enabled:
+                embed.description += f"\n• Disable AutoSession for this server"
+
+            embed.description += f"\n\nFor ongoing or finished sessions logs will remain available for export."
+
+            view = View()
+            view.add_item(CallableButton(_delete_credentials, label="Confirm"))
+
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        
+        else:
+            await _delete_credentials(interaction, do_edit=False)
     
     @Group.command(name="add", description="Add credentials")
     async def add_credentials(self, interaction: Interaction):
