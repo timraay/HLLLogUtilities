@@ -18,19 +18,20 @@ class Credentials:
         self.port = port
         self.password = password
         self.default_modifiers = default_modifiers or ModifierFlags()
-
-        if autosession_enabled and self.temporary:
-            raise TemporaryCredentialsError("Credentials must not be temporary for AutoSession to be enabled")
         
-        if self.id in CREDENTIALS:
-            raise CredentialsAlreadyCreatedError("Credentials with ID %s were already loaded")
-
         if self.temporary:
+            if autosession_enabled:
+                raise TemporaryCredentialsError("Credentials must not be temporary for AutoSession to be enabled")
+
             self.autosession = None
+
         else:
+            if self.id in CREDENTIALS:
+                raise CredentialsAlreadyCreatedError("Credentials with ID %s were already loaded")
+            
             self.autosession = AutoSessionManager(self, autosession_enabled)
-        
-        CREDENTIALS[self.id] = self
+            
+            CREDENTIALS[self.id] = self
 
     @classmethod
     def get(cls, id: int):
