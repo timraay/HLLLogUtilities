@@ -47,6 +47,9 @@ class SessionAlreadyRunningError(DuplicationError):
 class SessionMissingCredentialsError(RuntimeError):
     """Raised when trying to activate a session that doesn't have any server credentials"""
 
+class CredentialsAlreadyCreatedError(DuplicationError):
+    """Raised when attempting to load a set of credentials more than once"""
+
 class AutoSessionAlreadyCreatedError(DuplicationError):
     """Raised when attempting to create an AutoSession for the same credentials twice"""
 

@@ -1,10 +1,12 @@
-from typing import Union
+from typing import Union, Dict
 
 from lib.storage import cursor, database
-from lib.exceptions import NotFound, TemporaryCredentialsError
+from lib.exceptions import NotFound, TemporaryCredentialsError, CredentialsAlreadyCreatedError
 from lib.modifiers import ModifierFlags
-from lib.autosession import AUTOSESSIONS, AutoSessionManager
+from lib.autosession import AutoSessionManager
 from utils import ttl_cache
+
+CREDENTIALS: Dict[int, 'Credentials'] = dict()
 
 class Credentials:
     def __init__(self, id: Union[int, None], guild_id: int, name: str, address: str, port: int,
@@ -16,14 +18,27 @@ class Credentials:
         self.port = port
         self.password = password
         self.default_modifiers = default_modifiers or ModifierFlags()
-
-        if autosession_enabled and self.temporary:
-            raise TemporaryCredentialsError("Credentials must not be temporary for AutoSession to be enabled")
-
+        
         if self.temporary:
+            if autosession_enabled:
+                raise TemporaryCredentialsError("Credentials must not be temporary for AutoSession to be enabled")
+
             self.autosession = None
+
         else:
-            self.autosession = AUTOSESSIONS.get(self.id) or AutoSessionManager(self, autosession_enabled)
+            if self.id in CREDENTIALS:
+                raise CredentialsAlreadyCreatedError("Credentials with ID %s were already loaded")
+            
+            self.autosession = AutoSessionManager(self, autosession_enabled)
+            
+            CREDENTIALS[self.id] = self
+
+    @classmethod
+    def get(cls, id: int):
+        if id in CREDENTIALS:
+            return CREDENTIALS[id]
+        else:
+            return cls.load_from_db(id)
 
     @classmethod
     def load_from_db(cls, id: int):
@@ -89,17 +104,20 @@ class Credentials:
     @classmethod
     def in_guild(cls, guild_id: int):
         cursor.execute('SELECT ROWID, name, address, port, password, default_modifiers FROM credentials WHERE guild_id = ?', (guild_id,))
-        return [cls(
-            id=id,
-            guild_id=guild_id,
-            name=name,
-            address=address,
-            port=port,
-            password=password,
-            default_modifiers=ModifierFlags(default_modifiers),
-        ) for (
-            id, name, address, port, password, default_modifiers
-        ) in cursor.fetchall()]
+        for (id, name, address, port, password, default_modifiers) in cursor.fetchall():
+            id = int(id)
+            if id in CREDENTIALS:
+                yield cls.get(id)
+            else:
+                yield cls(
+                    id=id,
+                    guild_id=int(guild_id),
+                    name=str(name),
+                    address=str(address),
+                    port=int(port),
+                    password=str(password),
+                    default_modifiers=ModifierFlags(default_modifiers),
+                )
     
     @property
     def temporary(self):
@@ -110,7 +128,7 @@ class Credentials:
         return bool(self.autosession and self.autosession.enabled)
 
     def __str__(self):
-        return f"{self.name} - {self.address}:{self.port}"
+        return f"[#{self.id}] {self.name} - {self.address}:{self.port}"
 
     def __eq__(self, other):
         if isinstance(other, Credentials) and not self.temporary:
@@ -134,19 +152,19 @@ class Credentials:
             (self.name, self.address, self.port, self.password, self.default_modifiers.value, self.autosession_enabled, self.id))
         database.commit()
     
-    def delete(self):
+    async def delete(self):
         if self.temporary:
             raise TypeError('These credentials are already unsaved')
+        
+        if self.autosession:
+            await self.autosession.disable()
         
         cursor.execute('DELETE FROM credentials WHERE ROWID = ?', (self.id,))
         database.commit()
         self.id = None
-
-        if self.autosession:
-            self.autosession.loop.create_task(self.autosession.disable())
-            del AUTOSESSIONS[self.id]
-
+        
+        del CREDENTIALS[self.id]
 
 @ttl_cache(size=15, seconds=15)
 async def credentials_in_guild_tll(guild_id: int):
-    return Credentials.in_guild(guild_id)
+    return list(Credentials.in_guild(guild_id))

@@ -60,7 +60,7 @@ class OneArtyModifier(Modifier):
         description = "Only one player per team may use artillery"
         enforce_name_validity = True
 
-    @event_listener(['activation', 'server_map_changed'])
+    @event_listener(['activation', 'server_match_started'])
     async def initialize(self, event: ActivationEvent):
         self.dap: Dict[int, Union[str, None]] = {1: None, 2: None}
         self.expire_tasks: Dict[int, Union[asyncio.Task, None]] = {1: None, 2: None}
