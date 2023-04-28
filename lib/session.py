@@ -2,14 +2,14 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from discord.ext import tasks
 from pypika import Query, Table, Column
-from typing import Union, Dict, Tuple
+from typing import Union, Dict, Tuple, Sequence
 import re
 
 from lib.rcon import HLLRcon
 from lib.credentials import Credentials
 from lib.storage import LogLine, database, cursor, insert_many_logs, delete_logs
 from lib.exceptions import NotFound, SessionDeletedError, SessionAlreadyRunningError, SessionMissingCredentialsError
-from lib.modifiers import ModifierFlags, INTERNAL_MODIFIERS
+from lib.modifiers import ModifierFlags, Modifier, INTERNAL_MODIFIERS
 from lib.info.models import EventFlags, EventModel, ActivationEvent, IterationEvent, DeactivationEvent, InfoHopper, PrivateEventModel
 from lib.info.events import EventListener
 from utils import get_config, schedule_coro, get_logger
@@ -261,22 +261,12 @@ class HLLCaptureSession:
         self._session_expiration_count = 0
 
         event = ActivationEvent(InfoHopper())
-        coros = list()
-        for modifier in self.modifiers:
-            for listener in modifier.get_listeners_for_event(event):
-                coros.append(listener.invoke(modifier, event))
-        if coros:
-            await asyncio.gather(*coros)
+        await self.invoke_event(event)
 
     @gatherer.after_loop
     async def after_gatherer_stop(self):
         event = DeactivationEvent(self.info)
-        coros = list()
-        for modifier in self.modifiers:
-            for listener in modifier.get_listeners_for_event(event):
-                coros.append(listener.invoke(modifier, event))
-        if coros:
-            await asyncio.gather(*coros)
+        await self.invoke_event(event)
 
         try:
             await self.rcon.stop(force=True)
@@ -313,6 +303,17 @@ class HLLCaptureSession:
             A corresponding event listener
         """
         yield from self.listeners.get(event.event_time, list())
+
+    async def invoke_event(self, event: EventModel, modifiers: Sequence['Modifier'] = None):
+        if modifiers is None:
+            modifiers = self.modifiers
+
+        coros = list()
+        for modifier in modifiers:
+            for listener in modifier.get_listeners_for_event(event):
+                coros.append(listener.invoke(modifier, event))
+        if coros:
+            await asyncio.gather(*coros)
 
     def push_to_db(self):
         self.logger.info('Pushing %s logs to the DB', len(self._logs))
@@ -355,3 +356,79 @@ class HLLCaptureSession:
         database.commit()
         
         del SESSIONS[self.id]
+
+    async def edit(self,
+        start_time: datetime = None,
+        end_time: datetime = None,
+        credentials: Credentials = None,
+        modifiers: ModifierFlags = ModifierFlags()
+    ):
+        # Get differences between old and new modifier flags
+        combined_flags = self.modifier_flags | modifiers
+        modifier_flags_to_add = combined_flags ^ self.modifier_flags 
+        modifier_flags_to_remove = combined_flags ^ modifiers
+
+        # Get list of removed modifiers
+        modifiers_to_remove = list()
+        modifier_types_to_remove = list(modifier_flags_to_remove.get_modifier_types())
+        for modifier in self.modifiers:
+            if type(modifier) in modifier_types_to_remove:
+                del self.modifiers[self.modifiers.index(modifier)]
+                modifiers_to_remove.append(modifier)
+        
+        # Invoke DeactivationEvent
+        if modifiers_to_remove:
+            self.modifier_flags ^= modifier_flags_to_remove
+            self.__listeners = None
+            event = DeactivationEvent(InfoHopper())
+            await self.invoke_event(event, modifiers_to_remove)
+        
+        # Update start and end time
+        if start_time:
+            self.start_time = start_time
+        if end_time:
+            self.end_time = end_time
+        
+        # Update credentials
+        if credentials:
+            self.credentials = credentials
+            force_reconnect = True
+        else:
+            force_reconnect = False
+
+        # Start or stop if needed
+        await self.reevalute_start_stop(force_reconnect)
+
+        # Get list of added modifiers
+        modifiers_to_add = list()
+        for m_cls in modifier_flags_to_add.get_modifier_types():
+            modifier = m_cls(self)
+            modifiers_to_add.append(modifier)
+
+        # Invoke ActivationEvent
+        if modifiers_to_add:
+            self.__listeners = None
+            self.modifiers += modifiers_to_add
+            self.modifier_flags |= modifier_flags_to_add
+            event = ActivationEvent(InfoHopper())
+            await self.invoke_event(event, modifiers_to_add)
+
+        # At last, save
+        self.save()
+
+    async def reevalute_start_stop(self, force_reconnect: bool = False):
+        self._clear_tasks()
+
+        is_activated = self.gatherer.is_running()
+        active_in = self.active_in()
+        
+        if force_reconnect and self.rcon:
+            await self.rcon.stop(force=False)
+
+        self._start_task = None
+        self._stop_task = None
+
+        if active_in and not is_activated:
+            self._start_task = schedule_coro(self.start_time, self.activate, error_logger=self.logger)
+        if active_in or is_activated:
+            self._stop_task = schedule_coro(self.end_time, self.deactivate, error_logger=self.logger)
