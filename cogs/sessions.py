@@ -484,39 +484,92 @@ class sessions(commands.Cog):
     async def list_all_sessions(self, interaction: Interaction, filter: SessionFilters = SessionFilters.all):
         all_sessions = get_sessions(interaction.guild_id)
         count = 0
-        description = ""
+
+        embeds = [discord.Embed()]
 
         if filter == SessionFilters.all or filter == SessionFilters.scheduled:
             sessions = [session for session in all_sessions if isinstance(session.active_in(), timedelta)]
-            count += len(sessions)
             if sessions:
-                description += "\n\n📅 **Scheduled records**"
-                for session in sessions:
-                    description += f"\n> • {esc_md(session.name)} (Starts <t:{int(session.start_time.timestamp())}:R>)\n> ⤷ <t:{int(session.start_time.timestamp())}:f> > <t:{int(session.end_time.timestamp())}:t> ({int(session.duration.total_seconds() // 60)} min.)"
+                count += len(sessions)
+                embed = discord.Embed(title="📅 Scheduled records")
+                for i, session in enumerate(sessions):
+                    if i and (i % 15) == 0:
+                        embeds.append(embed)
+                        embed = discord.Embed(title="📅 Scheduled records")
+
+                    description = f"> 🕓 <t:{int(session.start_time.timestamp())}:f> - <t:{int(session.end_time.timestamp())}:t> ({int(session.duration.total_seconds() // 60)} mins.)"
+                    description += f"\n> 🚩 `{session.credentials.name if session.credentials else 'Unknown'}`"
+                    if session.modifier_flags:
+                        description += f" | 🧮 " + ", ".join([
+                            f"[{m.config.name}]({MODIFIERS_URL}#{m.config.name.lower().replace(' ', '-')})"
+                            for m in session.modifier_flags.get_modifier_types()
+                        ])
+                    description += f"\n> 🔆 Starts <t:{int(session.start_time.timestamp())}:R>"
+
+                    embed.add_field(
+                        name=f"> **{esc_md(session.name)}**",
+                        value=description,
+                        inline=False
+                    )
+                embeds.append(embed)
 
         if filter == SessionFilters.all or filter == SessionFilters.ongoing:
             sessions = [session for session in all_sessions if session.active_in() is True]
-            count += len(sessions)
             if sessions:
-                description += "\n\n🎦 **Currently recording**"
-                for session in sessions:
-                    description += f"\n> • {esc_md(session.name)} (Ends <t:{int(session.end_time.timestamp())}:R>)\n> ⤷ <t:{int(session.start_time.timestamp())}:f> > <t:{int(session.end_time.timestamp())}:t> ({int(session.duration.total_seconds() // 60)} min.)"
+                count += len(sessions)
+                embed = discord.Embed(title="🎦 Currently recording")
+                for i, session in enumerate(sessions):
+                    if i and (i % 15) == 0:
+                        embeds.append(embed)
+                        embed = discord.Embed(title="🎦 Currently recording")
+
+                    description = f"> 🕓 <t:{int(session.start_time.timestamp())}:f> - <t:{int(session.end_time.timestamp())}:t> ({int(session.duration.total_seconds() // 60)} mins.)"
+                    description += f"\n> 🚩 `{session.credentials.name if session.credentials else 'Unknown'}`"
+                    if session.modifier_flags:
+                        description += f" | 🧮 " + ", ".join([
+                            f"[{m.config.name}]({MODIFIERS_URL}#{m.config.name.lower().replace(' ', '-')})"
+                            for m in session.modifier_flags.get_modifier_types()
+                        ])
+
+                    embed.add_field(
+                        name=f"> **{esc_md(session.name)}**",
+                        value=description,
+                        inline=False
+                    )
+                embeds.append(embed)
 
         if filter == SessionFilters.all or filter == SessionFilters.finished:
             sessions = [session for session in all_sessions if session.active_in() is False]
-            count += len(sessions)
             if sessions:
-                description += "\n\n✅ **Finished records**"
-                for session in sessions:
-                    description += f"\n> • {esc_md(session.name)} (<t:{int(session.end_time.timestamp())}:R>) **[🗑️ <t:{int((session.end_time + DELETE_SESSION_AFTER).timestamp())}:R>]**\n> ⤷ <t:{int(session.start_time.timestamp())}:f> > <t:{int(session.end_time.timestamp())}:t> ({int(session.duration.total_seconds() // 60)} min.)"
+                count += len(sessions)
+                embed = discord.Embed(title="✅ Finished records")
+                for i, session in enumerate(sessions):
+                    if i and (i % 15) == 0:
+                        embeds.append(embed)
+                        embed = discord.Embed(title="✅ Finished records")
 
-        mention = await get_command_mention(self.bot.tree, 'session', 'new')
-        embed = discord.Embed(
-            title=f"There are {count} {'total' if filter == SessionFilters.all else filter.value} sessions",
-            description=description or f"Sessions can be created with the {mention} command."
-        )
+                    description = f"> 🕓 <t:{int(session.start_time.timestamp())}:f> - <t:{int(session.end_time.timestamp())}:t> ({int(session.duration.total_seconds() // 60)} mins.)"
+                    description += f"\n> 🚩 `{session.credentials.name if session.credentials else 'Unknown'}`"
+                    if session.modifier_flags:
+                        description += f" | 🧮 " + ", ".join([
+                            f"[{m.config.name}]({MODIFIERS_URL}#{m.config.name.lower().replace(' ', '-')})"
+                            for m in session.modifier_flags.get_modifier_types()
+                        ])
+                    description += f"\n> 🗑️ Expires <t:{int((session.end_time + DELETE_SESSION_AFTER).timestamp())}:R>"
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+                    embed.add_field(
+                        name=f"> **{esc_md(session.name)}**",
+                        value=description,
+                        inline=False
+                    )
+                embeds.append(embed)
+
+        embeds[0].title = f"**There are {count} {'total' if filter == SessionFilters.all else filter.value} sessions**"
+        if len(embeds) == 1:
+            mention = await get_command_mention(self.bot.tree, 'session', 'new')
+            embeds[0].description = f"Sessions can be created with the {mention} command."
+
+        await interaction.response.send_message(embeds=embeds, ephemeral=True)
 
     @SessionGroup.command(name="stop", description="Stop a session pre-emptively")
     @app_commands.describe(
