@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from dateutil.parser import parse as dt_parse
 from enum import Enum
 from traceback import print_exc
-from typing import Union, Optional
+from typing import Union, Optional, Literal
 
 from lib.session import DELETE_SESSION_AFTER, SESSIONS, HLLCaptureSession, get_sessions
 from lib.credentials import Credentials, CREDENTIALS
@@ -75,7 +75,7 @@ async def autocomplete_active_sessions(interaction: Interaction, current: str):
 
 
 class SessionCreateView(View):
-    def __init__(self, name: str, guild: discord.Guild, credentials: Union[Credentials, False, None], start_time: datetime, end_time: datetime, session: 'HLLCaptureSession' = None, timeout: float = 180):
+    def __init__(self, name: str, guild: discord.Guild, credentials: Union[Credentials, Literal[False], None], start_time: datetime, end_time: datetime, session: 'HLLCaptureSession' = None, timeout: float = 180):
         super().__init__(timeout=timeout)
 
         self.name = name
