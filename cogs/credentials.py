@@ -190,7 +190,7 @@ class AutoSessionView(View):
                 embed.add_field(name="Waiting for players...", value=f"{self.autosession.last_seen_playercount}/{MIN_PLAYERS_UNTIL_STOP} players (<t:{ts}:R>)", inline=True)
             
             else:
-                ts = int((self.autosession.last_seen_time + self.autosession._cooldown * timedelta(SECONDS_BETWEEN_ITERATIONS)).timestamp())
+                ts = int((self.autosession.last_seen_time + self.autosession._cooldown * timedelta(seconds=SECONDS_BETWEEN_ITERATIONS)).timestamp())
                 embed.title = "AutoSession is currently enabled."
                 embed.color = discord.Colour.from_rgb(255,243,33)
                 embed.add_field(name="Status", value="\🟡Cooldown", inline=True)
