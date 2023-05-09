@@ -820,13 +820,13 @@ def create_scoreboard(data: Union['MatchData', 'MatchGroup']):
         [   
             'Allies', stats.total_allied_kills, stats.total_allied_deaths, round(stats.total_allied_kills / (stats.total_allied_deaths or 1), 2),
             total_allied_score.combat, total_allied_score.offense, total_allied_score.defense, total_allied_score.support,
-            f"{round(100 * stats.total_allied_time_alive / stats.total_allied_time_played, 1)}%"
+            f"{round(100 * stats.total_allied_time_alive / (stats.total_allied_time_played or stats.total_allied_time_alive), 1)}%"
         ],
         
         [
             'Axis', stats.total_axis_kills, stats.total_axis_deaths, round(stats.total_axis_kills / (stats.total_axis_deaths or 1), 2),
             total_axis_score.combat, total_axis_score.offense, total_axis_score.defense, total_axis_score.support,
-            f"{round(100 * stats.total_axis_time_alive / stats.total_axis_time_played, 1)}%"
+            f"{round(100 * stats.total_axis_time_alive / (stats.total_axis_time_played or stats.total_axis_time_alive), 1)}%"
         ],
     ]
 
