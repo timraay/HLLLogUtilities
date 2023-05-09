@@ -173,8 +173,8 @@ def only_once(func):
         return res
     return decorated
 
-@ttl_cache(size=100, seconds=60*60)
-async def get_command_mention(tree: discord.app_commands.CommandTree, name: str, subcommands: str):
+@ttl_cache(size=100, seconds=60*60*24)
+async def get_command_mention(tree: discord.app_commands.CommandTree, name: str, subcommands: str = None):
     commands = await tree.fetch_commands()
     command = next(cmd for cmd in commands if cmd.name == name)
     if subcommands:

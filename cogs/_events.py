@@ -2,7 +2,7 @@ import discord
 from discord import Interaction
 from discord.ext import commands, tasks
 
-from discord_utils import handle_error
+from discord_utils import handle_error, get_command_mention
 from lib.session import SESSIONS
 
 class _events(commands.Cog):
@@ -27,6 +27,54 @@ class _events(commands.Cog):
     async def before_status(self):
         await self.bot.wait_until_ready()
 
+    @commands.Cog.listener()
+    async def on_guild_join(self, guild: discord.Guild):
+        if guild.public_updates_channel and guild.public_updates_channel.permissions_for(guild.me).send_messages:
+            channel = guild.public_updates_channel
+        elif guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
+            channel = guild.system_channel
+        else:
+            return
+
+        embed = discord.Embed(
+            title="Thank you for adding me 👋",
+            description=(
+                "Let me quickly introduce myself, I am **HLL Log Utilities**, but you may call me **HLU** in short."
+                " I can help you manage your Hell Let Loose events, by capturing and exporting logs, providing detailed"
+                " statistics, and enforcing the rules if needed."
+                "\n"
+                "\nBefore you can let me loose, you need to set a couple of things up first. Don't worry, this will only take a few minutes!"
+                "\n"
+                f"\n1) **Add your server details** → {await get_command_mention(self.bot.tree, 'credentials', 'add')}"
+                f"\n2) **Configure bot permissions** → [Click here](https://github.com/timraay/HLLLogUtilities/blob/main/FAQ.md#how-can-i-give-users-permission-to-use-the-bots-commands) (Optional)"
+                f"\n3) **Enable automatic session creation** → {await get_command_mention(self.bot.tree, 'autosession')} (Optional)"
+                "\n"
+                "\nNow we're ready! Let's manually create a capture session."
+                "\n"
+                f"\n4) **Schedule a capture session** → {await get_command_mention(self.bot.tree, 'session', 'new')}"
+                "\n"
+                "\nAnd lastly, we can extract the logs and scores."
+                "\n"
+                f"\n5) **Export logs from a session** → {await get_command_mention(self.bot.tree, 'export', 'logs')}"
+                f"\n6) **Export statistics of a session** → {await get_command_mention(self.bot.tree, 'export', 'logs')}"
+                "\n"
+                "\nThat's all there is to it! Some more useful links can be found below. Thanks for using HLU!"
+                "\n"
+                "\n⚙️ [Setting up automatic session scheduling](https://github.com/timraay/HLLLogUtilities#automatic-session-scheduling)"
+                "\n⚙️ [Setting up custom rule enforcement](https://github.com/timraay/HLLLogUtilities#automatic-session-scheduling)"
+                "\n⚙️ [Submitting logs to HeLO](https://helo-system.de/statistics/matches/report)"
+                "\n"
+                "\n🐛 [Support & bug reports](https://github.com/timraay/HLLLogUtilities/issues)"
+                "\n📰 [Patch notes](https://github.com/timraay/HLLLogUtilities/releases)"
+                "\n❓ [Frequently Asked Questions](https://github.com/timraay/HLLLogUtilities/blob/main/FAQ.md)"
+                "\n☕ [Support me on Ko-fi](https://ko-fi.com/abusify)"
+            ),
+            color=discord.Colour(7722980)
+        ).set_image(
+            url="https://github.com/timraay/HLLLogUtilities/blob/main/assets/banner.png?raw=true"
+        )
+
+        await channel.send(embed=embed)
 
 
 async def setup(bot):
