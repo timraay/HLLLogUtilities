@@ -13,6 +13,18 @@ Once you've changed your name and restarted your game, you should be able to joi
 
 ---
 
+## How can I give users permission to use the bot's commands?
+By default, all commands require users to have either Administrator or Manage Server permissions. You can change this by going to your Server Settings, then to Integrations, where you should be able to find HLL Log Utilities. From there, you can add permission overwrites to certain roles, users, and/or channels.
+
+<details>
+<summary>Click to view image</summary>
+<div align=center>
+<img src="assets/permissions.png">
+</div>
+</details>
+
+---
+
 ## "This interaction failed" / Bot thinking indefinitely
 When you press a button or select an item from a dropdown, the bot may think for a few seconds, sometimes indefinitely, until Discord tells you that the interaction failed. When this happens, it normally simply means that the message has expired. Try running the command again. If that doesn't resolve the issue, chances are you've found a bug.
 

@@ -1,6 +1,11 @@
-# **HLLLogUtilities** ![GitHub release (latest by date)](https://img.shields.io/github/v/release/timraay/HLLLogUtilities)
+<div align="center">
+<img align="right" src="assets/banner.png">
 
-<img align="right" width="250" height="250" src="icon.png">
+# [![GitHub release](https://img.shields.io/github/release/timraay/HLLLogUtilities.svg)](https://github.com/timraay/HLLLogUtilities/releases) [![GitHub license](https://img.shields.io/github/license/timraay/HLLLogUtilities.svg)](https://github.com/timraay/HLLLogUtilities/blob/main/LICENSE) [![GitHub contributors](https://img.shields.io/github/contributors/timraay/HLLLogUtilities.svg)](https://github.com/timraay/HLLLogUtilities/graphs/contributors) [![GitHub issues](https://img.shields.io/github/issues/timraay/HLLLogUtilities.svg)](https://github.com/timraay/HLLLogUtilities/issues) [![GitHub pull requests](https://img.shields.io/github/issues-pr/timraay/HLLLogUtilities.svg)](https://github.com/timraay/HLLLogUtilities/pulls) [![GitHub stars](https://img.shields.io/github/stars/timraay/HLLLogUtilities.svg)](https://github.com/timraay/HLLLogUtilities/stargazers)
+
+</div>
+
+<img align="right" width="250" height="250" src="assets/icon.png">
 
 > For any issues or feature requests, please [open an Issue](https://github.com/timraay/HLLLogUtilities/issues) here on GitHub.
 
@@ -43,23 +48,39 @@ To get started with HLLLogUtilities, follow the below steps!
     - Give it a name that you can later identify the session by, for instance "First-time test".
     - Give it a start and end time. The times have to be in UTC. Unless selected from the presented list of choices, times have to be fixed and not relative, with the exception of the word "now".
     - For the server, select "Custom". You likely won't have any other options there yet anyway.
+
+<div align=center>
+<img src="assets/createsession.png">
+</div>
+
 4. Run the command. Confirm that the presented information is correct and press "Confirm". Otherwise dismiss the message and run the command again.
 5. It'll ask you for your RCON credentials. Open the form and fill them in. 
     - The name doesn't have to be your actual server's name. It's purely so you will later know what server the bot is talking about.
-6. Choose whether you want to save the credentials or not.
 
-Your session is now scheduled! Now, let's wait for it to gather some logs and then view them.
+<div align=center>
+<img width=50% src="assets/credentialsform.png">
+</div>
+
+6. Choose whether you want to save the credentials or not. It is recommended you do.
+
+Your session is now scheduled! Let's wait for it to gather some logs and then we will view them.
 
 1. Type in `/`, and select the `/export logs` command.
 2. Fill in the parameters.
     - Select the session you created earlier.
-3. Run the command and follow the on-screen instructions.
+3. Run the command.
 
 And that's everything! You can see all of your sessions with the `/session list` command. Just note that they'll be deleted after 14 days. To manage your server credentials, use the `/credentials` command.
 
 If you want sessions to be automatically started instead of having to manually schedule them every time, consider enabling [AutoSession](#automatic-session-scheduling) as well.
 
 > **NOTE:** All commands require **Manage Server permissions**. You can add exceptions for specific roles, channels and/or users under *Server Settings > Integrations > HLL Log Utilities*.
+> <details>
+> <summary>Click to view image</summary>
+> <div align=center>
+> <img src="assets/permissions.png">
+> </div>
+> </details>
 
 # **Automatic session scheduling**
 
