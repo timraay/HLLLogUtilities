@@ -31,6 +31,9 @@ class RCONCredentialsModal(Modal):
         if defaults:
             self.name.default = defaults.name
             self.address.default = f"{defaults.address}:{defaults.port}"
+        else:
+            self.name.default = None
+            self.address.default = None
         super().__init__(title=title, timeout=timeout, **kwargs)
         self._callback = callback
 
