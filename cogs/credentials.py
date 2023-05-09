@@ -83,17 +83,41 @@ class RCONCredentialsModal(Modal):
             if isinstance(error, HLLAuthError):
                 embed = get_error_embed(
                     title=str(error),
-                    description="Failed to authenticate with RCON. This means that the provided RCON password does not work. Possible solutions are as follows:\n\n• Verify that the password is correct\n\nIf you still wish to continue, press the below button. Otherwise you may dismiss this message."
+                    description=(
+                        "Failed to authenticate with RCON. This means that the provided"
+                        " RCON password does not work. Possible solutions are as follows:"
+                        "\n\n• Verify that the password is correct"
+                        "\n\nIf you still wish to continue, press the below button."
+                        " Otherwise you may dismiss this message."
+                    )
                 )
             elif isinstance(error, HLLConnectionRefusedError):
                 embed = get_error_embed(
                     title=str(error),
-                    description="Failed to connect to your server, because it actively refused connection via specified port. This most likely means that the port is incorrect. Possible solutions are as follows:\n\n• Verify that the port is correct\n\nIf you still wish to continue, press the below button. Otherwise you may dismiss this message."
+                    description=(
+                        "Failed to connect to your server, because it actively"
+                        " refused connection via specified port. This most likely means"
+                        " that the port is incorrect. Possible solutions are as follows:"
+                        "\n\n• Verify that the port is correct"
+                        "\n\nIf you still wish to continue, press the below button."
+                        " Otherwise you may dismiss this message."
+                    )
                 )
             else:
                 embed = get_error_embed(
                     title=str(error),
-                    description="Failed to connect to your server, because the address could not be resolved or the connection was refused. Possible solutions are as follows:\n\n• Verify that the address and port are correct\n• Make sure the server is online\n\nIf you still wish to continue, press the below button. Otherwise you may dismiss this message."
+                    description=(
+                        "Failed to connect to your server, because the address"
+                        " could not be resolved or the connection was refused. Possible"
+                        " solutions are as follows:"
+                        "\n\n• Verify that the address and port are correct"
+                        "\n• Make sure the server is online"
+                        "\n\nIf the issue still persists, the game server's firewall is"
+                        " interfering. Reach out to the GSP and ask them to whitelist the"
+                        " address of the device the bot is hosted on."
+                        "\n\nIf you still wish to continue, press the below button."
+                        " Otherwise you may dismiss this message."
+                    )
                 )
 
             async def finish_callback_delete(_interaction):
