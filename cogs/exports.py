@@ -61,6 +61,222 @@ class ExportRange(BaseModel):
             return None
 
 
+class ExportView(View):
+    flags_options = (
+        ("Deaths", "💀", EventFlags.deaths()),
+        ("Joins", "🚪", EventFlags.connections()),
+        ("Teams", "🫐", EventFlags.teams()),
+        ("Squads", "👬", EventFlags.squads()),
+        ("Roles", "🏹", EventFlags.roles()),
+        ("Scores", "🪙", EventFlags.scores()),
+        ("Messages", "✉️", EventFlags.messages()),
+        ("Gamestates", "🚥", EventFlags.game_states()),
+        ("Admin Cam", "🎥", EventFlags.admin_cam()),
+        ("Modifiers", "🧮", EventFlags.modifiers()),
+    )
+
+    def __init__(self, interaction: Interaction, session: HLLCaptureSession, as_scoreboard: bool = False):
+        super().__init__(timeout=300)
+        self.interaction = interaction
+        self.session = session
+        self.as_scoreboard = bool(as_scoreboard)
+        
+        self.logs = session.get_logs()
+        if not self.logs:
+            raise CustomException(
+                "Invalid session!",
+                "This session doesn't hold any logs yet"
+            )
+
+        self._ranges = self._get_ranges()
+        self._range_index = None
+
+        if self.as_scoreboard:
+            self.scores = MatchGroup.from_logs(self.logs) 
+        else:
+            self.scores = None
+
+        self.range = ExportRange()
+        self.flags = EventFlags.all()
+        self.format = ExportFormats.text
+
+        # Add flags select
+
+        if not self.as_scoreboard:
+            self.add_item(CallableSelect(self.select_flags,
+                placeholder="Select log types to include...",
+                options=[
+                    SelectOption(label=label, emoji=emoji, value=str(i), default=True)
+                    for i, (label, emoji, _) in enumerate(self.flags_options)
+                ],
+                min_values=0,
+                max_values=len(self.flags_options)
+            ))
+
+        # Add range select
+
+        options = [SelectOption(label="Entire session", emoji="🕐", value="0", default=True)]
+        for i, range in enumerate(self._ranges):
+
+            description = "..."
+            if range.start_time:
+                description = range.start_time.strftime(range.start_time.strftime('%H:%Mh')) + description
+            if range.has_end_time:
+                description = description + range.shortest_end_time.strftime(range.shortest_end_time.strftime('%H:%Mh'))
+
+            options.append(SelectOption(
+                label=range.map_name or "Unknown",
+                description=description,
+                emoji="⏱️",
+                value=str(i + 1)
+            ))
+
+        self.add_item(CallableSelect(self.select_range,
+            placeholder="Select a time range...",
+            options=options
+        ))
+
+        # Add format select
+
+        self.add_item(CallableSelect(self.select_format,
+            placeholder="Select a file format...",
+            options=[
+                SelectOption(
+                    label=f"Export as .{format.value.ext()}",
+                    description=f"A {format.name} file",
+                    emoji="📑",
+                    value=format.name,
+                    default=format.name == "text"
+                )
+                for format in ExportFormats.__members__.values()
+            ]
+        ))
+        
+    async def send(self):
+        content, file = self.get_message_payload()
+        if file:
+            await self.interaction.response.send_message(content, file=file)
+        else:
+            await self.interaction.response.send_message(content)
+
+        await self.interaction.followup.send(
+            content="Select any of the options to change the output above!",
+            view=self,
+            ephemeral=True
+        )
+
+    async def edit(self):
+        content, file = self.get_message_payload()
+        attachments = [file] if file else []
+        await self.interaction.edit_original_response(content=content, attachments=attachments)
+
+    def get_message_payload(self):
+        logs = self.session.get_logs(
+            from_=self.range.start_time,
+            to=self.range.unload_time,
+            filter=self.flags
+        )
+
+        content = f"{'Scoreboard' if self.as_scoreboard else 'Logs'} for **{esc_md(self.session.name)}**"
+        if self.range.map_name:
+            content += f" ({self.range.map_name})"
+        if self.flags != self.flags.all():
+            content += f"\n> Includes: **{'**, **'.join([option[0] for option in ExportFilterView.options if option[2] <= self.flags])}**"
+
+        if logs:
+            converter: Converter = self.format.value
+
+            if self.as_scoreboard:
+                if self._range_index is None:
+                    match_data = self.scores
+                else:
+                    match_data = self.scores.matches[self._range_index]
+                fp = StringIO(create_scoreboard(match_data))
+            
+            else:
+                fp = StringIO(converter.convert_many(logs))
+
+            file = discord.File(fp, filename=self.session.name + '.' + converter.ext())
+        else:
+            file = None
+            content += '\n```\nNo logs match the given criteria!\n```'
+        
+        return content, file
+
+    def _get_ranges(self):
+        flags = EventFlags(server_match_started=True, server_match_ended=True, server_map_changed=True)
+        ranges = [ExportRange()]
+        for log in flags.filter_logs(self.logs):
+            try:
+                log_type = EventTypes(log.type)
+            except ValueError:
+                continue
+
+            if log_type == EventTypes.server_match_ended:
+                ranges[-1].end_time = log.event_time
+                if not ranges[-1].map_name:
+                    ranges[-1].map_name = " ".join(get_map_and_mode(log.new))
+
+            elif log_type == EventTypes.server_match_started:
+                ranges[-1].unload_time = log.event_time
+                ranges.append(ExportRange(
+                    start_time=log.event_time,
+                    map_name=" ".join(get_map_and_mode(log.new))
+                ))
+
+            elif log_type == EventTypes.server_map_changed:
+                if not ranges[-1].start_time:
+                    last_start = None
+                else:
+                    last_start = (log.event_time - ranges[-1].start_time).total_seconds()
+
+                if len(ranges) >= 2 and last_start and last_start < 30:
+                    # The line appeared after the server_match_ended event
+                    ranges[-2].map_name = Map.load(log.old).pretty()
+                    ranges[-1].map_name = Map.load(log.new).pretty()
+                
+                elif last_start > 60:
+                    # The line appeared before the server_match_ended event
+                    ranges[-1].map_name = Map.load(log.old).pretty()
+
+        if len(ranges) == 1:
+            ranges.clear()
+
+        return ranges
+
+    async def select_range(self, interaction: Interaction, values: List[str]):
+        range_i = int(values[0])
+        if range_i:
+            self.range_index = range_i - 1
+            self.range = self._ranges[self.range_index]
+        else:
+            self.range_index = None
+            self.range = ExportRange()
+
+        await interaction.response.defer()
+        await self.edit()
+
+        if self.range.start_time and self.range.has_end_time:
+            # The full match was recorded
+            view = HSSSubmitPromptView(self.session.get_logs(from_=self.range.start_time, to=self.range.unload_time), self.interaction.user)
+            await interaction.followup.send(content="The above match may be submitted to HeLO!", view=view, ephemeral=True)
+    
+    async def select_flags(self, interaction: Interaction, values: List[str]):
+        flags = EventFlags()
+        for value in values:
+            flags |= self.flags_options[int(value)][2]
+        if not flags:
+            flags = EventFlags.all()
+        self.flags = flags
+        await interaction.response.defer()
+        await self.edit()
+
+    async def select_format(self, interaction: Interaction, values: List[str]):
+        self.format = ExportFormats[values[0]]
+        await interaction.response.defer()
+        await self.edit()
+
+
 class ExportFilterView(View):
     def __init__(self, interaction: Interaction, callback: Callable, *args, timeout: float = 300.0, **kwargs):
         super().__init__(*args, timeout=timeout, **kwargs)
@@ -210,9 +426,10 @@ class TeamSelectView(View):
 class HSSSubmitPromptView(View):
     def __init__(self, logs: List[LogLine], user: discord.Member):
         super().__init__(timeout=60 * 10)
-        self.message: discord.Message = None
         self.logs = logs
         self.user = user
+
+        self.add_item(ui.Button(label="Learn more", url="https://helo-system.de/"))
     
     @discord.ui.button(label="Submit to HeLO", style=ButtonStyle.green)
     async def submit_button(self, interaction: Interaction, button: ui.Button):
@@ -231,7 +448,7 @@ class HSSSubmitPromptView(View):
         else:
             view = HSSSubmitSelectApiKeyView(api_keys, self.logs)
         embed = view.get_embed()
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await interaction.response.edit_message(content=None, embed=embed, view=view)
 
     async def on_timeout(self):
         if self.message:
@@ -660,82 +877,9 @@ class exports(commands.Cog):
     )
     async def export_logs(self, interaction: Interaction, session: int):
         session: HLLCaptureSession = SESSIONS[session]
-        logs = session.get_logs()
-        if not logs:
-            raise CustomException(
-                "Invalid session!",
-                "This session doesn't hold any logs yet"
-            )
-
-        async def ask_export_range(_, flags: EventFlags):
-
-            async def ask_export_format(_, range: Union[ExportRange, None], range_i: Union[int, None]):
-                range = range or ExportRange()
-
-                @only_once
-                async def send_logs(_interaction: Interaction, format: List[str]):
-                    await _interaction.response.defer()
-
-                    logs = session.get_logs(
-                        from_=range.start_time,
-                        to=range.unload_time,
-                        filter=flags
-                    )
-                    converter: Converter = ExportFormats[format[0]].value
-
-                    if logs:
-                        fp = StringIO(converter.convert_many(logs))
-                        file = discord.File(fp, filename=session.name + '.' + converter.ext())
-
-                        content = f"Logs for **{esc_md(session.name)}**"
-                        if range.map_name:
-                            content += f" ({range.map_name})"
-                        if flags != flags.all():
-                            content += f"\n> Includes: **{'**, **'.join([option[0] for option in ExportFilterView.options if option[2] <= flags])}**"
-
-                        if range.start_time and range.has_end_time:
-                            # The full match was recorded
-                            view = HSSSubmitPromptView(session.get_logs(from_=range.start_time, to=range.unload_time), _interaction.user)
-                            view.message = await _interaction.followup.send(content=content, file=file, view=view, wait=True)
-                        else:
-                            await interaction.followup.send(content=content, file=file)
-
-                        await interaction.delete_original_response()
-                    
-                    else:
-                        await interaction.edit_original_response(
-                            content=None,
-                            embed=get_error_embed(
-                                title="Couldn't export logs!",
-                                description="No logs were found matching the given criteria"
-                            ),
-                            view=None
-                        )
-
-                view = View(timeout=300.0)
-                view.add_item(CallableSelect(send_logs,
-                                             placeholder="Select an export format...",
-                                             options=[SelectOption(label=format.name,
-                                                                   description=f"A .{format.value.ext()} file")
-                                                      for format in ExportFormats.__members__.values()]
-                                             ))
-                await interaction.edit_original_response(
-                    content="Select a format to export the logs in by selecting it from the dropdown",
-                    view=view
-                )
-
-            view = ExportRangeSelectView(interaction, ask_export_format, logs)
-            await interaction.edit_original_response(
-                content="Select a specific match to export the logs from by selecting it from the dropdown",
-                view=view
-            )
-
-        view = ExportFilterView(interaction, ask_export_range)
-        await interaction.response.send_message(
-            content="Filter out certain log types by clicking on the categories below",
-            view=view, ephemeral=True
-        )
-
+        view = ExportView(interaction, session)
+        await view.send()
+        
     @ExportGroup.command(name="scoreboard", description="Export a scoreboard from a session")
     @app_commands.describe(
         session="A log capture session"
@@ -745,48 +889,8 @@ class exports(commands.Cog):
     )
     async def export_scoreboard(self, interaction: Interaction, session: int):
         session: HLLCaptureSession = SESSIONS[session]
-        logs = session.get_logs()
-        if not logs:
-            raise CustomException(
-                "Invalid session!",
-                "This session doesn't hold any logs yet"
-            )
-
-        @only_once
-        async def send_scoreboard(_interaction: Interaction, range: Union[ExportRange, None], match_index: Union[int, None]):
-            logs = session.get_logs()
-            if not logs:
-                raise CustomException(
-                    "Invalid range!",
-                    "No logs match the given criteria"
-                )
-
-            match_data = MatchGroup.from_logs(logs)
-            if range:
-                match_data = match_data.matches[match_index]
-            scoreboard = create_scoreboard(match_data)
-
-            fp = StringIO(scoreboard)
-            file = discord.File(fp, filename=f'{session.name} scores.txt')
-
-            content = f"Scoreboard for **{esc_md(session.name)}**"
-            if range and range.map_name:
-                content += f" ({range.map_name})"
-            
-            if range and range.start_time and range.has_end_time:
-                # A full match was recorded
-                view = HSSSubmitPromptView(session.get_logs(from_=range.start_time, to=range.unload_time), _interaction.user)
-                view.message = await interaction.followup.send(content=content, file=file, view=view, wait=True)
-            else:
-                await interaction.followup.send(content=content, file=file)
-
-            await interaction.delete_original_response()
-
-        view = ExportRangeSelectView(interaction, send_scoreboard, logs)
-        await interaction.response.send_message(
-            content="Select a specific match to export a scoreboard from by selecting it from the dropdown",
-            view=view, ephemeral=True
-        )
-
+        view = ExportView(interaction, session, as_scoreboard=True)
+        await view.send()
+        
 async def setup(bot: commands.Bot):
     await bot.add_cog(exports(bot))
