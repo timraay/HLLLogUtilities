@@ -2,9 +2,10 @@ from inspect import isfunction
 import json
 from enum import Enum
 from datetime import datetime
-from typing import List
+from typing import List, Union
 
 from lib.storage import LogLine, HLU_VERSION
+from lib.scores import MatchGroup, MatchData, create_scoreboard
 
 __all__ = (
     'ExportFormats',
@@ -76,6 +77,10 @@ class Converter:
                 lines.append(str(line))
         
         return "\n".join(lines)
+
+    @classmethod
+    def create_scoreboard(cls, scores: Union['MatchData', 'MatchGroup']):
+        return create_scoreboard(scores)
 
 class TextConverter(Converter):
     player_join_server      = "CONNECTED           \t{player_name} ({player_steamid})"
@@ -169,6 +174,11 @@ class CSVConverter(Converter):
     @staticmethod
     def ext():
         return 'csv'
+    
+    @classmethod
+    def create_scoreboard(cls, scores: Union['MatchData', 'MatchGroup']):
+        stats = scores.stats if isinstance(scores, MatchGroup) else scores
+        return stats.to_csv()
 
 class JSONConverter(Converter):
     @staticmethod
@@ -188,6 +198,10 @@ class JSONConverter(Converter):
             logs=converted
         )
         return json.dumps(obj, indent=2, default=lambda x: x.isoformat() if isinstance(x, datetime) else str(x))
+    
+    @classmethod
+    def create_scoreboard(cls, scores: Union['MatchData', 'MatchGroup']):
+        return json.dumps(scores.to_dict(), indent=2, default=lambda x: x.isoformat() if isinstance(x, datetime) else str(x))
 
 
 

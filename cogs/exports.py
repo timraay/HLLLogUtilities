@@ -191,7 +191,8 @@ class ExportView(View):
                     match_data = self.scores
                 else:
                     match_data = self.scores.matches[self._range_index]
-                fp = StringIO(create_scoreboard(match_data))
+
+                fp = StringIO(converter.create_scoreboard(match_data))
             
             else:
                 fp = StringIO(converter.convert_many(logs))
@@ -247,10 +248,10 @@ class ExportView(View):
     async def select_range(self, interaction: Interaction, values: List[str]):
         range_i = int(values[0])
         if range_i:
-            self.range_index = range_i - 1
-            self.range = self._ranges[self.range_index]
+            self._range_index = range_i - 1
+            self.range = self._ranges[self._range_index]
         else:
-            self.range_index = None
+            self._range_index = None
             self.range = ExportRange()
 
         await interaction.response.defer()

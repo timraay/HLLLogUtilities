@@ -124,6 +124,16 @@ class MatchGroup:
     def loser_deaths(self):
         return sum((match.total_allied_deaths if match.winner != Faction.Allies else match.total_axis_deaths) for match in self.matches)
     
+    def to_dict(self):
+        return dict(
+            matches=[
+                dict(
+                    map=match.map,
+                    duration=match.duration,
+                ) for match in self.matches
+            ],
+            stats=self.stats.to_dict()
+        )
 
 
 class DataStore:
@@ -273,7 +283,7 @@ class DataStore:
     def __radd__(self, other):
         return self + other
     
-    def to_text(self, single_match: bool = True):
+    def to_text(self, single_match: bool = False):
         data = sorted(self.players, key=lambda player: player.kills_per_minute*1000000-player.deaths, reverse=True)
     
         headers = ['RANK', 'NAME', 'KILLS', 'DEATHS', 'K/D', 'TKS', 'SUIC', 'STREAK', 'WEAPON', 'VICTIM', 'NEMESIS', 'COMB', 'OFF', 'DEF', 'SUPP', 'PLAYTIME'] if single_match else \
@@ -289,6 +299,35 @@ class DataStore:
             output = output + '\n' + player.to_string(i+1, single_match)
         
         return output
+    
+    def to_csv(self, single_match: bool = False):
+        data = sorted(self.players, key=lambda player: player.kills_per_minute*1000000-player.deaths, reverse=True)
+    
+        if single_match:
+            output = ",".join([
+                'rank', 'steamid', 'name', 'kills', 'deaths', 'teamkills', 'suicides', 'top_killstreak', 'top_weapon_name',
+                'top_weapon_kills', 'top_victim_name', 'top_victim_kills', 'top_nemesis_name', 'top_nemesis_deaths', 'combat_score',
+                'offense_score', 'defense_score', 'support_score', 'seconds_played'
+            ])
+        else:
+            output = ",".join([
+                'rank', 'steamid', 'name', 'matches_played', 'kills', 'deaths', 'teamkills', 'suicides', 'top_killstreak',
+                'top_weapon_name', 'top_weapon_kills', 'top_victim_name', 'top_victim_kills', 'top_nemesis_name', 'top_nemesis_deaths',
+                'combat_score', 'offense_score', 'defense_score', 'support_score', 'seconds_played'
+            ])
+
+        for i, player in enumerate(data):
+            if not player.steam_id:
+                continue
+            output = output + '\n' + player.to_csv(i+1, single_match)
+        
+        return output
+
+    def to_dict(self):
+        return dict(
+            duration=self.duration.total_seconds(),
+            players=[player.to_dict() for player in self.players]
+        )
 
 
 class MatchData(DataStore):
@@ -432,6 +471,27 @@ class MatchData(DataStore):
             return DataStore(self.duration, [player for player in self.players if player.faction == faction or player.faction == Faction.Any or player.faction is None])
         else:
             return DataStore(self.duration, [player for player in self.players if player.faction == faction])
+    
+    def to_text(self):
+        return super().to_text(single_match=True)
+    
+    def to_csv(self):
+        return super().to_csv(single_match=True)
+
+    def to_dict(self):
+        out = dict(
+            map=self.map,
+            team1=dict(
+                faction="Allies",
+                score=self.team1_score
+            ),
+            team2=dict(
+                faction="Axis",
+                score=self.team2_score
+            )
+        )
+        out.update(super().to_dict())
+        return out
 
 class PlayerData:
     def __init__(self, steam_id: str, name: str, match_start: datetime, match_end: datetime):
@@ -726,6 +786,64 @@ class PlayerData:
                 self.kills_per_minute
             )
 
+    def to_csv(self, rank: int, single_match=True):
+        weapon = self.weapon
+        weapon = mappings.VEHICLE_WEAPONS_FACTIONLESS.get(weapon, mappings.FACTIONLESS.get(weapon, weapon))
+        weapons = DataStore.map_weapons(self.weapons, mappings.VEHICLE_WEAPONS_FACTIONLESS, mappings.FACTIONLESS)
+        victim = self.victim
+        nemesis = self.nemesis
+
+        if single_match:
+            values = (
+                rank,
+                self.steam_id,
+                self.name,
+                self.kills,
+                self.deaths,
+                self.teamkills,
+                self.suicides,
+                self.killstreak,
+                weapon,
+                weapons[weapon],
+                victim,
+                self.victims[victim],
+                nemesis,
+                self.nemeses[nemesis],
+                self.score.combat,
+                self.score.offense,
+                self.score.defense,
+                self.score.support,
+                self.seconds_played,
+            )
+        else:
+            values = (
+                rank,
+                self.steam_id,
+                self.name,
+                self.num_matches_played,
+                self.kills,
+                self.deaths,
+                self.teamkills,
+                self.suicides,
+                self.killstreak,
+                weapon,
+                weapons[weapon],
+                victim,
+                self.victims[victim],
+                nemesis,
+                self.nemeses[nemesis],
+                self.score.combat,
+                self.score.offense,
+                self.score.defense,
+                self.score.support,
+                self.seconds_played,
+            )
+
+        return ",".join([
+            '"' + (str(val).replace('"', '""') if val is not None else '') + '"'
+             for val in values
+        ])
+
     def to_dict(self):
         return dict(
             name=self.name,
@@ -834,7 +952,7 @@ def create_scoreboard(data: Union['MatchData', 'MatchGroup']):
         "",
         toTable(table),
         "",
-        stats.to_text(True),
+        stats.to_text(),
         "",
         "",
         _get_weapon_stats(stats)
