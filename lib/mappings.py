@@ -13,7 +13,9 @@ MAP_NAMES = {
     "KURSK": "Kursk",
     "STALINGRAD": "Stalingrad",
     "REMAGEN": "Remagen",
-    "Kharkov": "Kharkov"
+    "Kharkov": "Kharkov",
+    "DRIEL": "Driel",
+    "EL ALAMEIN": "Alamein",
 }
 
 LONG_MAP_NAMES = {
@@ -29,7 +31,9 @@ LONG_MAP_NAMES = {
     "KURSK": "Kursk",
     "STALINGRAD": "Stalingrad",
     "REMAGEN": "Remagen",
-    "KHARKOV": "Kharkov"
+    "KHARKOV": "Kharkov",
+    "DRIEL": "Driel",
+    "EL ALAMEIN": "El Alamein",
 }
 
 LONG_MAP_NAMES_BY_ID = {
@@ -45,7 +49,9 @@ LONG_MAP_NAMES_BY_ID = {
     "kursk": "Kursk",
     "stalingrad": "Stalingrad",
     "remagen": "Remagen",
-    "kharkov": "Kharkov"
+    "kharkov": "Kharkov",
+    "driel": "Driel",
+    "elalamein": "El Alamein",
 }
 
 GAMEMODE_NAMES = {
@@ -58,17 +64,19 @@ class Gamemode(Enum):
     offensive = "offensive"
 
 class Map:
-    def __init__(self, name: str, gamemode: Gamemode, attackers: str = None, night: bool = False, v2: bool = False, short: bool = False):
+    def __init__(self, name: str, gamemode: Gamemode, attackers: str = None, night: bool = False,
+                 v2: bool = False, short: bool = False, displayed_attackers: str = None):
         self.name = str(name)
         self.gamemode = Gamemode(gamemode)
         self._attackers = str(attackers)
         self.night = bool(night)
         self.v2 = bool(v2)
         self.short = bool(short)
+        self.displayed_attackers = str(displayed_attackers) if displayed_attackers else None
     
     @property
     def attackers(self):
-        return self._attackers.lower()
+        return (self.displayed_attackers or self._attackers).upper()
 
     @classmethod
     def load(cls, map: str):
@@ -82,10 +90,17 @@ class Map:
             )
         elif "_offensive_" in map:
             name, attackers = map.split('_offensive_')
+            if name == "elalamein" and attackers == "CW":
+                displayed_attackers = "GB"
+            elif name == "driel" and attackers == "us":
+                displayed_attackers = "GB"
+            else:
+                displayed_attackers = None
             return cls(
                 name=name,
                 gamemode=Gamemode.offensive,
-                attackers=attackers
+                attackers=attackers,
+                displayed_attackers=displayed_attackers
             )
         elif "_off_" in map:
             name, attackers = map.split('_off_')
@@ -146,52 +161,6 @@ TANK_ROLES = {"TankCommander", "Crewman"}
 RECON_ROLES = {"Spotter", "Sniper"}
 
 WEAPONS = {
-    "Garand": "M1 Garand",
-    "G43": "G43",
-    "STG44": "STG44",
-    "MP40": "MP40",
-    "MG42": "MG42",
-    "Thompson": "M1A1 Thompson",
-    "M1918A2_BAR": "M1918A2 BAR",
-    "Kar98": "Kar98k",
-    "M1919": "M1919 Browning",
-    "Kar98_Sniper": "Kar98k (8x)",
-    "M1903": "M1903 Springfield (4x)",
-    "M1_Carbine": "M1 Carbine",
-    "MK2_Grenade": "US Grenade",
-    "M43": "GER Grenade",
-    "Rifle_SVT40": "SVT40",
-    "SMG_PPSH41": "PPSh-41",
-    "SMG_M3_GreaseGun": "M3 Grease Gun",
-    "Rifle_Mosin_M9130": "Mosin Nagant M1930",
-    "Satchel_3KG": "US Satchel Charge",
-    "Bazooka": "Bazooka",
-    "MG34": "MG34",
-    "LMG_DP27": "DP-27",
-    "P38": "Walther P38",
-    "Rifle_SVT40_Sniper": "SVT40 (4x)",
-    "Panzershreck": "Panzershreck",
-    "Rifle_Mosin_M38": "Mosin Nagant M38",
-    "M1911": "Colt M1911",
-    "Satchel_M37": "GER Satchel Charge",
-    "M2": "US AP Mine",
-    "SMine": "GER AP Mine",
-    "Luger": "Luger P08",
-    "Grenade_Frag_RDG42": "RUS Grenade",
-    "M1A1": "US AT Mine",
-    "Tellermine43": "GER AT Mine",
-    "Rifle_Mosin_M1891": "Mosin Nagant M1891",
-    "Spade_GER": "GER Melee",
-    "Knife_US": "US Melee",
-    "Mine_POMZ": "RUS AP Mine",
-    "M24_Grenade": "GER Grenade",
-    "Mine_TM35": "RUS AT Mine",
-    "TokarevTT33": "Tokarev TT33",
-    "Pistol_M1895": "Nagant M1895",
-    "ATRifle_PTRS41": "PTRS-41",
-    "TrenchGun": "M97 Trench Gun",
-    "None": "Artillery",
-
     "M1 GARAND": "M1 Garand",
     "M1 CARBINE": "M1 Carbine",
     "M1A1 THOMPSON": "M1A1 Thompson",
@@ -238,6 +207,7 @@ WEAPONS = {
     "COAXIAL M1919 [Sherman M4A3E2(76)]": "US Tank Coaxial [Sherman 76mm]",
     "HULL M1919 [Sherman M4A3E2(76)]": "US Tank Hull MG [Sherman 76mm]",
     "M2 Browning [M3 Half-track]": "US Half-track MG [US Half-track]",
+
     "KARABINER 98K": "Kar98k",
     "GEWEHR 43": "G43",
     "STG44": "STG44",
@@ -281,6 +251,7 @@ WEAPONS = {
     "COAXIAL MG34 [Sd.Kfz.181 Tiger 1]": "GER Tank Coaxial [Tiger 1]",
     "HULL MG34 [Sd.Kfz.181 Tiger 1]": "GER Tank Hull MG [Tiger 1]",
     "MG 42 [Sd.Kfz 251 Half-track]": "GER Half-track MG [GER Half-track]",
+    
     "MOSIN NAGANT 1891": "Mosin-Nagant 1891",
     "MOSIN NAGANT 91/30": "Mosin-Nagant 91/30",
     "MOSIN NAGANT M38": "Mosin-Nagant M38",
@@ -307,7 +278,7 @@ WEAPONS = {
     "IS-1": "RUS Roadkill [IS-1]",
     "ZIS-5 (Supply)": "RUS Roadkill [RUS Supply Truck]",
     "ZIS-5 (Transport)": "RUS Roadkill [RUS Transport Truck]",
-    "M3 Half-track": "RUS Roadkill [RUS Half-track]",
+    # "M3 Half-track": "RUS Roadkill [RUS Half-track]",
     "GAZ-67": "RUS Roadkill [RUS Jeep]",
     "19-K 45MM [BA-10]": "RUS Tank Cannon [BA-10]",
     "COAXIAL DT [BA-10]": "RUS Tank Coaxial [BA-10]",
@@ -319,7 +290,46 @@ WEAPONS = {
     "D-5T 85MM [IS-1]": "RUS Tank Cannon [IS-1]",
     "COAXIAL DT [IS-1]": "RUS Tank Coaxial [IS-1]",
     "HULL DT [IS-1]": "RUS Tank Hull MG [IS-1]",
-    # "M2 Browning [M3 Half-track]": "RUS Half-track MG [RUS Halftrack]",
+    # "M2 Browning [M3 Half-track]": "RUS Half-track MG [RUS Half-track]",
+
+    "Lee-Enfield Pattern 1914": "P14 Enfield",
+    "Lee–Enfield Jungle Carbine": "Jungle Carbine",
+    "Lee–Enfield No.4 Mk I": "No.4 Rifle Mk I",
+    "Sten Gun": "Sten",
+    "Lanchester": "Lanchester",
+    "Bren Gun": "Bren Gun",
+    "Lewis Gun": "Lewis Gun",
+    "FLAMETHROWER": "GB Flamethrower",
+    "Lee-Enfield Pattern 1914 Sniper": "P14 Enfield (8x)",
+    "Webley MK VI": "Webley MK IV",
+    "Fairbairn–Sykes": "GB Melee",
+    "Satchel": "Satchel Charge",
+    "Mills Bomb": "GB Grenade",
+    "PIAT": "PIAT",
+    "Boys Anti-tank Rifle": "Boys AT Rifle",
+    "A.P. Shrapnel Mine Mk II": "GB AP Mine",
+    "A.T. Mine G.S. Mk V": "GB AT Mine",
+    "QF 6-POUNDER [QF 6-Pounder]": "GB AT Gun",
+    "QF 25-POUNDER [QF 25-Pounder]": "GB Artillery",
+    "Daimler": "GB Roadkill [Daimler]",
+    "Tetrarch": "GB Roadkill [Tetrarch]",
+    "Cromwell": "GB Roadkill [Cromwell]",
+    "Firefly": "GB Roadkill [Firefly]",
+    "Bedford OYD (Supply)": "GB Roadkill [GB Supply Truck]",
+    "Bedford OYD (Transport)": "GB Roadkill [GB Transport Truck]",
+    # "M3 Half-track": "GB Roadkill [GB Half-track]",
+    # "Jeep Willys": "GB Roadkill [GB Jeep]",
+    "QF 2-POUNDER [Daimler]": "GB Tank Cannon [Daimler]",
+    "COAXIAL BESA [Daimler]": "GB Tank Coaxial [Daimler]",
+    "QF 2-POUNDER [Tetrarch]": "GB Tank Cannon [Tetrarch]",
+    "COAXIAL BESA [Tetrarch]": "GB Tank Coaxial [Tetrarch]",
+    "QF 75MM [Cromwell]": "GB Tank Cannon [Cromwell]",
+    "COAXIAL BESA [Cromwell]": "GB Tank Coaxial [Cromwell]",
+    "HULL BESA [Cromwell]": "GB Tank Hull MG [Cromwell]",
+    "QF 17-POUNDER [Firefly]": "GB Tank Cannon [Firefly]",
+    "COAXIAL M1919 [Firefly]": "GB Tank Coaxial [Firefly]",
+    # "M2 Browning [M3 Half-track]": "GB Half-track MG [GB Half-track]",
+
     "UNKNOWN": "Unknown",
     "BOMBING RUN": "Bombing Run",
     "STRAFING RUN": "Strafing Run",
@@ -329,16 +339,16 @@ WEAPONS = {
 }
 
 BASIC_CATEGORIES_ALLIES = {value: cat for cat, values in {
-    "Submachine Gun": [ "M1A1 Thompson", "M3 Grease Gun", "PPSh-41", "PPSh-41 Drum" ],
+    "Submachine Gun": [ "M1A1 Thompson", "M3 Grease Gun", "PPSh-41", "PPSh-41 Drum", "Sten", "Lanchester" ],
     "Semi-Auto Rifle": [ "M1 Garand", "M1 Carbine", "SVT40" ],
-    "Bolt-Action Rifle": [ "Mosin-Nagant 1891", "Mosin-Nagant 91/30", "Mosin-Nagant M38" ],
-    "Assault Rifle": [ "M1918A2 BAR", "M97 Trench Gun" ],
-    "Sniper Rifle": [ "M1903 Springfield (4x)", "Mosin-Nagant 91/30 (4x)", "SVT40 (4x)" ],
-    "Machine Gun": [ "M1919 Browning", "DP-27" ],
-    "Pistol": [ "Colt M1911", "Nagant M1895", "Tokarev TT33" ],
-    "Melee": ["US Melee", "RUS Melee"],
-    "Flamethrower": [ "US Flamethrower" ],
-    "Artillery": ["US Artillery", "RUS Artillery"],
+    "Bolt-Action Rifle": [ "Mosin-Nagant 1891", "Mosin-Nagant 91/30", "Mosin-Nagant M38", "P14 Enfield", "Jungle Carbine", "No.4 Rifle Mk 1" ],
+    "Assault Rifle": [ "M1918A2 BAR", "M97 Trench Gun", "Bren Gun" ],
+    "Sniper Rifle": [ "M1903 Springfield (4x)", "Mosin-Nagant 91/30 (4x)", "SVT40 (4x)", "P14 Enfield (8x)" ],
+    "Machine Gun": [ "M1919 Browning", "DP-27", "Lewis Gun" ],
+    "Pistol": [ "Colt M1911", "Nagant M1895", "Tokarev TT33", "Webley MK IV" ],
+    "Melee": ["US Melee", "RUS Melee", "GB Melee" ],
+    "Flamethrower": [ "US Flamethrower", "GB Flamethrower" ],
+    "Artillery": ["US Artillery", "RUS Artillery", "GB Artillery" ],
     "Vehicle": [
         "US Roadkill [M8 Greyhound]",
         "US Roadkill [Stuart M5A1]",
@@ -387,16 +397,31 @@ BASIC_CATEGORIES_ALLIES = {value: cat for cat, values in {
         "RUS Tank Coaxial [IS-1]",
         "RUS Tank Hull MG [IS-1]",
         "RUS Half-track MG [RUS Half-track]",
+        "GB Roadkill [Daimler]",
+        "GB Roadkill [Tetrarch]",
+        "GB Roadkill [Cromwell]",
+        "GB Roadkill [Firefly]",
+        "GB Roadkill [GB Supply Truck]",
+        "GB Roadkill [GB Transport Truck]",
+        "GB Tank Cannon [Daimler]",
+        "GB Tank Coaxial [Daimler]",
+        "GB Tank Cannon [Tetrarch]",
+        "GB Tank Coaxial [Tetrarch]",
+        "GB Tank Cannon [Cromwell]",
+        "GB Tank Coaxial [Cromwell]",
+        "GB Tank Hull MG [Cromwell]",
+        "GB Tank Cannon [Firefly]",
+        "GB Tank Coaxial [Firefly]",
     ],
     "Grenade": [
-        "US Grenade", "RUS Grenade",
-        "US AP Mine", "RUS AP Mine",
+        "US Grenade", "RUS Grenade", "GB Grenade",
+        "US AP Mine", "RUS AP Mine", "GB AP Mine",
         "Molotov"
     ],
     "Anti-Tank": [
-        "US AT Gun", "RUS AT Gun",
-        "US AT Mine", "RUS AT Mine",
-        "Bazooka", "PTRS-41",
+        "US AT Gun", "RUS AT Gun", "GB AT Gun",
+        "US AT Mine", "RUS AT Mine", "GB AT Mine",
+        "Bazooka", "PTRS-41", "PIAT", "Boys AT Rifle"
     ],
 }.items() for value in values}
 
@@ -443,12 +468,12 @@ BASIC_CATEGORIES_AXIS = {value: cat for cat, values in {
 BASIC_CATEGORIES = {**BASIC_CATEGORIES_ALLIES, **BASIC_CATEGORIES_AXIS}
 
 _VEHICLE_CLASSES = {vehicle: _class for _class, vehicles in {
-    "Jeep": ["US Jeep", "GER Jeep", "RUS Jeep"],
-    "Half-track": ["US Half-track", "GER Half-track", "RUS Half-track"],
-    "Recon Vehicle": [ "M8 Greyhound", "Puma", "BA-10" ],
-    "Light Tank": [ "Stuart M5A1", "Luchs", "T70" ],
-    "Medium Tank": [ "Sherman M4", "Sherman M4A3 75w", "Panzer IV", "T34/76" ],
-    "Heavy Tank": [ "Sherman 75mm", "Sherman 76mm", "Panther", "Tiger 1", "IS-1" ]
+    "Jeep": [ "US Jeep", "GER Jeep", "RUS Jeep" ],
+    "Half-track": [ "US Half-track", "GER Half-track" ],
+    "Recon Vehicle": [ "M8 Greyhound", "Puma", "BA-10", "Daimler" ],
+    "Light Tank": [ "Stuart M5A1", "Luchs", "T70", "Tetrarch" ],
+    "Medium Tank": [ "Sherman M4", "Sherman M4A3 75w", "Panzer IV", "T34/76", "Cromwell" ],
+    "Heavy Tank": [ "Sherman 75mm", "Sherman 76mm", "Panther", "Tiger 1", "IS-1", "Firefly" ]
 }.items() for vehicle in vehicles}
 
 VEHICLES = dict()
@@ -479,41 +504,3 @@ for weapon in WEAPONS.values():
     match = re.match(r"(US|GER|RUS) (.+)$", weapon)
     if match:
         FACTIONLESS[weapon] = match.group(2)
-
-
-GER_LOCALIZED = {
-    "ANTIPERSONENMINE POMZ": "POMZ AP MINE",
-    "DT (RUMPF) [T34/76]": "HULL DT [T34/76]",
-    "SPRENGLADUNG": "SATCHEL CHARGE",
-    "RG-42 GRANATE": "RG-42 GRENADE",
-    "Sd.Kfz. 121 Luchs": "Sd.Kfz.121 Luchs",
-    "MOSIN-NAGANT 91/30": "MOSIN NAGANT 91/30",
-    "76 MM ZiS-5 [T34/76]": "76MM ZiS-5 [T34/76]",
-    "122-MM-HAUBITZE [M1938 (M-30)]": "122MM HOWITZER [M1938 (M-30)]",
-    "MG34 (KOAXIAL) [Sd.Kfz. 234 Puma]": "COAXIAL MG34 [Sd.Kfz.234 Puma]",
-    "75-MM-GESCHÜTZ [Sd.Kfz. 171 Panther]": "75MM CANNON [Sd.Kfz.171 Panther]",
-    "Sd.Kfz. 234 Puma": "Sd.Kfz.234 Puma",
-    "SVT40 (ZIELF.)": "SCOPED SVT40",
-    "TIEFFLIEGERANGRIFF": "STRAFING RUN",
-    "DT (KOAXIAL) [T34/76]": "COAXIAL DT [T34/76]",
-    "MOSIN-NAGANT 91/30 (ZIELF.)": "SCOPED MOSIN NAGANT 91/30",
-    "ZIS-5 (Nachschub)": "ZIS-5 (Supply)",
-    "DT (RUMPF) [IS-1]": "HULL DT [T34/76]",
-    "MOSIN-NAGANT M38": "MOSIN NAGANT M38",
-    "19-K 45 MM [BA-10]": "19-K 45MM [BA-10]",
-    "KWK 30 (20 MM) [Sd.Kfz. 121 Luchs]": "20MM KWK 30 [Sd.Kfz.121 Luchs]",
-    "ZIS-5 (Transporter)": "ZIS-5 (Transport)",
-    "75-MM-GESCHÜTZ [PAK 40]": "75MM CANNON [PAK 40]",
-    "75-MM-GESCHÜTZ [Sd.Kfz. 161 Panzer IV]": "75MM CANNON [Sd.Kfz.161 Panzer IV]",
-    "MOSIN-NAGANT 1891": "MOSIN NAGANT 1891",
-    "MG34 (RUMPF) [Sd.Kfz. 171 Panther]": "HULL MG34 [Sd.Kfz.171 Panther]",
-    "150-MM-HAUBITZE [sFH 18]": "150MM HOWITZER [sFH 18]",
-    "BOMBENANGRIFF": "BOMBING RUN",
-    "D-5T 85 MM [IS-1]": "D-5T 85MM [IS-1]",
-    "PPSH 41 (TROMMEL)": "PPSH 41 W/DRUM",
-    "50 mm KwK 39/1 [Sd.Kfz. 234 Puma]": "50mm KwK 39/1 [Sd.Kfz.234 Puma]",
-    "MG34 (KOAXIAL) [Sd.Kfz. 171 Panther]": "COAXIAL MG34 [Sd.Kfz.171 Panther]",
-    "DT (KOAXIAL) [IS-1]": "COAXIAL DT [IS-1]",
-    "MG34 (KOAXIAL) [Sd.Kfz. 121 Luchs]": "COAXIAL MG34 [Sd.Kfz.121 Luchs]",
-    "PRÄZISIONSSCHLAG": "PRECISION STRIKE"
-}
