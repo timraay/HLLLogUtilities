@@ -483,7 +483,7 @@ VEHICLE_WEAPONS = dict()
 VEHICLE_WEAPONS_FACTIONLESS = dict()
 VEHICLE_CLASSES = dict()
 for weapon in WEAPONS.values():
-    match = re.match(r"((US|GER|RUS) (.+)) \[(.+)\]$", weapon)
+    match = re.match(r"((US|GER|RUS|GB) (.+)) \[(.+)\]$", weapon)
     if match:
         vic_weapon, vic_faction, vic_weapon_factionless, vic_name = match.groups()
         
