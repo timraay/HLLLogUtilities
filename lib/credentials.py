@@ -152,7 +152,9 @@ class Credentials:
             password=self.password,
             default_modifiers=self.default_modifiers,
         )
-
+        
+        if self.autosession is None:
+            self.autosession = AutoSessionManager(self, False)
         CREDENTIALS[self.id] = self
 
     def save(self):
