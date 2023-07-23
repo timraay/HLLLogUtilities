@@ -21,16 +21,23 @@ class HLLRconProtocol(asyncio.Protocol):
         if self.logger: self.logger.info('Connection made! Transport: %s', transport)
         self._transport = transport
 
-    def data_received(self, data):
+    def data_received(self, data, was_repeated=False):
         if self.xorkey is None:
             if self.logger: self.logger.debug('Received XOR-key: %s', data)
             self.xorkey = data
             self.has_key.set_result(True)
         else:
-            self._waiter.set_result(data)
-            self._waiter = self._loop.create_future()
-            if self.logger and not self._queue:
-                self.logger.warning('Received data but there are no waiters: `%s`', self._xor(data))
+            if self._waiter.done():
+                if was_repeated:
+                    if self.logger: self.logger.warning('Active waiter is not being awaited, discarding additional incoming data')
+                else:
+                    if self.logger: self.logger.debug('Received data too early, calling again soon')
+                    self._loop.call_soon(self.data_received, data, True)
+            else:
+                self._waiter.set_result(data)
+                # self._waiter = self._loop.create_future()
+                if not self._queue:
+                    self.logger.warning('Received data but there are no waiters: `%s`', self._xor(data))
 
     def connection_lost(self, exc):
         self._transport = None
@@ -60,6 +67,11 @@ class HLLRconProtocol(asyncio.Protocol):
             return res.decode()
         return res
     
+    async def _get_waiter(self):
+        result = await self._waiter
+        self._waiter = self._loop.create_future()
+        return result
+    
     async def write(self, message):
         waiter = self._loop.create_future()
         self._queue.append(waiter)
@@ -83,7 +95,7 @@ class HLLRconProtocol(asyncio.Protocol):
             if self.logger:
                 self.logger.warning('Waiter was cancelled, replacing.')
         
-        data = await self._waiter
+        data = await self._get_waiter()
 
         if multipart:
             do_loop = True
@@ -105,7 +117,7 @@ class HLLRconProtocol(asyncio.Protocol):
                 self.logger.debug('Waiting for more packets to arrive...')
             
             try:
-                data += await asyncio.wait_for(self._waiter, 1.0)
+                data += await asyncio.wait_for(self._get_waiter(), 1.0)
 
             except asyncio.TimeoutError:
                 self._waiter = self._loop.create_future()
