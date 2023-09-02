@@ -8,7 +8,7 @@ from lib.info.events import (on_player_kill, on_player_any_kill, on_player_leave
     add_condition, add_cooldown, CooldownType, event_listener)
 from lib.info.models import ActivationEvent, PlayerKillEvent, PlayerLeaveServerEvent, PlayerJoinServerEvent, Player, Team
 from lib.storage import LogLine
-from lib.mappings import WEAPONS, BASIC_CATEGORIES
+from lib.mappings import WEAPONS, BASIC_CATEGORIES, VEHICLE_WEAPONS_FACTIONLESS
 
 def is_arty(weapon: str, yes_no: bool = True):
     weapon = WEAPONS.get(weapon, weapon)
@@ -16,7 +16,12 @@ def is_arty(weapon: str, yes_no: bool = True):
     if yes_no:
         return is_arty
     else:
-        return not (is_arty or weapon.endswith(" Mine") or weapon.upper() == "UNKNOWN")
+        return not (
+            is_arty
+            or weapon.endswith(" Mine")
+            or VEHICLE_WEAPONS_FACTIONLESS.get(weapon) == "Roadkill"
+            or weapon.upper() == "UNKNOWN"
+        )
 def is_arty_condition(yes_no: bool = True):
     def decorator(func):
         return add_condition(lambda _, event: is_arty(event.weapon, yes_no=yes_no))(func)
