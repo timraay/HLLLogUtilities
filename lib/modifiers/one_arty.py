@@ -9,6 +9,9 @@ from lib.info.events import (on_player_kill, on_player_any_kill, on_player_leave
 from lib.info.models import ActivationEvent, PlayerKillEvent, PlayerLeaveServerEvent, PlayerJoinServerEvent, Player, Team
 from lib.storage import LogLine
 from lib.mappings import WEAPONS, BASIC_CATEGORIES, VEHICLE_WEAPONS_FACTIONLESS
+from utils import get_config
+
+ABILITIES_ALLOWED = get_config().getboolean("OneManArty", "AllowCMDAbilities")
 
 def is_arty(weapon: str, yes_no: bool = True):
     weapon = WEAPONS.get(weapon, weapon)
@@ -20,6 +23,7 @@ def is_arty(weapon: str, yes_no: bool = True):
             is_arty
             or weapon.endswith(" Mine")
             or VEHICLE_WEAPONS_FACTIONLESS.get(weapon) == "Roadkill"
+            or (ABILITIES_ALLOWED and BASIC_CATEGORIES.get(weapon) == "Ability")
             or weapon.upper() == "UNKNOWN"
         )
 def is_arty_condition(yes_no: bool = True):

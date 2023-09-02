@@ -423,6 +423,7 @@ BASIC_CATEGORIES_ALLIES = {value: cat for cat, values in {
         "US AT Mine", "RUS AT Mine", "GB AT Mine",
         "Bazooka", "PTRS-41", "PIAT", "Boys AT Rifle"
     ],
+    "Ability": [ "Bombing Run", "Strafing Run", "Precision Strike", "Katyusha Barrage" ],
 }.items() for value in values}
 
 BASIC_CATEGORIES_AXIS = {value: cat for cat, values in {
@@ -463,9 +464,13 @@ BASIC_CATEGORIES_AXIS = {value: cat for cat, values in {
     ],
     "Grenade": [ "GER Grenade", "GER AP Mine" ],
     "Anti-Tank": [ "GER AT Gun", "GER AT Mine", "Panzerschreck" ],
+    "Ability": [ "Bombing Run", "Strafing Run", "Precision Strike" ],
 }.items() for value in values}
 
-BASIC_CATEGORIES = {**BASIC_CATEGORIES_ALLIES, **BASIC_CATEGORIES_AXIS}
+BASIC_CATEGORIES = {
+    **BASIC_CATEGORIES_ALLIES,
+    **BASIC_CATEGORIES_AXIS,
+}
 
 _VEHICLE_CLASSES = {vehicle: _class for _class, vehicles in {
     "Jeep": [ "US Jeep", "GER Jeep", "RUS Jeep" ],
