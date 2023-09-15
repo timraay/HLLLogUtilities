@@ -7,8 +7,8 @@ from lib.exceptions import *
 class HLLRconProtocol(asyncio.Protocol):
     def __init__(self, loop: asyncio.AbstractEventLoop, timeout=None, logger=None):
         self._transport = None
-        self._waiters = list()
-        self._buffer = None
+        self._waiter = loop.create_future()
+        self._queue = list()
 
         self._loop = loop
         self.timeout = timeout
@@ -21,27 +21,33 @@ class HLLRconProtocol(asyncio.Protocol):
         if self.logger: self.logger.info('Connection made! Transport: %s', transport)
         self._transport = transport
 
-    def data_received(self, data):
+    def data_received(self, data, was_repeated=False):
         if self.xorkey is None:
             if self.logger: self.logger.debug('Received XOR-key: %s', data)
             self.xorkey = data
             self.has_key.set_result(True)
         else:
-            if self._buffer is not None:
-                self._buffer += data
+            if self._waiter.done():
+                if was_repeated:
+                    if self.logger: self.logger.warning('Active waiter is not being awaited, discarding additional incoming data')
+                else:
+                    if self.logger: self.logger.debug('Received data too early, calling again soon')
+                    self._loop.call_soon(self.data_received, data, True)
             else:
-                try:
-                    waiter = self._waiters.pop(0)
-                except:
-                    print('NO WAITER:', data)
-                    raise
-                waiter.set_result(data)
+                self._waiter.set_result(data)
+                # self._waiter = self._loop.create_future()
+                if not self._queue:
+                    self.logger.warning('Received data but there are no waiters: `%s`', self._xor(data))
 
     def connection_lost(self, exc):
-        if self.logger: self.logger.fatal('Connection lost: %s', exc)
         self._transport = None
         if exc:
+            if self.logger:
+                self.logger.critical('Connection lost: %s', exc)
             raise HLLConnectionLostError(exc)
+        else:
+            if self.logger:
+                self.logger.info('Connection closed')
 
     def _xor(self, message, decode=False):
         """Encrypt or decrypt a message using the XOR key provided by the game server"""
@@ -61,54 +67,89 @@ class HLLRconProtocol(asyncio.Protocol):
             return res.decode()
         return res
     
-    async def write(self, message, multipart=False):
+    async def _get_waiter(self):
+        result = await self._waiter
+        self._waiter = self._loop.create_future()
+        return result
+    
+    async def write(self, message):
         waiter = self._loop.create_future()
-        self._waiters.append(waiter)
-        if len(self._waiters) > 1: # Wait for previous request to finish
-            await self._waiters[len(self._waiters) - 2]
+        self._queue.append(waiter)
 
-        if multipart:
-            self._buffer = b""
-        else:
-            self._buffer = None
-
-        if self.logger: self.logger.debug('Writing: %s', message)
+        if len(self._queue) > 1: # Wait for previous request to finish
+            await self._queue[len(self._queue) - 2]
+        
+        if self.logger:
+            self.logger.debug('Writing: %s', message)
         xored = self._xor(message)
         self._transport.write(xored)
 
         return waiter
     
-    async def receive(self, waiter, decode=False, multipart=False):
+    async def receive(self, waiter, decode=False, is_array=False, multipart=False):
+        if self.logger:
+            self.logger.debug('Receiving! %s is_array=%s multipart=%s', self._waiter, is_array, multipart)
+
+        if self._waiter.cancelled():
+            self._waiter = self._loop.create_future()
+            if self.logger:
+                self.logger.warning('Waiter was cancelled, replacing.')
+        
+        data = await self._get_waiter()
+
         if multipart:
-            try:
-                data = b""
-                self._buffer = b""
-                for _ in range(10):
-                    await asyncio.sleep(1.0)
-                    if not self._buffer:
-                        break
-                    data += self._buffer
-                    self._buffer = b""
-
-                waiter2 = self._waiters.pop(0)
-                if waiter != waiter2 and self.logger:
-                    self.logger.warning('Popped waiter does not match')
-                waiter.set_result(data)
-                res = self._xor(data, decode=decode)
-            
-            finally:
-                self._buffer = None
-
+            do_loop = True
         else:
-            data = await waiter
-            res = self._xor(data, decode=decode)
+            do_loop = False
+            if is_array:
+                try:
+                    self.unpack_array(self._xor(data))
+                except HLLUnpackError:
+                    # Response is incomplete
+                    do_loop = True
+        
+        i_max = 10
+        for i in range(i_max):
+            if not do_loop:
+                break
 
-        if self.logger: self.logger.debug('Response: %s', res[:200].replace('\n', '\\n')+'...' if len(res) > 200 else res.replace('\n', '\\n'))
+            if self.logger:
+                self.logger.debug('Waiting for more packets to arrive...')
+            
+            try:
+                data += await asyncio.wait_for(self._get_waiter(), 1.0)
+
+            except asyncio.TimeoutError:
+                self._waiter = self._loop.create_future()
+                do_loop = False
+                if self.logger:
+                    self.logger.debug('Timed out, exiting loop.')
+
+            else:
+                if is_array:
+                    try:
+                        # Response is complete!
+                        self.unpack_array(self._xor(data))
+                        if self.logger:
+                            self.logger.debug('Array response complete, exiting loop.')
+                    except HLLUnpackError:
+                        do_loop = True
+
+        if i == i_max - 1 and self.logger:
+            self.logger.debug('Completed all %s multipart cycles', i_max)
+        
+
+        res = self._xor(data, decode=decode)
+        if self.logger:
+            self.logger.debug('Response: %s', res[:200].replace('\n', '\\n')+'...' if len(res) > 200 else res.replace('\n', '\\n'))
+        
+        waiter.set_result(res)
+
         return res
 
     async def execute(self, command, unpack_array=False, can_fail=False, multipart=False):
         waiter = await self.write(command)
-        res = await self.receive(waiter, decode=True, multipart=multipart)
+        res = await self.receive(waiter, decode=True, is_array=unpack_array, multipart=multipart)
 
         if res == "FAIL":
             if can_fail:
@@ -117,14 +158,20 @@ class HLLRconProtocol(asyncio.Protocol):
                 raise HLLCommandError('Game server returned status FAIL')
 
         if unpack_array:
-            res = res.rstrip('\t').split('\t')
-            arr_size = int(res.pop(0))
-            if arr_size != len(res):
-                raise HLLUnpackError("Expected array size %s but got %s", arr_size, len(res))
+            res = self.unpack_array(res)
         
         elif res == "SUCCESS":
             return True
 
+        return res
+    
+    @staticmethod
+    def unpack_array(string: str):
+        sep = b'\t' if isinstance(string, bytes) else '\t'
+        res = string.split(sep)[:-1]
+        arr_size = int(res.pop(0))
+        if arr_size != len(res):
+            raise HLLUnpackError("Expected array size %s but got %s", arr_size, len(res))
         return res
 
     async def authenticate(self, password):

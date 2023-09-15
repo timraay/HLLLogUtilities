@@ -2,9 +2,10 @@ from inspect import isfunction
 import json
 from enum import Enum
 from datetime import datetime
-from typing import List
+from typing import List, Union
 
-from lib.storage import LogLine
+from lib.storage import LogLine, HLU_VERSION
+from lib.scores import MatchGroup, MatchData, create_scoreboard
 
 __all__ = (
     'ExportFormats',
@@ -32,8 +33,16 @@ class Converter:
     player_exit_admin_cam=...
     player_message=...
     player_level_up=...
+    player_score_update=...
     server_state_changed=...
     server_map_changed=...
+
+    rule_violated=...
+    arty_assigned=...
+    arty_unassigned=...
+    start_arty_cooldown=...
+    cancel_arty_cooldown=...
+
 
     @classmethod
     def convert(cls, log: 'LogLine'):
@@ -69,6 +78,10 @@ class Converter:
         
         return "\n".join(lines)
 
+    @classmethod
+    def create_scoreboard(cls, scores: Union['MatchData', 'MatchGroup']):
+        return create_scoreboard(scores)
+
 class TextConverter(Converter):
     player_join_server      = "CONNECTED           \t{player_name} ({player_steamid})"
     player_leave_server     = "DISCONNECTED        \t{player_name} ({player_steamid})"
@@ -84,10 +97,18 @@ class TextConverter(Converter):
     player_enter_admin_cam  = "CAMERA ENTERED      \t{player_name} ({player_team}/{player_steamid}) entered admin cam"
     player_exit_admin_cam   = "CAMERA EXITED       \t{player_name} ({player_team}/{player_steamid}) exited admin cam"
     player_level_up         = "LEVELUP             \t{player_name} ({player_steamid}) leveled up: {old} -> {new}"
+    player_score_update     = "PLAYER SCORE        \t{player_name} ({player_steamid}): {player_combat_score} C, {player_offense_score} O, {player_defense_score} D, {player_support_score} S (KD: {new}/{message})"
+    objective_capture       = "OBJECTIVE CAPTURED  \t{team_name} captured an objective: ALLIED ({message}) AXIS"
     server_map_changed      = "MAP CHANGED         \tMap changed from {old} to {new}"
     server_match_started    = "MATCH START         \tMATCH START {new}"
     server_match_ended      = "MATCH ENDED         \tMATCH ENDED `{new}` ALLIED ({message}) AXIS"
     server_warmup_ended     = "WARMUP ENDED        \tWARMUP ENDED"
+
+    arty_assigned           = "ARTILLERY ASSIGNED  \t{player_name} ({player_team}/{player_steamid}) with {weapon}: {message}"
+    arty_unassigned         = "ARTILLERY UNASSIGNED\t{player_name} ({player_team}/{player_steamid}): {message}"
+    start_arty_cooldown     = "COOLDOWN STARTED    \t{player_name} ({player_team}/{player_steamid}): {message}"
+    cancel_arty_cooldown    = "COOLDOWN CANCELED   \t{player_name} ({player_steamid}): {message}"
+    player_kicked           = "KICKED              \t{player_name} ({player_steamid}): {message}"
 
     @staticmethod
     def player_message(log: 'LogLine'):
@@ -101,7 +122,21 @@ class TextConverter(Converter):
         p1 = f"{log.player_name} ({log.player_steamid})" if log.player_name is not None else "None"
         p2 = f"{log.player2_name} ({log.player2_steamid})" if log.player2_name is not None else "None"
         return "OFFICER CHANGED".ljust(20) + f"\tOfficer for {log.squad_name} ({log.team_name}): {p2} -> {p1}"
-
+    
+    @staticmethod
+    def rule_violated(log: 'LogLine'):
+        msg = "RULE VIOLATED".ljust(20) + f"\t{log.player_name} ({log.player_team}/{log.player_steamid})"
+        if log.player2_name:
+            msg += f" -> {log.player2_name} ({log.player2_team}/{log.player2_steamid})"
+        if log.weapon:
+            msg += f" with {log.weapon}"
+        if log.message:
+            msg += f": {log.message}"
+        return msg
+    
+    @staticmethod
+    def header():
+        return f"-- Captured and exported using HLL Log Utilities {HLU_VERSION}"
     
     @classmethod
     def convert(cls, log: 'LogLine'):
@@ -110,12 +145,26 @@ class TextConverter(Converter):
             out = log.event_time.strftime('%H:%M:%S - %a, %b %d\t') + out
         return out
 
+    @classmethod
+    def convert_many(cls, logs: List['LogLine'], include_header=True):
+        lines = list()
+
+        if include_header:
+            lines.append(cls.header())
+        
+        for log in logs:
+            line = cls.convert(log)
+            if line is not None:
+                lines.append(line)
+        
+        return "\n".join(lines)
+
 
 class CSVConverter(Converter):
     @classmethod
     def convert(cls, log: 'LogLine'):
         values = list()
-        values = ['"' + (str(val).replace('"', '\"') if val is not None else '') + '"' for val in log.dict().values()]
+        values = ['"' + (str(val).replace('"', '""') if val is not None else '') + '"' for val in log.dict().values()]
         return ",".join(values)
     
     @staticmethod
@@ -125,6 +174,11 @@ class CSVConverter(Converter):
     @staticmethod
     def ext():
         return 'csv'
+    
+    @classmethod
+    def create_scoreboard(cls, scores: Union['MatchData', 'MatchGroup']):
+        stats = scores.stats if isinstance(scores, MatchGroup) else scores
+        return stats.to_csv()
 
 class JSONConverter(Converter):
     @staticmethod
@@ -139,11 +193,15 @@ class JSONConverter(Converter):
     def convert_many(cls, logs: List['LogLine']):
         converted = [log for log in [cls.convert(log) for log in logs] if log is not None]
         obj = dict(
-            start_time=str([converted[0]]) if converted else None,
-            end_time=str([converted[-1]]) if converted else None,
+            start_time=logs[0].event_time if converted else None,
+            end_time=logs[-1].event_time if converted else None,
             logs=converted
         )
         return json.dumps(obj, indent=2, default=lambda x: x.isoformat() if isinstance(x, datetime) else str(x))
+    
+    @classmethod
+    def create_scoreboard(cls, scores: Union['MatchData', 'MatchGroup']):
+        return json.dumps(scores.to_dict(), indent=2, default=lambda x: x.isoformat() if isinstance(x, datetime) else str(x))
 
 
 

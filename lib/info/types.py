@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import contextmanager
 import pydantic
 from typing import *
@@ -7,7 +7,7 @@ from collections import UserList
 from utils import SingletonMeta
 
 if TYPE_CHECKING:
-    from lib.info_types import InfoHopper
+    from lib.info.models import InfoHopper
 
 obj_setattr = object.__setattr__
 obj_getattr = object.__getattribute__
@@ -386,7 +386,7 @@ class InfoModel(ModelTree):
 
         obj_setattr(self, '__hopper__', hopper)
         obj_setattr(self, '__links__', links)
-        obj_setattr(self, '__created_at__', datetime.utcnow())
+        obj_setattr(self, '__created_at__', datetime.now(tz=timezone.utc))
 
     def __validate_values(self, values, _flat=None):
         for val in values:
@@ -454,7 +454,7 @@ class InfoModel(ModelTree):
             return link.fallback
         return res
     
-    def create_link(self, with_fallback=False):
+    def create_link(self, with_fallback=False, hopper: 'InfoHopper' = None):
         if not self.__key_fields__:
             raise TypeError('This model does not have any key fields specified')
 
@@ -464,9 +464,19 @@ class InfoModel(ModelTree):
         
         fallback = None
         if with_fallback:
-            fallback = type(self)(self.__hopper__, **self.get_key_attributes(exclude_unset=True, exclude_links=True))
+            if hopper is None:
+                fallback = type(self)(self.__hopper__, **self.get_key_attributes(exclude_unset=True, exclude_links=True))
+            elif isinstance(hopper, ModelTree):
+                fallback = self.copy(hopper.root)
+            else:
+                raise TypeError('hopper must be an ModelTree, got %s' % type(hopper).__name__)
 
         return Link(self.__scope_path__, values, fallback=fallback)
+
+    def copy(self, hopper: 'InfoHopper'):
+        new = type(self)(hopper)
+        new.merge(self)
+        return new
 
     def _get_raw_value(self, attr):
         res = self.get(attr, raw=True)
@@ -547,4 +557,67 @@ class InfoModelArray(UserList):
                 self.__validate(value)
             self.data.extend(other)
 
+from functools import reduce
+from discord.flags import BaseFlags
+# discord.py provides some nice tools for making flags. We have to be
+# careful for breaking changes however.
 
+class Flags(BaseFlags):
+    __slots__ = ()
+
+    def __init__(self, value: int = 0, **kwargs: bool) -> None:
+        self.value: int = value
+        for key, value in kwargs.items():
+            if key not in self.VALID_FLAGS:
+                raise TypeError(f'{key!r} is not a valid flag name.')
+            setattr(self, key, value)
+
+    def is_subset(self, other: 'Flags') -> bool:
+        """Returns ``True`` if self has the same or fewer permissions as other."""
+        if isinstance(other, Flags):
+            return (self.value & other.value) == self.value
+        else:
+            raise TypeError(f"cannot compare {self.__class__.__name__} with {other.__class__.__name__}")
+
+    def is_superset(self, other: 'Flags') -> bool:
+        """Returns ``True`` if self has the same or more permissions as other."""
+        if isinstance(other, Flags):
+            return (self.value | other.value) == self.value
+        else:
+            raise TypeError(f"cannot compare {self.__class__.__name__} with {other.__class__.__name__}")
+
+    def is_strict_subset(self, other: 'Flags') -> bool:
+        """Returns ``True`` if the permissions on other are a strict subset of those on self."""
+        return self.is_subset(other) and self != other
+
+    def is_strict_superset(self, other: 'Flags') -> bool:
+        """Returns ``True`` if the permissions on other are a strict superset of those on self."""
+        return self.is_superset(other) and self != other
+
+    def __len__(self):
+        i = 0
+        for _, enabled in self:
+            if enabled:
+                i += 1
+        return i
+
+    def copy(self):
+        return type(self)(self.value)
+
+    __le__ = is_subset
+    __ge__ = is_superset
+    __lt__ = is_strict_subset
+    __gt__ = is_strict_superset
+
+    @classmethod
+    def all(cls: Type['Flags']) -> 'Flags':
+        value = reduce(lambda a, b: a | b, cls.VALID_FLAGS.values())
+        self = cls.__new__(cls)
+        self.value = value
+        return self
+
+    @classmethod
+    def none(cls: Type['Flags']) -> 'Flags':
+        self = cls.__new__(cls)
+        self.value = self.DEFAULT_VALUE
+        return self

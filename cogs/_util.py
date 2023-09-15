@@ -1,8 +1,29 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import Interaction, app_commands
+import asyncio
+import aiohttp
 import ast
+import logging
+from typing import List
 
+from utils import get_config
+
+REPO_AUTHOR_NAME = "timraay/HLLLogUtilities"
+
+UPDATE_CHANNEL_OVERRIDES: List[int] = list()
+for channel in get_config().get('Updates', 'UpdateChannelOverrides').split(','):
+    channel = channel.strip()
+
+    if not channel:
+        continue
+    
+    try:
+        channel = int(channel)
+    except ValueError:
+        logging.error('Failed to interpret %s as a guild ID', channel)
+    else:
+        UPDATE_CHANNEL_OVERRIDES.append(channel)
 
 
 def insert_returns(body):
@@ -26,6 +47,8 @@ class _util(commands.Cog):
 
     def __init__(self, bot):
         self.bot: commands.Bot = bot
+        self.last_release_id: int = None
+        self.get_github_releases.start()
 
     @app_commands.command(name="ping", description="View the bot's current latency")
     async def ping(self, interaction: Interaction):
@@ -96,6 +119,62 @@ class _util(commands.Cog):
             await ctx.send(result)
         except discord.HTTPException:
             pass
+
+    
+    async def get_latest_release(self):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f'https://api.github.com/repos/{REPO_AUTHOR_NAME}/releases/latest') as response:
+                res = await response.json()
+                if response.status != 200:
+                    raise RuntimeError(f"Expected status 200 but got {response.status}: {res}")
+        return res
+
+    @tasks.loop(minutes=15)
+    async def get_github_releases(self):
+        res = await self.get_latest_release()
+        if res["id"] != self.last_release_id and self.last_release_id is None:
+            print('Loading release:', res["tag_name"])
+        if res["id"] != self.last_release_id and self.last_release_id is not None:
+            print('New release:', res["tag_name"])
+            channels = list()
+
+            for guild in self.bot.guilds:
+                overrides = [channel for channel in guild.text_channels
+                            if channel.id in UPDATE_CHANNEL_OVERRIDES
+                            and channel.permissions_for(guild.me).send_messages]
+
+                if overrides:
+                    channels += overrides
+                elif guild.public_updates_channel and guild.public_updates_channel.permissions_for(guild.me).send_messages:
+                    channels.append(guild.public_updates_channel)
+                elif guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
+                    channels.append(guild.system_channel)
+            
+            if channels:
+                print('Forwarding to following guilds:')
+                for channel in channels:
+                    print(f'- {channel.guild.name} #{channel.name}')
+                
+                embed = discord.Embed(
+                    title=res["name"],
+                    url=res["html_url"],
+                    description=res["body"],
+                    color=discord.Colour.brand_green()
+                ).set_author(
+                    name="New release published!",
+                    icon_url="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+                )
+
+                if self.bot.user.id == 1033779011005980773:
+                    embed.set_footer(text="A short downtime will occur shortly to apply the update.")
+            
+                await asyncio.gather(*[
+                    channel.send(embed=embed)
+                    for channel in channels
+                ])
+
+        self.last_release_id = res["id"]
+
 
 async def setup(bot):
     await bot.add_cog(_util(bot))

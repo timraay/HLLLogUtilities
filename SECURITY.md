@@ -22,4 +22,4 @@ With the software being open source, you can download a copy of the code and run
 
 ## Can you trust me?
 
-There's always things that can go wrong. For that reason I can never guarantee 100% safety, even though I'll try my best. But in the end, I assume no liability for the unintentional or malicious breach of data. For any questions you can always reach me on Discord (`@Abusify#6969`). If you appreciate my work, consider [donating on Ko-fi]((https://ko-fi.com/abusify)). Thanks!
+There's always things that can go wrong. For that reason I can never guarantee 100% safety, even though I'll try my best. But in the end, I assume no liability for the unintentional or malicious breach of data. For any questions you can always reach me on Discord (`@Abu#6969`). If you appreciate my work, consider [donating on Ko-fi]((https://ko-fi.com/abusify)). Thanks!

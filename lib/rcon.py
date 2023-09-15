@@ -1,27 +1,48 @@
 import asyncio
+import aiohttp
 from datetime import datetime, timedelta
 from functools import wraps
 import re
+import math
 
 from typing import List, TYPE_CHECKING
 
 from lib.protocol import HLLRconProtocol
 from lib.exceptions import HLLConnectionError
-from lib.info_types import *
+from lib.mappings import SQUAD_LEADER_ROLES, TEAM_LEADER_ROLES, INFANTRY_ROLES, TANK_ROLES, RECON_ROLES
+from lib.info.models import *
 from utils import to_timedelta, ttl_cache, get_config
 
 if TYPE_CHECKING:
     from lib.session import HLLCaptureSession
 
 NUM_WORKERS_PER_INSTANCE = get_config().getint('Session', 'NumRCONWorkers')
+STEAM_API_KEY = get_config().get('Session', 'SteamApiKey')
+KICK_INCOMPATIBLE_NAMES = get_config().getboolean('Session', 'KickIncompatibleNames')
 
-SQUAD_LEADER_ROLES = {"Officer", "TankCommander", "Spotter"}
-TEAM_LEADER_ROLES = {"ArmyCommander"}
+def target_to_players(target: Union[Player, Squad, Team, None]) -> Union[List[Player], None]:
+    if not target:
+        return None
+    elif isinstance(target, Player):
+        return [target]
+    elif target.has('players'):
+        return [player for player in target.players if player]
+    raise ValueError(f'{target.__class__.__name__} is not a valid target')
 
-INFANTRY_ROLES = {"Officer", "Assault", "AutomaticRifleman", "Medic", "Support",
-                  "HeavyMachineGunner", "AntiTank", "Engineer", "Rifleman"}
-TANK_ROLES = {"TankCommander", "Crewman"}
-RECON_ROLES = {"Spotter", "Sniper"}
+@ttl_cache(100, 60*60*2) # 2 hours
+async def get_name_from_steam(steamid: str, __name: str = None) -> str:
+    if not STEAM_API_KEY:
+        raise RuntimeError("Steam Api Key not set")
+    
+    params = dict(
+        key=STEAM_API_KEY,
+        steamids=steamid,
+        format='json'
+    )
+    async with aiohttp.ClientSession() as session:
+        res = await session.get("https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/", params=params)
+        data = await res.json()
+        return data['response']['players'][0]['personaname']
 
 
 # --- Wrappers to help manage the connection
@@ -65,7 +86,7 @@ def update_method(func):
             try:
                 await self.start(force=True)
                 self.logger.info('Reconnected %r!', self)
-            except:
+            except Exception:
                 self.logger.exception('Failed to reconnect %r. Missed %s consecutive gathers.', self, self._missed_gathers + 1)
 
         if not self.connected:
@@ -76,7 +97,7 @@ def update_method(func):
         if self.connected:
             try:
                 res = await asyncio.wait_for(func(self, *args, **kwargs), timeout=10)
-            except:
+            except Exception:
                 self._missed_gathers += 1
                 self.logger.exception('Missed %s consecutive updates for %r, %s attempts left', self._missed_gathers, self, 20-self._missed_gathers)
                 if self._missed_gathers in (4, 8, 12, 16, 20) or self._missed_gathers % 20 == 0:
@@ -124,7 +145,7 @@ class HLLRcon:
                 worker = HLLRconWorker(parent=self, name=f"Worker #{num}")
                 await worker.start()
                 self.logger.info('Started worker %s', worker.name)
-            except:
+            except Exception:
                 if i == 0:
                     raise
                 else:
@@ -134,7 +155,7 @@ class HLLRcon:
         self._state = "in_progress"
         self._map = None
         self._end_warmup_handle = None
-        self._logs_seen_time = datetime.now()
+        self._logs_seen_time = datetime.now(tz=timezone.utc)
         self._logs_last_recorded = None
         self._player_deaths = dict()
         self._player_suicide_handles = dict()
@@ -159,10 +180,10 @@ class HLLRcon:
     async def _fetch_server_info(self):
         data = dict()
         res = await asyncio.gather(
-            self.__fetch_persistent_server_info(),
-            self.__fetch_server_settings(),
+            # self.__fetch_persistent_server_info(),
+            # self.__fetch_server_settings(),
             self.__fetch_current_server_info(),
-            self.__fetch_player_roles(),
+            # self.__fetch_player_roles(),
             self.exec_command('showlog 1', multipart=True)
         )
         logs = res.pop(-1)
@@ -171,45 +192,52 @@ class HLLRcon:
                 data.update(d)
 
         map = data['map']
-        if map == "Loading ''":
+        if map == "Loading ''" or map.startswith("Untitled"):
             map = self._map
         elif self._map and map != self._map:
             self.info.events.add(ServerMapChangedEvent(self.info, old=self._map.replace('_RESTART', ''), new=map.replace('_RESTART', '')))
         self.info.events.add(ServerMapChangedEvent)
         clean_map = map.replace('_RESTART', '')
 
-        rotation = [m for m in data['rotation'] if m]
+        # rotation = [m for m in data['rotation'] if m]
         
         server = Server(self.info,
-            name = data['name'],
+            # name = data['name'],
             map = clean_map,
-            settings = ServerSettings(self.info,
-                rotation = rotation,
-                max_players = int(data['slots'].split('/')[0]),
-                max_queue_length = int(data['maxqueuedplayers']),
-                max_vip_slots = int(data['numvipslots']),
-                idle_kick_time = timedelta(minutes=int(data['idletime'])),
-                max_allowed_ping = int(data['highping']),
-                team_switch_cooldown = timedelta(minutes=int(data['teamswitchcooldown'])),
-                auto_balance = int(data['autobalancethreshold']) if data['autobalanceenabled'] == "on" else False,
-                #vote_kick = timedelta(minutes=int(data['votekickthreshold'])) if data['votekickenabled'] == "on" else False,
-                chat_filter = data['profanity']
-            )
+            next_map = data['next_map'].replace('_RESTART', ''),
+            # settings = ServerSettings(self.info,
+            #     rotation = rotation,
+            #     max_players = int(data['slots'].split('/')[0]),
+            #     max_queue_length = int(data['maxqueuedplayers']),
+            #     max_vip_slots = int(data['numvipslots']),
+            #     idle_kick_time = idle_kick_time,
+            #     idle_kick_enabled = bool(idle_kick_time),
+            #     ping_threshold = ping_threshold,
+            #     ping_threshold_enabled = bool(ping_threshold),
+            #     team_switch_cooldown = team_switch_cooldown,
+            #     team_switch_cooldown_enabled = bool(team_switch_cooldown),
+            #     auto_balance_threshold = int(data['autobalancethreshold']),
+            #     auto_balance_enabled = True if data['autobalanceenabled'] == "on" else False,
+            #     # vote_kick_threshold = data['votekickthreshold']
+            #     vote_kick_enabled = True if data['votekickenabled'] == "on" else False,
+            #     chat_filter = data['profanity'],
+            #     chat_filter_enabled = True,
+            # )
         )
         self.info.set_server(server)
 
-        self.info.add_players(*[Player(self.info, is_vip=p["steamid"] in self._vips, **p)
-                                for p in data['players']])
+        # self.info.add_players(*[Player(self.info, is_vip=p["steamid"] in self._vips, **p) for p in data['players']])
+        self.info.add_players(*[Player(self.info, **p) for p in data['players']])
         self.info.add_squads(*[Squad(self.info, **sq) for sq in data['squads']])
         self.info.add_teams(
             Team(self.info, id=1, name="Allies", squads=Link('squads', {'team': {'id': 1}}, multiple=True), players=Link('players', {'team': {'id': 1}}, multiple=True)),
             Team(self.info, id=2, name="Axis",   squads=Link('squads', {'team': {'id': 2}}, multiple=True), players=Link('players', {'team': {'id': 2}}, multiple=True)),
         )
 
-        if clean_map in rotation:
-            next_i = rotation.index(clean_map) + 1
-            next_map = rotation[next_i] if next_i < len(rotation) else rotation[0]
-            self.info.server.next_map = next_map
+        # if clean_map in rotation:
+        #     next_i = rotation.index(clean_map) + 1
+        #     next_map = rotation[next_i] if next_i < len(rotation) else rotation[0]
+        #     self.info.server.next_map = next_map
 
         for squad in self.info.squads:
             players = squad.players
@@ -242,6 +270,11 @@ class HLLRcon:
                     leader = player.create_link()
                     break
             team.leader = leader
+
+            if team.id == 1:
+                team.score = int(data['team1_score'])
+            elif team.id == 2:
+                team.score = int(data['team2_score'])
         
         self.__parse_logs(logs)
         self.info.server.state = self._state
@@ -251,7 +284,11 @@ class HLLRcon:
         fut = self.loop.create_future()
         cmd_pack = (fut, cmd, kwargs)
         self.queue.put_nowait(cmd_pack)
-        res = await fut
+        try:
+            res = await fut
+        except asyncio.CancelledError:
+            self.logger.error('Command execution error: `%s`', cmd)
+            raise
         self.logger.debug('`%s` -> `%s`', cmd, str(res)[:200].replace('\n', '\\n')+'...' if len(str(res)) > 200 else str(res).replace('\n', '\\n'))
         return res
 
@@ -272,21 +309,59 @@ class HLLRcon:
         return dict(zip(types+['profanity'], data))
 
     async def __fetch_current_server_info(self):
-        map, rotation, playerids = await asyncio.gather(
-            self.exec_command("get map"),
-            self.exec_command("rotlist"),
-            self.exec_command("get players", unpack_array=True)
+        playerids, gamestate = await asyncio.gather(
+            # self.exec_command("rotlist"),
+            self.exec_command("get playerids", unpack_array=True),
+            self.exec_command("get gamestate")
         )
-        rotation = rotation.split('\n')
+        # rotation = rotation.split('\n')
 
         players = list()
         squads_allies = dict()
         squads_axis = dict()
 
-        playerinfos = await asyncio.gather(*[self.exec_command('playerinfo %s' % playerid, can_fail=True) for playerid in playerids])
-        for num_info, playerinfo in enumerate(playerinfos):
+        playerids_normal = dict()
+        playerids_problematic = dict()
+        for playerid in playerids:
+            """
+            HLL truncates names on the 20th character. If that 20th character happens to be a space, the truncated
+            name can no longer be used to find players via RCON. Since the playerinfo command does not accept
+            steam IDs and we don't have any way of knowing the full name, the best we can do is skip the playerinfo
+            command completely, and work with what we've got. #9
+
+            Each character can be up to 3 bytes. If it is more, a character will be treated as multiple. Thus, a
+            truncated name doesn't have to be 20 characters long, and can end with an incomplete character, which
+            is then replaced simply with a question mark. In such a case, the playerinfo command will also fail.
+            """
+            name, steamid = playerid.rsplit(' : ', 1)
+            problematic = False
+
+            if name.endswith(' '):
+                problematic = True
+            elif name.endswith('?') and STEAM_API_KEY:
+                full_name = await get_name_from_steam(steamid, name)
+                chars = 0
+                for char in full_name:
+                    char_size = math.ceil(len(char.encode()) / 3)
+                    chars += char_size
+
+                    if char_size > 1 and chars > 20:
+                        problematic = True
+
+                    if chars >= 20:
+                        break
+
+            if problematic:
+                playerids_problematic[steamid] = name
+            else:
+                playerids_normal[steamid] = name
+
+        playerinfos = await asyncio.gather(*[self.exec_command('playerinfo %s' % playerid, can_fail=True) for playerid in playerids_normal.values()])
+        for playerinfo in playerinfos:
             if not playerinfo:
+                # The command (most likely) failed
                 continue
+
             raw = dict()
             data = dict(
                 team=None,
@@ -294,12 +369,13 @@ class HLLRcon:
                 loadout=None
             )
 
+            # Unpack response into a dict
             for line in playerinfo.strip('\n').split("\n"):
                 if ": " not in line:
                     self.logger.warning("Invalid info line: %s", line)
                     continue
                 key, val = line.split(": ", 1)
-                raw[key.lower()] = val
+                raw[key.lower()] = val if val != "None" or key == "Name" else None
             
             """
             Name: T17 Scott
@@ -314,33 +390,28 @@ class HLLRcon:
             """
 
             try:
-                data["name"] = raw["name"]
-                data["steamid"] = raw["steamid64"]
+                name = data["name"] = raw["name"]
+                steamid = data["steamid"] = raw["steamid64"]
+                data["team"] = None
+                data["squad"] = None
+                data["role"] = raw.get("role", None)
+                data["loadout"] = raw.get("loadout", None)
 
-                if playerids[num_info] != data["name"]:
-                    self.logger.error('Requested playerinfo for %s but got %s', playerids[num_info], data["name"])
-                
                 team = raw.get("team")
-                team_id = 1 if team == "Allies" else 2
                 if team:
+                    team_id = 1 if team == "Allies" else 2
                     data["team"] = Link("teams", {'id': team_id})
-                    data["role"] = raw.get("role", None)
-                    data["loadout"] = raw.get("loadout", None)
-                else:
-                    data["team"] = None
-                    data["role"] = None
-                    data["loadout"] = None
                 
-                squad = raw.get("unit")
-                if squad:
-                    squad_id, squad_name = squad.split(' - ', 1)
-                    squad_id = int(squad_id)
-                    data['squad'] = Link("squads", {'id': squad_id, 'team': {'id': team_id}})
-                    
-                    if team_id == 1:
-                        squads_allies[squad_id] = squad_name
-                    else:
-                        squads_axis[squad_id] = squad_name
+                    squad = raw.get("unit")
+                    if squad:
+                        squad_id, squad_name = squad.split(' - ', 1)
+                        squad_id = int(squad_id)
+                        data['squad'] = Link("squads", {'id': squad_id, 'team': {'id': team_id}})
+                        
+                        if team_id == 1:
+                            squads_allies[squad_id] = squad_name
+                        else:
+                            squads_axis[squad_id] = squad_name
                 
                 data["kills"], data["deaths"] = raw.get("kills").split(' - Deaths: ') if raw.get("kills") else (0, 0)
                 data["level"] = raw.get("level", None)
@@ -355,7 +426,16 @@ class HLLRcon:
                 self.logger.error("Couldn't unpack player data: %s", raw)
                 raise
 
+        for steamid, name in playerids_problematic.items():
+            data = dict(
+                name=name,
+                steamid=steamid,
+                is_incompatible_name=True
+            )
+            players.append(data)
+
         squads = list()
+        # Compile teams and squads based off of the player info we have
         for i, squadids in enumerate([squads_allies, squads_axis]):
             team_id = i + 1
             for squad_id, squad_name in squadids.items():
@@ -366,11 +446,26 @@ class HLLRcon:
                     players=Link("players", {'squad': {'id': squad_id}, 'team': {'id': team_id}}, multiple=True)
                 ))
 
+        """
+        Players: Allied: 0 - Axis: 1
+        Score: Allied: 2 - Axis: 2
+        Remaining Time: 0:11:51
+        Map: foy_warfare
+        Next Map: stmariedumont_warfare
+        """
+        gamestate_data = dict(zip(
+            ["team1_score", "team2_score", "time_h", "time_m", "time_s", "map", "next_map"],
+            re.match(
+                r"Players: Allied: \d+ - Axis: \d+\nScore: Allied: (\d+) - Axis: (\d+)\nRemaining Time: (\d+):(\d+):(\d+)\nMap: (.*)\nNext Map: (.*)",
+                gamestate
+            ).groups()
+        ))
+
         return dict(
-            map=map,
-            rotation=rotation,
+            # rotation=rotation,
             players=players,
-            squads=squads
+            squads=squads,
+            **gamestate_data
         )
     
     @ttl_cache(1, 10) # 10 seconds
@@ -386,32 +481,33 @@ class HLLRcon:
     @ttl_cache(1, 60*11) # 11 minutes
     async def __fetch_player_roles(self):
         # Not used: 'tempbans', 'permabans', 'admingroups', 'adminids'
-        data = await self.exec_command('get vipids', unpack_array=True)
+        data = await self.exec_command('get vipids', unpack_array=True, multipart=True)
         self._vips = [entry.split(' ', 1)[0] for entry in data if entry]
 
     def __parse_logs(self, logs: str):
         if logs != 'EMPTY':
-            logs = logs.strip('\n').split('\n')
+            logs = re.split(r"^\[.+? \((\d+)\)\] ", logs, flags=re.M)
+            logs = zip(logs[1::2], logs[2::2])
             skip = True
             time = None
 
-            for line in logs:
+            for timestamp, log in logs:
                 """
-                [11:51:58 hours (1639106251)] CONNECTED (WTH) Duba
-                [7:18:50 hours (1639122640)] DISCONNECTED Saunders University 
+                [11:51:58 hours (1639106251)] CONNECTED (WTH) Duba (76561198018628685)
+                [7:18:50 hours (1639122640)] DISCONNECTED Saunders University (76561198018628685)
                 [1:30:15 hours (1639143555)] KILL: I.N.D.I.G.O.(Axis/76561198018628685) -> (WTH) vendrup0105(Allies/76561199089119792) with MP40
                 [1:21:37 hours (1639144073)] TEAM KILL: (WTH) Xcessive(Allies/76561198017923783) -> Sheer_Luck96(Allies/76561198180120693) with M1918A2_BAR
                 [1:20:52 hours (1639144118)] CHAT[Team][jameswstubbs(Allies/76561198251795176)]: My comms have gone
                 [53:15 min (1639145775)] CHAT[Unit][Schuby(Axis/76561198023348032)]: sec my voice com is dead
                 [9.06 sec (1639148961)] Player [\u272a (WTH) Beard (76561197985434745)] Entered Admin Camera
                 [805 ms (1639148969)] Player [\u272a (WTH) Beard (76561197985434745)] Left Admin Camera
+                [7:04 min (1670430337)] KICK: [Wasp recruit] has been kicked. [YOU WERE KICKED FOR BEING IDLE]
+                [3:39 min (1670430542)] MESSAGE: player [(WTH) Froontan(76561197968167746)], content [You killed (WTH) Oskar]
                 """
-                if not line:
-                    continue
-
                 try:
-                    time, log = re.match(r"\[.*?\((\d+)\)\] (.+)", line).groups()
-                    time = datetime.fromtimestamp(int(time))
+                    timestamp = int(timestamp)
+                    time = datetime.fromtimestamp(timestamp).astimezone(timezone.utc)
+                    log = log.rstrip('\n')
 
                     if skip:
                         # Avoid duplicates
@@ -433,6 +529,8 @@ class HLLRcon:
                             other=Link('players', {'steamid': p2_steamid}),
                             weapon=weapon
                         ))
+
+                        # Count the amount of deaths of a player
                         player = self.info.find_players(single=True, steamid=p2_steamid)
                         if player:
                             deaths = self._player_deaths.setdefault(player, 0)
@@ -440,6 +538,7 @@ class HLLRcon:
                             # self.logger.info('{: <25} {} -> {}'.format(player.name, deaths, deaths + 1))
                         else:
                             self.logger.warning('Could not find player %s %s', p2_steamid, p2_name)
+
                     elif log.startswith('CHAT'):
                         channel, name, team, steamid, message = re.match(r"CHAT\[(Team|Unit)\]\[(.+)\((Allies|Axis)\/(\d{17})\)\]: (.+)", log).groups()
                         player = self.info.find_players(single=True, steamid=steamid)
@@ -449,6 +548,7 @@ class HLLRcon:
                             message=message,
                             channel=player.team.create_link() if channel == 'Team' else player.squad.create_link()
                         ))
+
                     elif log.startswith('Player'):
                         name, steamid, action = re.match(r"Player \[(.+) \((\d{17})\)\] (Left|Entered) Admin Camera", log).groups()
                         player = Link('players', {'steamid': steamid})
@@ -456,66 +556,89 @@ class HLLRcon:
                             self.info.events.add(PlayerEnterAdminCamEvent(self.info, event_time=time, player=player))
                         elif action == "Left":
                             self.info.events.add(PlayerExitAdminCamEvent(self.info, event_time=time, player=player))
+
                     elif log.startswith('MATCH START'):
-                        map_name = log[12:]
+                        map_name = log[12:].strip()
                         self.info.events.add(
-                            ServerMatchStarted(self.info, event_time=time, map=map_name)
+                            ServerMatchStartedEvent(self.info, event_time=time, map=map_name)
                         )
                         self._state = "warmup"
                         if isinstance(self._end_warmup_handle, asyncio.TimerHandle):
                             self._end_warmup_handle.cancel()
                         self._end_warmup_handle = self.loop.call_later(180, self.__enter_playing_state)
+
                     elif log.startswith('MATCH ENDED'):
                         map_name, score = re.match(r'MATCH ENDED `(.+)` ALLIED \((.+)\) AXIS', log).groups()
                         self.info.events.add(
-                            ServerMatchEnded(self.info, event_time=time, map=map_name, score=score)
+                            ServerMatchEndedEvent(self.info, event_time=time, map=map_name, score=score)
                         )
                         self._state = "end_of_round"
+
+                        # Cancel the timer responsible for triggering the Warmup Ended event
                         if isinstance(self._end_warmup_handle, asyncio.TimerHandle):
                             self._end_warmup_handle.cancel()
                         self._end_warmup_handle = None
-                    elif log.split(' ', 1)[0] in {'CONNECTED', 'DISCONNECTED', 'TEAMSWITCH', 'KICK:', 'BAN:', 'VOTESYS:'}:
+
+                        # Log the scores of all online players
+                        for player in self.info.players:
+                            if player.has('score'):
+                                self.info.events.add(
+                                    PlayerScoreUpdateEvent(self.info, event_time=time, player=player.create_link())
+                                )
+
+                    elif log.split(' ', 1)[0] in {'CONNECTED', 'DISCONNECTED', 'TEAMSWITCH', 'KICK:', 'BAN:', 'VOTESYS:', 'MESSAGE:'}:
                         # Suppress error logs
                         pass
+
                 except:
-                    self.logger.exception("Failed to parse log line: %s", line)
+                    self.logger.exception("Failed to parse log line: [... (%s)] %s", timestamp, log)
 
             if time:
                 self._logs_seen_time = time
                 self._logs_last_recorded = log
 
+
+        # -- Warmup ended events
         if self._end_warmup_handle is True:
             self.info.events.add(
-                ServerWarmupEnded(self.info, event_time=self._logs_seen_time)
+                ServerWarmupEndedEvent(self.info, event_time=self._logs_seen_time)
             )
             self._state = "in_progress"
             self._end_warmup_handle = None
 
 
-
+        # -- Player suicide events
         for player in self.info.players:
+            if not player.has('deaths'):
+                continue
+
+            # By comparing the player's deaths as per the playerinfo response with the
+            # amount of kill logs we received, we can track player suicides. This is
+            # slightly easier said than done however, as we need to account for a slight
+            # delay between the playerinfo response updating and receiving the kill log.
+
+            # The number of deaths expected as per the kill logs
             expected_deaths = self._player_deaths.get(player)
 
             if player not in self._player_suicide_handles:
             
                 if (expected_deaths is not None) and (player.deaths - expected_deaths == 1):
-                    # self.logger.info('Scheduling for %s: %s - %s == 1', player.name, player.deaths, expected_deaths)
+                    # The player may have redeployed. Let's wait a bit and check again.
                     handle = self.loop.call_later(7.0, self.__check_player_suicide, player)
                     self._player_suicide_handles[player] = handle
 
                 else:
+                    # Everything looks fine.
                     if (expected_deaths is not None) and (player.deaths != 0) and (player.deaths != expected_deaths):
+                        # Okay, maybe not entirely.
                         self.logger.warning('Mismatch for %s: Has %s but expected %s', player.name, player.deaths, expected_deaths)
+                    # Update our expected value
                     self._player_deaths[player] = player.deaths
 
-        # _player_deaths = dict()
-        # for p, v in self._player_deaths.items():
-        #     if (p in self.info.players) or (p in self._player_suicide_handles):
-        #         _player_deaths[p] = v
-        #     else:
-        #         self.logger.info('Disposing %s', p.name)
-        # self._player_deaths = _player_deaths
-        self._player_deaths = {p: v for p, v in self._player_deaths.items() if (p in self.info.players) or (p in self._player_suicide_handles)}
+        # Remove any expected values for players that have gone offline. This is important to
+        # prevent memory usage from building up.
+        self._player_deaths = {p: v for p, v in self._player_deaths.items()
+                                if (p in self.info.players) or (p in self._player_suicide_handles)}
 
         for player in self._player_suicide_queue:
             self.info.events.add(
@@ -523,8 +646,6 @@ class HLLRcon:
             )
         self._player_suicide_queue.clear()
         
-
-
     def __enter_playing_state(self):
         self._end_warmup_handle = True
     
@@ -534,10 +655,8 @@ class HLLRcon:
             if expected_deaths is None:
                 self.logger.warning('Expected death amount of player %s is unknown', player.name)
             elif (player.deaths - expected_deaths) == 1:
-                # self.logger.info("Expected %s deaths but observed %s, player %s must've killed themself", expected_deaths, player.deaths, player.name)
                 self._player_suicide_queue.add(player)
             else:
-                # self.logger.info('Successfully ended check for %s. Expected %s and got %s.', player.name, expected_deaths, player.deaths)
                 pass
         finally:
             self._player_suicide_handles.pop(player, None)
@@ -553,20 +672,22 @@ class HLLRcon:
         if time:
             hours = int(time.total_seconds() / (60*60))
             if not hours: hours = 1
-            await self.exec_command(f'tempban {player.steamid} {hours} "{reason}" "Gamewatch"')
+            await self.exec_command(f'tempban {player.steamid} {hours} "{reason}" "HLU"')
         else:
-            await self.exec_command(f'permaban {player.steamid} "{reason}" "Gamewatch"')
+            await self.exec_command(f'permaban {player.steamid} "{reason}" "HLU"')
 
     async def unban_player(self, steamid: str):
         temps, perms = await self.__fetch_bans()
 
-        ban_log = temps.get(steamid)
-        if ban_log:
-            await self.exec_command(f'pardontempban {ban_log}')
-
-        ban_log = perms.get(steamid)
-        if ban_log:
-            await self.exec_command(f'pardonpermaban {ban_log}')
+        temp_ban_log = temps.get(steamid)
+        perm_ban_log = perms.get(steamid)
+        if temp_ban_log:
+            await self.exec_command(f'pardontempban {steamid}')
+        elif perm_ban_log:
+            await self.exec_command(f'pardonpermaban {steamid}')
+        else:
+            # Just try to remove a temp ban and pray it works
+            await self.exec_command(f'pardontempban {steamid}')
     
     async def kill_player(self, player: Player, reason: str = "") -> bool:
         return await self.exec_command(f'punish "{player.name}" "{reason}"', can_fail=True)
@@ -578,6 +699,20 @@ class HLLRcon:
     
     async def send_broadcast_message(self, message: str):
         await self.exec_command(f'broadcast {message}')
+    
+    async def send_direct_message(self, message: str, target: Union[Player, Squad, Team, None]):
+        players = target_to_players(target)
+        if players is None:
+            players = self.info.players
+
+        if len(players) == 1:
+            player = players[0]
+            await self.exec_command(f'message "{player.steamid}" {message}')
+        elif len(players) > 1:
+            await asyncio.gather(*[
+                self.exec_command(f'message "{player.steamid}" {message}')
+                for player in players
+            ], return_exceptions=True)
     
     async def add_map_to_rotation(self, map: str):
         await self.exec_command(f'rotadd {map}')
@@ -678,8 +813,9 @@ class HLLRconWorker:
         self.task = self.loop.create_task(self._worker())
     
     async def stop(self):
-        self.task.cancel()
-        if self.protocol._transport:
+        if self.task:
+            self.task.cancel()
+        if self.protocol and self.protocol._transport:
             self.protocol._transport.close()
         self.protocol = None
         self.task = None
@@ -720,7 +856,7 @@ async def create_plain_transport(host: str, port: int, password: str, loop: asyn
     try:
         _, protocol = await asyncio.wait_for(
             loop.create_connection(protocol_factory, host=host, port=port),
-            timeout=3
+            timeout=10
         )
     except asyncio.TimeoutError:
         raise HLLConnectionError("Address %s could not be resolved" % host)

@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import asyncio
 from pathlib import Path
+import re
 
 def to_timedelta(value):
     if not value:
@@ -8,7 +9,7 @@ def to_timedelta(value):
     elif isinstance(value, int):
         return timedelta(seconds=value)
     elif isinstance(value, datetime):
-        return value - datetime.utcnow()
+        return value - datetime.now(tz=timezone.utc)
     elif isinstance(value, timedelta):
         return value
     else:
@@ -126,21 +127,117 @@ def schedule_coro(dt: datetime, coro_func, *args, error_logger = None): # How do
     return asyncio.create_task(scheduled_coro())
 
 
-import logging
-
 LOGS_FOLDER = Path('logs')
-LOGS_FORMAT = '[%(asctime)s][%(levelname)s][%(module)s.%(funcName)s:%(lineno)s] %(message)s'
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s][%(levelname)s][%(module)s.%(funcName)s:%(lineno)s] %(message)s',
-)
 if not LOGS_FOLDER.exists():
     LOGS_FOLDER.mkdir()
+
+def _get_logs_formatter(name: str = None, as_str: bool = False):
+    if name:
+        fmt = '[%(asctime)s][{}][%(levelname)s][%(module)s.%(funcName)s:%(lineno)s] %(message)s'.format(name)
+    else:
+        fmt = '[%(asctime)s][%(levelname)s][%(module)s.%(funcName)s:%(lineno)s] %(message)s'
+    if as_str:
+        return fmt
+    else:
+        return logging.Formatter(fmt)
+def _assert_filename(text: str):
+    return re.sub(r"[^\w\(\)_\-,\. ]", "_", text.replace(' ', '_'))
+
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format=_get_logs_formatter(name='other', as_str=True),
+)
+
 def get_logger(session):
     logger = logging.getLogger(str(session.id))
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
     if not logger.handlers:
-        name = f"sess{session.id}_{session.name.encode('utf-8', errors='ignore').decode('ascii', errors='ignore').replace(' ', '_')}.log"
+        name = f"sess{session.id}_{_assert_filename(session.name)}.log"
+
         handler = logging.FileHandler(filename=LOGS_FOLDER / name, encoding='utf-8')
-        handler.setFormatter(logging.Formatter(LOGS_FORMAT))
+        handler.setFormatter(_get_logs_formatter())
+        logger.addHandler(handler)
+
+        handler = logging.StreamHandler()
+        handler.setFormatter(_get_logs_formatter(f'sess{session.id}'))
         logger.addHandler(handler)
     return logger
+
+def get_autosession_logger(autosession):
+    logger = logging.getLogger(f"auto_{autosession.id}")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    if not logger.handlers:
+        name = f"auto{autosession.id}_{_assert_filename(autosession.credentials.name)}.log"
+
+        handler = logging.FileHandler(filename=LOGS_FOLDER / name, encoding='utf-8')
+        handler.setFormatter(_get_logs_formatter())
+        logger.addHandler(handler)
+        
+        handler = logging.StreamHandler()
+        handler.setFormatter(_get_logs_formatter(f'auto{autosession.id}'))
+        handler.setLevel(logging.WARN)
+        logger.addHandler(handler)
+    return logger
+
+
+
+def toTable(rows, spacing=2, title=None, just=None, rotate=False, rstrip=True):
+    rowlen = len(rows[0])
+    for row in rows:
+        if len(row) != rowlen:
+            raise ValueError('Not all rows are of equal length')
+
+    if rotate:
+        cols = rows
+        rows = list(zip(*rows))
+    else:
+        cols = list(zip(*rows))
+    
+    if not just:
+        just = 'l' * len(cols)
+    elif len(just) != len(cols):
+        raise ValueError('Justify setting is of incorrect length')
+    
+    sizes = [max([len(str(value)) for value in col]) for col in cols]
+
+    output = list()
+    space = " " * spacing
+    justs = {
+        'l': lambda i, val: str(val).ljust(sizes[i]),
+        'c': lambda i, val: str(val).center(sizes[i]),
+        'r': lambda i, val: str(val).rjust(sizes[i]),
+    }
+    for row in rows:
+        line = space.join([justs[just[i]](i, value) for i, value in enumerate(row)])
+        if rstrip:
+            line = line.rstrip()
+        output.append(line)
+    
+    if title:
+        maxsize = max([len(line) for line in output])
+        title = (" " + str(title) + " ").center(maxsize, "#")
+        output.insert(0, title)
+
+    return "\n".join(output)
+
+
+def side_by_side(text1, *others, spacing=5):
+    others = list(others)
+    while others:
+        text2 = others.pop(0)
+        lines1 = text1.split('\n')
+        lines2 = text2.split('\n')
+        ljust = max([len(line) for line in lines1]) + spacing
+        output = list()
+        while lines1 or lines2:
+            line1 = lines1.pop(0) if lines1 else ''
+            if lines2:
+                line2 = lines2.pop(0)
+                output.append(line1.ljust(ljust) + line2)
+            else:
+                output.append(line1)
+        text1 = "\n".join(output)
+    return text1
