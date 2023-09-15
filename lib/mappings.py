@@ -293,8 +293,8 @@ WEAPONS = {
     # "M2 Browning [M3 Half-track]": "RUS Half-track MG [RUS Half-track]",
 
     "Lee-Enfield Pattern 1914": "P14 Enfield",
-    "Lee–Enfield Jungle Carbine": "Jungle Carbine",
-    "Lee–Enfield No.4 Mk I": "No.4 Rifle Mk I",
+    "Rifle No.5 Mk I": "Jungle Carbine",
+    "Rifle No.4 Mk I": "No.4 Rifle Mk I",
     "Sten Gun": "Sten",
     "Lanchester": "Lanchester",
     "Bren Gun": "Bren Gun",
