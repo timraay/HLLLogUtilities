@@ -232,12 +232,12 @@ class ExportView(View):
                     last_start = (log.event_time - ranges[-1].start_time).total_seconds()
 
                 if len(ranges) >= 2 and last_start and last_start < 30:
-                    # The line appeared after the server_match_ended event
+                    # The line appeared after the server_match_started event
                     ranges[-2].map_name = Map.load(log.old).pretty()
                     ranges[-1].map_name = Map.load(log.new).pretty()
                 
-                elif last_start > 60:
-                    # The line appeared before the server_match_ended event
+                elif not last_start or last_start > 60:
+                    # The line appeared before the server_match_started event
                     ranges[-1].map_name = Map.load(log.old).pretty()
 
         if len(ranges) == 1:
