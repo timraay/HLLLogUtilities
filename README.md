@@ -120,26 +120,51 @@ A list of available modifiers, including what they do and how they work, can be 
 
 > **NOTE:** You don't need to set up your own instance of the bot! You can use the public instance as well, the invite link for which can be found in the guide above. Self-hosting does provide you with a little more security though, as well as a handful of extra configuration options.
 
-### **Prerequisites**
+If you choose to host your own instance of the bot, you can run it natively from source, but a Dockerfile is also included in the repository, for running with Docker.
+
+### **Prerequisites (Native)**
 - A machine to host on, such as a VPS, dedicated server or your own PC
-- [Python](https://www.python.org/downloads) 3.8 or above
 - [Git](https://git-scm.com/downloads)
+- [Python](https://www.python.org/downloads) 3.8 or above
+
+### **Prerequisites (Docker)**
+- A machine to host on, such as a VPS, dedicated server or your own PC
+- [Git](https://git-scm.com/downloads)
+- [Docker](https://docs.docker.com/get-docker/)
+- [SQLite3](https://www.sqlite.org/download.html)
 
 ### **Guide**
 
 To host your own instance of HLU, there's a few steps you have to follow. Let's start off by cloning the code from GitHub. For this you need to have Git installed.
 
-1. Open a command terminal in the parent directory you want the files to be saaved. In here, we will later create a directory containing all the files.
+1. Open a command terminal in the parent directory you want the files to be saved. In here, we will later create a directory containing all the files.
 2. Run the following command to download the files from GitHub:
-```sh
+```shell
 git clone https://github.com/timraay/HLLLogUtilities.git
 ```
 3. Go into the directory we just made:
-```sh
+```shell
 cd HLLLogUtilities
 ```
-4. Install all needed Python libraries.
-```sh
+
+That's all the files installed! Now let's create our bot account over on Discord's developer portal and configure our bot.
+
+4. Go to the [Discord developer portal](https://discord.com/developers/applications) and create a new application.
+5. Go to the "Bot" tab and add a bot.
+6. (optional) Add a profile picture
+7. (optional) Disable the "Public Bot" setting
+
+We've just prepared our application. Now we need to share it with our code.
+
+8. Click on the "Reset Token" button and copy your token.
+9. Open the "config.ini" file and fill in the token you've just copied. Make sure there's no trailing spaces.
+
+Almost done now! From here on out though, how to proceed depends on how you've decided to run the bot.
+
+### If you want to **run natively from source**...
+
+10. Install all needed Python libraries.
+```shell
 pip3 install -r requirements.txt
 ```
 
@@ -149,28 +174,27 @@ pip3 install -r requirements.txt
 > 3. Under "Invidivual components", select most relevant versions of both "C++ x64/x86 build tools" and "Windows SDK"
 > 4. Install everything
 
-Great, that's everything installed. Now we create our bot account over on Discord's developer portal.
-
-5. Go to the [Discord developer portal](https://discord.com/developers/applications) and create a new application.
-6. Go to the "Bot" tab and add a bot.
-7. (optional) Add a profile picture
-8. (optional) Disable the "Public Bot" setting
-
-We've just prepared our application. Now we need to share it with our code.
-
-9. Click on the "Reset Token" button and copy your token.
-10. Open the "config.ini" file and fill in the token you've just copied. Make sure there's no trailing spaces.
-
-And that's everything! Now we just need to run it.
-
 11. Start the bot!
-```sh
-python bot.py
+```shell
+python3 bot.py
 ```
 
-> **NOTE:** The exact command may vary per installation. On Windows it often will be `py` instead of `python`, and on Unix-like systems it is often `python3`.
+> **NOTE:** The exact command may vary per installation. While on Unix-like systems it's usually `python3`, especially on Windows you will often find `python` or `py` instead.
 
 This terminal will need to stay open for the bot to work. Closing down this terminal will also shut down the bot.
+
+### If you want to run **run through Docker**...
+
+10. Create an empty database file, assuming you don't yet have a file named "sessions.db".
+```shell
+sqlite3 sessions.db "VACUUM;"
+```
+11. Start the container!
+```shell
+docker-compose up -d
+```
+
+This container will run in the background, and restart automatically after a system reboot. In case you ever want to stop it, you can use the `docker-compose down` command.
 
 # **FAQ**
 Frequently Asked Questions can be found [here](https://github.com/timraay/HLLLogUtilities/blob/main/FAQ.md)!
