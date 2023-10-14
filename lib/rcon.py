@@ -141,15 +141,23 @@ class HLLRcon:
         self.workers = list()
         for i in range(NUM_WORKERS_PER_INSTANCE):
             num = i + 1
-            try:
-                worker = HLLRconWorker(parent=self, name=f"Worker #{num}")
-                await worker.start()
+            worker = HLLRconWorker(loop=self.loop, queue=self.queue, settings=self.settings, name=f"Worker #{num}")
+            self.workers.append(worker)
+
+        worker = self.workers[0]
+        await worker.start()
+        self.logger.info('Started worker %s', worker.name)
+
+        results = await asyncio.gather(
+            *[worker.start() for worker in self.workers[1:]],
+            return_exceptions=True
+        )
+        for i, result in enumerate(results, start=1):
+            worker = self.workers[i]
+            if isinstance(result, Exception):
+                self.logger.error('Failed to start worker %s: %s: %s', worker.name, type(result).__name__, result)
+            else:
                 self.logger.info('Started worker %s', worker.name)
-            except Exception:
-                if i == 0:
-                    raise
-                else:
-                    self.logger.exception('Failed to start worker #%s, skipping...', num)
             self.workers.append(worker)
         
         self._state = "in_progress"
@@ -172,9 +180,16 @@ class HLLRcon:
 
     @update_method
     async def update(self):
-        self.info = InfoHopper()
+        self._info = InfoHopper()
         await self._fetch_server_info()
+        self.info = self._info
         return self.info
+
+    async def reconnect(self):
+        to_reconnect = [worker for worker in self.workers if not worker.connected]
+        if to_reconnect:
+            await asyncio.gather(*[worker._create_connection() for worker in to_reconnect])
+            return True
 
 
     async def _fetch_server_info(self):
@@ -195,17 +210,17 @@ class HLLRcon:
         if map == "Loading ''" or map.startswith("Untitled"):
             map = self._map
         elif self._map and map != self._map:
-            self.info.events.add(ServerMapChangedEvent(self.info, old=self._map.replace('_RESTART', ''), new=map.replace('_RESTART', '')))
-        self.info.events.add(ServerMapChangedEvent)
+            self._info.events.add(ServerMapChangedEvent(self._info, old=self._map.replace('_RESTART', ''), new=map.replace('_RESTART', '')))
+        self._info.events.add(ServerMapChangedEvent)
         clean_map = map.replace('_RESTART', '')
 
         # rotation = [m for m in data['rotation'] if m]
         
-        server = Server(self.info,
+        server = Server(self._info,
             # name = data['name'],
             map = clean_map,
             next_map = data['next_map'].replace('_RESTART', ''),
-            # settings = ServerSettings(self.info,
+            # settings = ServerSettings(self._info,
             #     rotation = rotation,
             #     max_players = int(data['slots'].split('/')[0]),
             #     max_queue_length = int(data['maxqueuedplayers']),
@@ -224,22 +239,17 @@ class HLLRcon:
             #     chat_filter_enabled = True,
             # )
         )
-        self.info.set_server(server)
+        self._info.set_server(server)
 
-        # self.info.add_players(*[Player(self.info, is_vip=p["steamid"] in self._vips, **p) for p in data['players']])
-        self.info.add_players(*[Player(self.info, **p) for p in data['players']])
-        self.info.add_squads(*[Squad(self.info, **sq) for sq in data['squads']])
-        self.info.add_teams(
-            Team(self.info, id=1, name="Allies", squads=Link('squads', {'team': {'id': 1}}, multiple=True), players=Link('players', {'team': {'id': 1}}, multiple=True)),
-            Team(self.info, id=2, name="Axis",   squads=Link('squads', {'team': {'id': 2}}, multiple=True), players=Link('players', {'team': {'id': 2}}, multiple=True)),
+        # self._info.add_players(*[Player(self._info, is_vip=p["steamid"] in self._vips, **p) for p in data['players']])
+        self._info.add_players(*[Player(self._info, **p) for p in data['players']])
+        self._info.add_squads(*[Squad(self._info, **sq) for sq in data['squads']])
+        self._info.add_teams(
+            Team(self._info, id=1, name="Allies", squads=Link('squads', {'team': {'id': 1}}, multiple=True), players=Link('players', {'team': {'id': 1}}, multiple=True)),
+            Team(self._info, id=2, name="Axis",   squads=Link('squads', {'team': {'id': 2}}, multiple=True), players=Link('players', {'team': {'id': 2}}, multiple=True)),
         )
 
-        # if clean_map in rotation:
-        #     next_i = rotation.index(clean_map) + 1
-        #     next_map = rotation[next_i] if next_i < len(rotation) else rotation[0]
-        #     self.info.server.next_map = next_map
-
-        for squad in self.info.squads:
+        for squad in self._info.squads:
             players = squad.players
             
             leader = None
@@ -251,10 +261,12 @@ class HLLRcon:
 
             type_ = "infantry"
             for player in players:
-                if player.role in INFANTRY_ROLES:
+                if player.role == "Rifleman":
+                    continue
+                elif player.role in INFANTRY_ROLES:
                     type_ = "infantry"
                 elif player.role in TANK_ROLES:
-                    type_ = "tank"
+                    type_ = "armor"
                 elif player.role in RECON_ROLES:
                     type_ = "recon"
                 else:
@@ -262,7 +274,7 @@ class HLLRcon:
                 break
             squad.type = type_
         
-        for team in self.info.teams:
+        for team in self._info.teams:
             players = team.players
             leader = None
             for player in players:
@@ -277,18 +289,14 @@ class HLLRcon:
                 team.score = int(data['team2_score'])
         
         self.__parse_logs(logs)
-        self.info.server.state = self._state
+        self._info.server.state = self._state
         self._map = map            
     
     async def exec_command(self, cmd, **kwargs) -> Union[str, list]:
         fut = self.loop.create_future()
-        cmd_pack = (fut, cmd, kwargs)
+        cmd_pack = (fut, cmd, kwargs, 2)
         self.queue.put_nowait(cmd_pack)
-        try:
-            res = await fut
-        except asyncio.CancelledError:
-            self.logger.error('Command execution error: `%s`', cmd)
-            raise
+        res = await fut
         self.logger.debug('`%s` -> `%s`', cmd, str(res)[:200].replace('\n', '\\n')+'...' if len(str(res)) > 200 else str(res).replace('\n', '\\n'))
         return res
 
@@ -419,7 +427,7 @@ class HLLRcon:
                 scores = dict([score.split(" ", 1) for score in raw.get("score", "C 0, O 0, D 0, S 0").split(", ")])
                 map_score = {"C": "combat", "O": "offense", "D": "defense", "S": "support"}
                 data["score"] = {v: scores.get(k, 0) for k, v in map_score.items()}
-                data["score"]["hopper"] = self.info
+                data["score"]["hopper"] = self._info
 
                 players.append(data)
             except:
@@ -493,16 +501,19 @@ class HLLRcon:
 
             for timestamp, log in logs:
                 """
-                [11:51:58 hours (1639106251)] CONNECTED (WTH) Duba (76561198018628685)
-                [7:18:50 hours (1639122640)] DISCONNECTED Saunders University (76561198018628685)
-                [1:30:15 hours (1639143555)] KILL: I.N.D.I.G.O.(Axis/76561198018628685) -> (WTH) vendrup0105(Allies/76561199089119792) with MP40
-                [1:21:37 hours (1639144073)] TEAM KILL: (WTH) Xcessive(Allies/76561198017923783) -> Sheer_Luck96(Allies/76561198180120693) with M1918A2_BAR
-                [1:20:52 hours (1639144118)] CHAT[Team][jameswstubbs(Allies/76561198251795176)]: My comms have gone
-                [53:15 min (1639145775)] CHAT[Unit][Schuby(Axis/76561198023348032)]: sec my voice com is dead
-                [9.06 sec (1639148961)] Player [\u272a (WTH) Beard (76561197985434745)] Entered Admin Camera
-                [805 ms (1639148969)] Player [\u272a (WTH) Beard (76561197985434745)] Left Admin Camera
-                [7:04 min (1670430337)] KICK: [Wasp recruit] has been kicked. [YOU WERE KICKED FOR BEING IDLE]
-                [3:39 min (1670430542)] MESSAGE: player [(WTH) Froontan(76561197968167746)], content [You killed (WTH) Oskar]
+                [10:00:00 hours (1639106251)] CONNECTED A Player Name (12345678901234567)
+                [10:00:00 hours (1639122640)] DISCONNECTED A Player Name (12345678901234567)
+                [10:00:00 hours (1639143555)] KILL: A Player Name(Axis/12345678901234567) -> (WTH) A Player name(Allies/12345678901234567) with MP40
+                [10:00:00 hours (1639144073)] TEAM KILL: A Player Name(Allies/12345678901234567) -> A Player Name(Allies/12345678901234567) with M1 GARAND
+                [30:00 min (1639144118)] CHAT[Team][A Player Name(Allies/12345678901234567)]: Please build garrisons!
+                [30:00 min (1639145775)] CHAT[Unit][A Player Name(Axis/12345678901234567)]: comms working?
+                [15.03 sec (1639148961)] Player [A Player Name (12345678901234567)] Entered Admin Camera
+                [15.03 sec (1639148961)] Player [A Player Name (12345678901234567)] Left Admin Camera
+                [15.03 sec (1639148961)] BAN: [A Player Name] has been banned. [BANNED FOR 2 HOURS BY THE ADMINISTRATOR!]
+                [15.03 sec (1639148961)] KICK: [A Player Name] has been kicked. [BANNED FOR 2 HOURS BY THE ADMINISTRATOR!]
+                [15.03 sec (1639148961)] MESSAGE: player [A Player Name(12345678901234567)], content [Stop teamkilling, you donkey!]
+                [805 ms (1639148969)] MATCH START SAINTE-MÈRE-ÉGLISE WARFARE
+                [805 ms (1639148969)] MATCH ENDED `SAINTE-MÈRE-ÉGLISE WARFARE` ALLIED (2 - 3) AXIS 
                 """
                 try:
                     timestamp = int(timestamp)
@@ -523,7 +534,7 @@ class HLLRcon:
                         p1_name, p1_team, p1_steamid, p2_name, p2_team, p2_steamid, weapon = re.search(
                             r"KILL: (.+)\((Allies|Axis)\/(\d{17})\) -> (.+)\((Allies|Axis)\/(\d{17})\) with (.+)", log).groups()
                         e_cls = PlayerTeamkillEvent if log.startswith('TEAM KILL') else PlayerKillEvent
-                        self.info.events.add(e_cls(self.info,
+                        self._info.events.add(e_cls(self._info,
                             event_time=time,
                             player=Link('players', {'steamid': p1_steamid}),
                             other=Link('players', {'steamid': p2_steamid}),
@@ -531,7 +542,7 @@ class HLLRcon:
                         ))
 
                         # Count the amount of deaths of a player
-                        player = self.info.find_players(single=True, steamid=p2_steamid)
+                        player = self._info.find_players(single=True, steamid=p2_steamid)
                         if player:
                             deaths = self._player_deaths.setdefault(player, 0)
                             self._player_deaths[player] = deaths + 1
@@ -541,8 +552,8 @@ class HLLRcon:
 
                     elif log.startswith('CHAT'):
                         channel, name, team, steamid, message = re.match(r"CHAT\[(Team|Unit)\]\[(.+)\((Allies|Axis)\/(\d{17})\)\]: (.+)", log).groups()
-                        player = self.info.find_players(single=True, steamid=steamid)
-                        self.info.events.add(PlayerMessageEvent(self.info,
+                        player = self._info.find_players(single=True, steamid=steamid)
+                        self._info.events.add(PlayerMessageEvent(self._info,
                             event_time=time,
                             player=player.create_link(),
                             message=message,
@@ -553,14 +564,14 @@ class HLLRcon:
                         name, steamid, action = re.match(r"Player \[(.+) \((\d{17})\)\] (Left|Entered) Admin Camera", log).groups()
                         player = Link('players', {'steamid': steamid})
                         if action == "Entered":
-                            self.info.events.add(PlayerEnterAdminCamEvent(self.info, event_time=time, player=player))
+                            self._info.events.add(PlayerEnterAdminCamEvent(self._info, event_time=time, player=player))
                         elif action == "Left":
-                            self.info.events.add(PlayerExitAdminCamEvent(self.info, event_time=time, player=player))
+                            self._info.events.add(PlayerExitAdminCamEvent(self._info, event_time=time, player=player))
 
                     elif log.startswith('MATCH START'):
                         map_name = log[12:].strip()
-                        self.info.events.add(
-                            ServerMatchStartedEvent(self.info, event_time=time, map=map_name)
+                        self._info.events.add(
+                            ServerMatchStartedEvent(self._info, event_time=time, map=map_name)
                         )
                         self._state = "warmup"
                         if isinstance(self._end_warmup_handle, asyncio.TimerHandle):
@@ -569,8 +580,8 @@ class HLLRcon:
 
                     elif log.startswith('MATCH ENDED'):
                         map_name, score = re.match(r'MATCH ENDED `(.+)` ALLIED \((.+)\) AXIS', log).groups()
-                        self.info.events.add(
-                            ServerMatchEndedEvent(self.info, event_time=time, map=map_name, score=score)
+                        self._info.events.add(
+                            ServerMatchEndedEvent(self._info, event_time=time, map=map_name, score=score)
                         )
                         self._state = "end_of_round"
 
@@ -580,10 +591,10 @@ class HLLRcon:
                         self._end_warmup_handle = None
 
                         # Log the scores of all online players
-                        for player in self.info.players:
+                        for player in self._info.players:
                             if player.has('score'):
-                                self.info.events.add(
-                                    PlayerScoreUpdateEvent(self.info, event_time=time, player=player.create_link())
+                                self._info.events.add(
+                                    PlayerScoreUpdateEvent(self._info, event_time=time, player=player.create_link())
                                 )
 
                     elif log.split(' ', 1)[0] in {'CONNECTED', 'DISCONNECTED', 'TEAMSWITCH', 'KICK:', 'BAN:', 'VOTESYS:', 'MESSAGE:'}:
@@ -600,15 +611,15 @@ class HLLRcon:
 
         # -- Warmup ended events
         if self._end_warmup_handle is True:
-            self.info.events.add(
-                ServerWarmupEndedEvent(self.info, event_time=self._logs_seen_time)
+            self._info.events.add(
+                ServerWarmupEndedEvent(self._info, event_time=self._logs_seen_time)
             )
             self._state = "in_progress"
             self._end_warmup_handle = None
 
 
         # -- Player suicide events
-        for player in self.info.players:
+        for player in self._info.players:
             if not player.has('deaths'):
                 continue
 
@@ -638,11 +649,11 @@ class HLLRcon:
         # Remove any expected values for players that have gone offline. This is important to
         # prevent memory usage from building up.
         self._player_deaths = {p: v for p, v in self._player_deaths.items()
-                                if (p in self.info.players) or (p in self._player_suicide_handles)}
+                                if (p in self._info.players) or (p in self._player_suicide_handles)}
 
         for player in self._player_suicide_queue:
-            self.info.events.add(
-                PlayerSuicideEvent(self.info, event_time=self._logs_seen_time, player=player.create_link(with_fallback=True))
+            self._info.events.add(
+                PlayerSuicideEvent(self._info, event_time=self._logs_seen_time, player=player.create_link(with_fallback=True))
             )
         self._player_suicide_queue.clear()
         
@@ -815,14 +826,21 @@ class HLLRconWorker:
     async def stop(self):
         if self.task:
             self.task.cancel()
-        if self.protocol and self.protocol._transport:
+        if self.connected:
             self.protocol._transport.close()
+            self.protocol._transport = None
         self.protocol = None
         self.task = None
     
     @property
     def connected(self):
         return bool(self.protocol and self.protocol._transport)
+
+    async def reconnect(self):
+        self.logger.warning("Reconnecting worker %s", self.name)
+        if self.connected:
+            self.protocol._transport.close()
+        await self._create_connection()
 
     async def _create_connection(self):
         protocol = await create_plain_transport(
@@ -833,19 +851,32 @@ class HLLRconWorker:
             logger=self.logger,
         )
 
-        if self.protocol:
+        if self.protocol and self.protocol._transport:
             self.protocol._transport.close()
         self.protocol = protocol
 
     async def _worker(self):
         while True:
-            fut, cmd, kwargs = await self.queue.get()
+            fut, cmd, kwargs, atp = await self.queue.get()
+            
             try:
+                if not self.connected:
+                    await self.reconnect()
+
                 res = await self.protocol.execute(cmd, **kwargs)
-                fut.set_result(res)
-            except Exception as exc:
                 if not fut.done():
-                    fut.set_exception(exc)
+                    fut.set_result(res)
+                
+            except Exception as exc:
+                if atp > 1:
+                    self.logger.exception("Retrying \"%s\"", cmd)
+                    cmd_pack = (fut, cmd, kwargs, atp-1)
+                    self.queue.put_nowait(cmd_pack)
+                else:
+                    self.logger.exception("Failed execution of \"%s\"", cmd)
+                    if not fut.done():
+                        fut.set_exception(exc)
+            
             self.queue.task_done()
 
 
