@@ -141,7 +141,7 @@ class HLLRcon:
         self.workers = list()
         for i in range(NUM_WORKERS_PER_INSTANCE):
             num = i + 1
-            worker = HLLRconWorker(loop=self.loop, queue=self.queue, settings=self.settings, name=f"Worker #{num}")
+            worker = HLLRconWorker(parent=self, name=f"Worker #{num}")
             self.workers.append(worker)
 
         worker = self.workers[0]
