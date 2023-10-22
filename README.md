@@ -23,14 +23,11 @@ HLU makes great use of its asynchronous backend by opening up multiple connectio
 
 # **Planned features**
 
-This is a non-exhaustive list in no particular order of everything I *may* add one day, whenever I feel like it.
-
 - [x] Exporting a single match from a session
 - [x] Exporting statistics from a session or match
 - [x] Framework for custom match modifiers
 - [x] Automatic session scheduling
 - [x] HeLO integration
-- [ ] Command localization
 
 # **Quickstart**
 
