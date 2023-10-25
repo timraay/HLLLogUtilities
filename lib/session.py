@@ -68,6 +68,8 @@ class HLLCaptureSession:
 
         self.__listeners = None
 
+        self.sent_helo_prompt_indices = list()
+
         SESSIONS[self.id] = self
         
     @classmethod

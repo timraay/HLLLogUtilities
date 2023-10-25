@@ -59,6 +59,50 @@ class ExportRange(BaseModel):
             return self.shortest_end_time - self.start_time
         else:
             return None
+    
+    def is_eligible_for_helo(self):
+        return self.start_time and self.has_end_time
+
+def get_ranges(logs):
+    flags = EventFlags(server_match_started=True, server_match_ended=True, server_map_changed=True)
+    ranges = [ExportRange()]
+    for log in flags.filter_logs(logs):
+        try:
+            log_type = EventTypes(log.type)
+        except ValueError:
+            continue
+
+        if log_type == EventTypes.server_match_ended:
+            ranges[-1].end_time = log.event_time
+            if not ranges[-1].map_name:
+                ranges[-1].map_name = " ".join(get_map_and_mode(log.new))
+
+        elif log_type == EventTypes.server_match_started:
+            ranges[-1].unload_time = log.event_time
+            ranges.append(ExportRange(
+                start_time=log.event_time,
+                map_name=" ".join(get_map_and_mode(log.new))
+            ))
+
+        elif log_type == EventTypes.server_map_changed:
+            if not ranges[-1].start_time:
+                last_start = None
+            else:
+                last_start = (log.event_time - ranges[-1].start_time).total_seconds()
+
+            if len(ranges) >= 2 and last_start and last_start < 30:
+                # The line appeared after the server_match_started event
+                ranges[-2].map_name = Map.load(log.old).pretty()
+                ranges[-1].map_name = Map.load(log.new).pretty()
+            
+            elif not last_start or last_start > 60:
+                # The line appeared before the server_match_started event
+                ranges[-1].map_name = Map.load(log.old).pretty()
+
+    if len(ranges) == 1:
+        ranges.clear()
+
+    return ranges
 
 
 class ExportView(View):
@@ -88,7 +132,7 @@ class ExportView(View):
                 "This session doesn't hold any logs yet"
             )
 
-        self._ranges = self._get_ranges()
+        self._ranges = get_ranges(self.logs)
         self._range_index = None
 
         if self.as_scoreboard:
@@ -171,7 +215,7 @@ class ExportView(View):
         await self.interaction.edit_original_response(content=content, attachments=attachments)
 
     def get_message_payload(self):
-        logs = self.session.get_logs(
+        self.logs = self.session.get_logs(
             from_=self.range.start_time,
             to=self.range.unload_time,
             filter=self.flags
@@ -183,7 +227,9 @@ class ExportView(View):
         if self.flags != self.flags.all():
             content += f"\n> Includes: **{'**, **'.join([option[0] for option in self.flags_options if option[2] <= self.flags])}**"
 
-        if logs:
+        file = None
+
+        if self.logs:
             converter: Converter = self.format.value
 
             if self.as_scoreboard:
@@ -193,57 +239,16 @@ class ExportView(View):
                     match_data = self.scores.matches[self._range_index]
 
                 fp = StringIO(converter.create_scoreboard(match_data))
-            
-            else:
-                fp = StringIO(converter.convert_many(logs))
+                file = discord.File(fp, filename=self.session.name + '.' + converter.ext())
 
-            file = discord.File(fp, filename=self.session.name + '.' + converter.ext())
+            else:
+                fp = StringIO(converter.convert_many(self.logs))
+                file = discord.File(fp, filename=self.session.name + '.' + converter.ext())
+
         else:
-            file = None
             content += '\n```\nNo logs match the given criteria!\n```'
         
         return content, file
-
-    def _get_ranges(self):
-        flags = EventFlags(server_match_started=True, server_match_ended=True, server_map_changed=True)
-        ranges = [ExportRange()]
-        for log in flags.filter_logs(self.logs):
-            try:
-                log_type = EventTypes(log.type)
-            except ValueError:
-                continue
-
-            if log_type == EventTypes.server_match_ended:
-                ranges[-1].end_time = log.event_time
-                if not ranges[-1].map_name:
-                    ranges[-1].map_name = " ".join(get_map_and_mode(log.new))
-
-            elif log_type == EventTypes.server_match_started:
-                ranges[-1].unload_time = log.event_time
-                ranges.append(ExportRange(
-                    start_time=log.event_time,
-                    map_name=" ".join(get_map_and_mode(log.new))
-                ))
-
-            elif log_type == EventTypes.server_map_changed:
-                if not ranges[-1].start_time:
-                    last_start = None
-                else:
-                    last_start = (log.event_time - ranges[-1].start_time).total_seconds()
-
-                if len(ranges) >= 2 and last_start and last_start < 30:
-                    # The line appeared after the server_match_started event
-                    ranges[-2].map_name = Map.load(log.old).pretty()
-                    ranges[-1].map_name = Map.load(log.new).pretty()
-                
-                elif not last_start or last_start > 60:
-                    # The line appeared before the server_match_started event
-                    ranges[-1].map_name = Map.load(log.old).pretty()
-
-        if len(ranges) == 1:
-            ranges.clear()
-
-        return ranges
 
     async def select_range(self, interaction: Interaction, values: List[str]):
         range_i = int(values[0])
@@ -257,10 +262,10 @@ class ExportView(View):
         await interaction.response.defer()
         await self.edit()
 
-        if self.range.start_time and self.range.has_end_time:
-            # The full match was recorded
-            view = HSSSubmitPromptView(self.session.get_logs(from_=self.range.start_time, to=self.range.unload_time), self.interaction.user)
-            await interaction.followup.send(content="The above match may be submitted to HeLO!", view=view, ephemeral=True)
+        if self.range.is_eligible_for_helo() and range_i not in self.session.sent_helo_prompt_indices:
+            view = HeLOSubmitPromptView(self.session.get_logs(from_=self.range.start_time, to=self.range.unload_time), self.interaction.user)
+            view.message = await interaction.followup.send(content=f"The above match (**{esc_md(self.session.name)}**) may be submitted to HeLO!", view=view, ephemeral=True, wait=True)
+            self.session.sent_helo_prompt_indices.append(range_i)
     
     async def select_flags(self, interaction: Interaction, values: List[str]):
         flags = EventFlags()
@@ -277,12 +282,140 @@ class ExportView(View):
         await interaction.response.defer()
         await self.edit()
 
+class ToHeLOExportView(View):
+    def __init__(self, interaction: Interaction, session: HLLCaptureSession):
+        super().__init__(timeout=300)
+        self.interaction = interaction
+        self.session = session
+        
+        self.logs = session.get_logs()
+        if not self.logs:
+            raise CustomException(
+                "Invalid session!",
+                "This session doesn't hold any logs yet"
+            )
 
-class HSSSubmitPromptView(View):
+        self._ranges = get_ranges(self.logs)
+        self._range_index = None
+
+        self.range = ExportRange()
+
+        # Add range select
+
+        options = [SelectOption(label="Select a match...", emoji="🕐", value="0", default=True)]
+        for i, range in enumerate(self._ranges):
+
+            description = "..."
+            if range.start_time:
+                description = range.start_time.strftime(range.start_time.strftime('%H:%Mh')) + description
+            if range.has_end_time:
+                description = description + range.shortest_end_time.strftime(range.shortest_end_time.strftime('%H:%Mh'))
+
+            options.append(SelectOption(
+                label=range.map_name or "Unknown",
+                description=description,
+                emoji="⏱️",
+                value=str(i + 1)
+            ))
+
+        self.add_item(CallableSelect(self.select_range,
+            placeholder="Select a time range...",
+            options=options
+        ))
+        
+        # Add HeLO submit button
+
+        self.submit_button = CallableButton(self.submit_to_helo,
+            style=ButtonStyle.green,
+            label="Submit to HeLO",
+            disabled=True,
+        )
+        self.add_item(self.submit_button)
+        
+    async def send(self):
+        content, embed = self.get_message_payload()
+        await self.interaction.response.send_message(
+            content=content,
+            embed=embed,
+            view=self,
+            ephemeral=True,
+        )
+
+    async def edit(self, interaction: Interaction):
+        content, embed = self.get_message_payload()
+        self.submit_button.disabled = not self.range.is_eligible_for_helo()
+        await interaction.response.edit_message(content=content, embed=embed, view=self)
+
+    def get_message_payload(self):
+        self.logs = self.session.get_logs(
+            from_=self.range.start_time,
+            to=self.range.unload_time
+        )
+
+        content = f"Logs for **{esc_md(self.session.name)}**"
+        if self.range.map_name:
+            content += f" ({self.range.map_name})"
+
+        embed = None
+
+        if self.range.is_eligible_for_helo():
+            end_log = next(log for log in self.logs if log.type == str(EventTypes.server_match_ended))
+            map_name = get_map_and_mode(end_log.new)[0]
+            allies_score = int(end_log.message.split(' - ')[0])
+            axis_score = int(end_log.message.split(' - ')[1])
+            duration = self.logs[-1].event_time - self.logs[0].event_time
+            
+            embed = discord.Embed(
+                title=f"{map_name} ({format_dt(self.logs[0].event_time, 'f')})",
+                description="Score: " + (
+                    f"**{allies_score} - {axis_score}**"
+                    if abs(allies_score - axis_score) != 5
+                    else f"**{allies_score} - {axis_score} ({int(duration.total_seconds() // 60)} mins.)**"
+                ),
+                color=discord.Color(7844437),
+            )
+
+        elif self.logs:
+            embed = get_error_embed("Select a match that has been captured from start to finish!")
+
+        else:
+            content += '\n```\nNo logs match the given criteria!\n```'
+        
+        return content, embed
+
+    async def select_range(self, interaction: Interaction, values: List[str]):
+        range_i = int(values[0])
+        if range_i:
+            self._range_index = range_i - 1
+            self.range = self._ranges[self._range_index]
+        else:
+            self._range_index = None
+            self.range = ExportRange()
+
+        await self.edit(interaction)
+
+    async def submit_to_helo(self, interaction: Interaction):
+        await send_hss_submit_prompt(interaction, self.logs)
+
+
+async def send_hss_submit_prompt(interaction: Interaction, logs: List[LogLine]):
+    api_keys = await api_keys_in_guild_ttl(interaction.guild.id)
+    if not api_keys:
+        view = HeLOSubmitPromptApiKeyView(logs)
+    elif len(api_keys) == 1:
+        teams = await interaction.client._hss_teams()
+        view = HeLOSubmitSelectOpponentView(api_keys[0], logs, teams)
+    else:
+        view = HeLOSubmitSelectApiKeyView(api_keys, logs)
+    embed = view.get_embed()
+    await interaction.response.edit_message(content=None, embed=embed, view=view)
+
+class HeLOSubmitPromptView(View):
     def __init__(self, logs: List[LogLine], user: discord.Member):
         super().__init__(timeout=60 * 10)
         self.logs = logs
         self.user = user
+        self.message = None
 
         self.add_item(ui.Button(label="Learn more", url="https://helo-system.de/"))
     
@@ -294,16 +427,7 @@ class HSSSubmitPromptView(View):
                 "Only the author of the command and server admins may invoke this interaction"
             )
 
-        api_keys = await api_keys_in_guild_ttl(interaction.guild.id)
-        if not api_keys:
-            view = HSSSubmitPromptApiKeyView(self.logs)
-        elif len(api_keys) == 1:
-            teams = await interaction.client._hss_teams()
-            view = HSSSubmitSelectOpponentView(api_keys[0], self.logs, teams)
-        else:
-            view = HSSSubmitSelectApiKeyView(api_keys, self.logs)
-        embed = view.get_embed()
-        await interaction.response.edit_message(content=None, embed=embed, view=view)
+        await send_hss_submit_prompt(interaction, self.logs)
 
     async def on_timeout(self):
         if self.message:
@@ -311,7 +435,7 @@ class HSSSubmitPromptView(View):
                 item.disabled = True
             await self.message.edit(view=self)
 
-class HSSSubmitPromptApiKeyView(View):
+class HeLOSubmitPromptApiKeyView(View):
     def __init__(self, logs: List[LogLine]):
         super().__init__()
         self.logs = logs
@@ -337,11 +461,11 @@ class HSSSubmitPromptApiKeyView(View):
     async def submit_form(self, interaction: Interaction, api_key: HSSApiKey):
         api_key.insert_in_db()
         teams = await interaction.client._hss_teams()
-        view = HSSSubmitSelectOpponentView(api_key, self.logs, teams)
+        view = HeLOSubmitSelectOpponentView(api_key, self.logs, teams)
         embed = view.get_embed()
         await interaction.response.edit_message(embed=embed, view=view)
     
-class HSSSubmitSelectOpponentView(View):
+class HeLOSubmitSelectOpponentView(View):
     def __init__(self, api_key: HSSApiKey, logs: List[LogLine], teams: List[HSSTeam]):
         super().__init__()
         self.api_key = api_key
@@ -423,7 +547,7 @@ class HSSSubmitSelectOpponentView(View):
     async def team_select(self, interaction: Interaction, value: List[str]):
         tag = value[0]
         team = HSSTeam(tag=tag) # We don't need the name so this is fine
-        view = HSSSubmitSelectWinnerView(self.api_key, self.logs, team, self.map_name, self.allies_score, self.axis_score)
+        view = HeLOSubmitSelectWinnerView(self.api_key, self.logs, team, self.map_name, self.allies_score, self.axis_score)
         embed = view.get_embed()
         await interaction.response.edit_message(embed=embed, view=view)
 
@@ -482,7 +606,7 @@ class HSSSubmitSelectOpponentView(View):
         )
         return embed
     
-class HSSSubmitSelectApiKeyView(View):
+class HeLOSubmitSelectApiKeyView(View):
     def __init__(self, api_keys: List[HSSApiKey], logs: List[LogLine]):
         super().__init__()
         self.api_keys = api_keys
@@ -506,11 +630,11 @@ class HSSSubmitSelectApiKeyView(View):
         await interaction.response.defer()
         api_key = self.api_keys[int(value[0])]
         teams = await interaction.client._hss_teams()
-        view = HSSSubmitSelectOpponentView(api_key, self.logs, teams)
+        view = HeLOSubmitSelectOpponentView(api_key, self.logs, teams)
         embed = view.get_embed()
         await interaction.edit_original_response(embed=embed, view=view)
 
-class HSSSubmitSelectWinnerView(View):
+class HeLOSubmitSelectWinnerView(View):
     def __init__(self, api_key: HSSApiKey, logs: List[LogLine], opponent: HSSTeam, map_name: str, allies_score: int, axis_score: int):
         super().__init__()
         self.api_key = api_key
@@ -561,11 +685,11 @@ class HSSSubmitSelectWinnerView(View):
         return embed
     
     async def winner_select(self, interaction: Interaction, value: str):
-        view = HSSSubmitSelectGameTypeView(self.api_key, self.logs, self.opponent, value[0] == "1", self.map_name, self.allies_score, self.axis_score)
+        view = HeLOSubmitSelectGameTypeView(self.api_key, self.logs, self.opponent, value[0] == "1", self.map_name, self.allies_score, self.axis_score)
         embed = view.get_embed()
         await interaction.response.edit_message(embed=embed, view=view)
 
-class HSSSubmitSelectGameTypeView(View):
+class HeLOSubmitSelectGameTypeView(View):
     def __init__(self, api_key: HSSApiKey, logs: List[LogLine], opponent: HSSTeam, won: bool, map_name: str, allies_score: int, axis_score: int):
         super().__init__()
         self.api_key = api_key
@@ -624,11 +748,11 @@ class HSSSubmitSelectGameTypeView(View):
     )
     async def game_type_select(self, interaction: Interaction, select: Select):
         game_type = select.values[0]
-        view = HSSSubmitConfirmationView(self.api_key, self.logs, self.opponent, self.won, game_type, self.map_name, self.allies_score, self.axis_score)
+        view = HeLOSubmitConfirmationView(self.api_key, self.logs, self.opponent, self.won, game_type, self.map_name, self.allies_score, self.axis_score)
         embed = view.get_embed()
         await interaction.response.edit_message(embed=embed, view=view)
 
-class HSSSubmitConfirmationView(View):
+class HeLOSubmitConfirmationView(View):
     def __init__(self, api_key: HSSApiKey, logs: List[LogLine], opponent: HSSTeam, won: bool, game_type: str, map_name: str, allies_score: int, axis_score: int):
         super().__init__()
         self.api_key = api_key
@@ -745,6 +869,18 @@ class exports(commands.Cog):
     async def export_scoreboard(self, interaction: Interaction, session: int):
         session: HLLCaptureSession = SESSIONS[session]
         view = ExportView(interaction, session, as_scoreboard=True)
+        await view.send()
+        
+    @ExportGroup.command(name="to_helo", description="Export a session to HeLO")
+    @app_commands.describe(
+        session="A log capture session"
+    )
+    @app_commands.autocomplete(
+        session=autocomplete_sessions
+    )
+    async def export_scoreboard(self, interaction: Interaction, session: int):
+        session: HLLCaptureSession = SESSIONS[session]
+        view = ToHeLOExportView(interaction, session)
         await view.send()
         
 async def setup(bot: commands.Bot):
