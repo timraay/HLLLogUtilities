@@ -113,6 +113,10 @@ A list of available modifiers, including what they do and how they work, can be 
 
     If any of the above rules are violated, including having a second player jump on artillery and getting a kill with it, up to 10 random players on that team will be admin-killed. Only when the team's artillery gunner stays disconnected for more than 5 minutes will the commander get a message that someone new may now jump on artillery.
 
+- ## **No Medic**
+
+    The "No Medic" modifier disables the Medic role to prevent glitch abuse (intentionally or unintentionally). Anyone attempting to take the role is immediately kicked from the squad.
+
 # **Setup Guide**
 
 > **NOTE:** You don't need to set up your own instance of the bot! You can use the public instance as well, the invite link for which can be found in the guide above. Self-hosting does provide you with a little more security though, as well as a handful of extra configuration options.
