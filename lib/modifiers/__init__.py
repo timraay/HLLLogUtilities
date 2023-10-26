@@ -48,9 +48,9 @@ class ModifierFlags(Flags):
     def one_arty(self):
         return 1 << 1
 
-    @flag_value
-    def no_medic(self):
-        return 1 << 2
+    # @flag_value
+    # def no_medic(self):
+    #     return 1 << 2
 
     def get_modifier_types(self):
         for modifier_id, enabled in self:
