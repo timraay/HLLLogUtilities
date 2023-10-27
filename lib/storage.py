@@ -7,7 +7,7 @@ import logging
 from lib.info.models import *
 
 DB_VERSION = 5
-HLU_VERSION = "v2.2.4"
+HLU_VERSION = "v2.2.4a"
 
 class LogLine(BaseModel):
     event_time: datetime = None
