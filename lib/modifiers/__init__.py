@@ -1,4 +1,5 @@
 from .base import Modifier
+from .bolt_only import BoltActionsOnlyModifier
 from .enforce_name_validity import EnforceNameValidityModifier
 from .modifier_notif import ModifierNotifModifier
 from .no_medic import NoMedicModifier
@@ -13,6 +14,7 @@ __all__ = (
     'Modifier',
     'ModifierFlags',
 
+    'BoltActionsOnlyModifier',
     'EnforceNameValidityModifier',
     'ModifierNotifModifier',
     'NoMedicModifier',
@@ -51,6 +53,10 @@ class ModifierFlags(Flags):
     # @flag_value
     # def no_medic(self):
     #     return 1 << 2
+
+    @flag_value
+    def bolt_only(self):
+        return 1 << 10
 
     def get_modifier_types(self):
         for modifier_id, enabled in self:
