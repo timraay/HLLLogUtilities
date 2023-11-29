@@ -23,6 +23,7 @@ __all__ = (
 )
 
 ALL_MODIFIERS: Tuple[Type[Modifier], ...] = (
+    BoltActionsOnlyModifier,
     EnforceNameValidityModifier,
     ModifierNotifModifier,
     NoMedicModifier,
