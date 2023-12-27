@@ -66,9 +66,10 @@ class MatchGroup:
                 continue
 
             if log_type == EventTypes.server_match_started:
-                match_data = MatchData.from_logs(match_logs)
-                matches.append(match_data)
-                match_logs.clear()
+                if match_logs:
+                    match_data = MatchData.from_logs(match_logs)
+                    matches.append(match_data)
+                    match_logs.clear()
 
             match_logs.append(log)
         
