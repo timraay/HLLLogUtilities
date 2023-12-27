@@ -345,9 +345,13 @@ class MatchData(DataStore):
     
     @classmethod
     def from_logs(cls, logs: List['LogLine']):
+        if not logs:
+            return cls(
+                players=[],
+                duration=timedelta()
+            )
+
         data = dict()
-        # TODO: Error when logs list is empty, though
-        # should probably handle that at a higher level
         logs_start, logs_end = sorted((logs[0].event_time, logs[-1].event_time))
         if logs_start != logs[0].event_time: # Logs are reversed
             logs.reverse()
