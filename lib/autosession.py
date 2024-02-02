@@ -167,7 +167,7 @@ class AutoSessionManager:
                 self.last_error = None
                 break
         
-        if self._failed_attempts >= NUM_FAILED_ATTEMPTS_UNTIL_DISABLE100
+        if self._failed_attempts >= NUM_FAILED_ATTEMPTS_UNTIL_DISABLE:
             self.disable()
             self.logger.warning("Failed %s iterations in a row, disabling AutoSession"),
         elif self._failed_attempts >= NUM_FAILED_ATTEMPTS_UNTIL_SLOW:
