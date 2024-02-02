@@ -16,6 +16,7 @@ MIN_PLAYERS_UNTIL_STOP = get_config().getint('AutoSession', 'MinPlayersUntilStop
 SECONDS_BETWEEN_ITERATIONS = get_config().getint('AutoSession', 'SecondsBetweenIterations')
 SECONDS_BETWEEN_ITERATIONS_AFTER_FAIL = get_config().getint('AutoSession', 'SecondsBetweenIterationsAfterFail')
 MAX_DURATION_MINUTES = get_config().getint('AutoSession', 'MaxDurationInMinutes')
+NUM_FAILED_ATTEMPTS_UNTIL_DISABLE = 100
 NUM_FAILED_ATTEMPTS_UNTIL_SLOW = 5
 NUM_ITERATIONS_UNTIL_COOLDOWN_EXPIRE = 3
 NUM_ATTEMPTS_PER_ITERATION = 3
@@ -47,7 +48,7 @@ class AutoSessionManager:
 
         self.__enabled = enabled
         if enabled:
-            self.loop.create_task(self.enable())
+            self.enable()
 
         AUTOSESSIONS[self.id] = self
     
@@ -61,7 +62,7 @@ class AutoSessionManager:
             self._logger = get_autosession_logger(self)
         return self._logger
     
-    async def enable(self):
+    def enable(self):
         if not self.enabled:
             self.__enabled = True
             if not self.credentials.temporary:
@@ -69,7 +70,7 @@ class AutoSessionManager:
 
         self.gatherer.start()
 
-    async def disable(self):
+    def disable(self):
         if self.enabled:
             self.__enabled = False
             if not self.credentials.temporary:
@@ -77,8 +78,8 @@ class AutoSessionManager:
         
         self.gatherer.stop()
     
-    async def delete(self):
-        await self.disable()
+    def delete(self):
+        self.disable()
         del AUTOSESSIONS[self.id]
         self.id = None
 
@@ -166,7 +167,10 @@ class AutoSessionManager:
                 self.last_error = None
                 break
         
-        if self._failed_attempts >= NUM_FAILED_ATTEMPTS_UNTIL_SLOW:
+        if self._failed_attempts >= NUM_FAILED_ATTEMPTS_UNTIL_DISABLE100
+            self.disable()
+            self.logger.warning("Failed %s iterations in a row, disabling AutoSession"),
+        elif self._failed_attempts >= NUM_FAILED_ATTEMPTS_UNTIL_SLOW:
             if not self.is_slowed:
                 self.gatherer.change_interval(seconds=SECONDS_BETWEEN_ITERATIONS_AFTER_FAIL)
                 self.is_slowed = True

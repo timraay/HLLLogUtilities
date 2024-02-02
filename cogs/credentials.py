@@ -248,13 +248,13 @@ class AutoSessionView(View):
     @__credentials_still_exist
     async def enable_button_cb(self, interaction: Interaction):
         if not self.autosession.enabled:
-            await self.autosession.enable()
+            self.autosession.enable()
         await self.update(interaction)
 
     @__credentials_still_exist
     async def disable_button_cb(self, interaction: Interaction):
         if self.autosession.enabled:
-            await self.autosession.disable()
+            self.autosession.disable()
         await self.update(interaction)
     
     @__credentials_still_exist
@@ -410,11 +410,11 @@ class credentials(commands.Cog):
                 coros.append(session.stop())
             if credentials.autosession.enabled:
                 credentials.autosession.logger.info("Disabling AutoSession since its credentials are being deleted")
-                coros.append(credentials.autosession.disable())
+                credentials.autosession.disable()
             if coros:
                 await asyncio.gather(*coros)                            
 
-            await credentials.delete()
+            credentials.delete()
 
             if do_edit:
                 await interaction.response.edit_message(embed=embed, view=None)

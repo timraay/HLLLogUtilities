@@ -162,12 +162,12 @@ class Credentials:
             (self.name, self.address, self.port, self.password, self.default_modifiers.value, self.autosession_enabled, self.id))
         database.commit()
     
-    async def delete(self):
+    def delete(self):
         if self.temporary:
             raise TypeError('These credentials are already unsaved')
         
         if self.autosession:
-            await self.autosession.delete()
+            self.autosession.delete()
         
         cursor.execute('DELETE FROM credentials WHERE ROWID = ?', (self.id,))
         database.commit()
