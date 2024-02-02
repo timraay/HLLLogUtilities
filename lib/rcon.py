@@ -887,7 +887,7 @@ async def create_plain_transport(host: str, port: int, password: str, loop: asyn
     try:
         _, protocol = await asyncio.wait_for(
             loop.create_connection(protocol_factory, host=host, port=port),
-            timeout=10
+            timeout=15
         )
     except asyncio.TimeoutError:
         raise HLLConnectionError("Address %s could not be resolved" % host)
