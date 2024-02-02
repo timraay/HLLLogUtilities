@@ -1,6 +1,6 @@
-# Data protection with HLLLogUtilities
+# Data protection with HLL Log Utilities
 
-HLLLogUtilities (or **HLU** in short) is a log capturing utility for Hell Let Loose. In order to get the information it needs, it utilizes RCON. Thus it requires your RCON credentials in order to operate.
+HLL Log Utilities (or **HLU** in short) is a log capturing utility for Hell Let Loose. In order to get the information it needs, it utilizes RCON. Thus it requires your RCON credentials in order to operate.
 
 Of course, you need to be careful with whom you grant RCON access. And as someone who will be a stranger to most of you, I think it is more than reasonable to clarify how exactly HLU will handle your private information, and what options you get to keep your password more safe.
 
@@ -22,4 +22,8 @@ With the software being open source, you can download a copy of the code and run
 
 ## Can you trust me?
 
-There's always things that can go wrong. For that reason I can never guarantee 100% safety, even though I'll try my best. But in the end, I assume no liability for the unintentional or malicious breach of data. For any questions you can always reach me on Discord (`@Abu#6969`). If you appreciate my work, consider [donating on Ko-fi]((https://ko-fi.com/abusify)). Thanks!
+There's always things that can go wrong. For that reason I can never guarantee 100% safety, even though I'll try my best. But in the end, I assume no liability for the unintentional or malicious breach of data. For any questions you can always reach me on Discord (`@abuuuuuuu`). If you appreciate my work, consider [donating on Ko-fi](https://ko-fi.com/abusify). Thanks!
+
+## Privacy Policy
+
+You can find the privacy policy [here](https://github.com/timraay/HLLLogUtilities/blob/main/TERMS.md#privacy-policy).
