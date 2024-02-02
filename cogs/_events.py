@@ -4,6 +4,8 @@ from discord.ext import commands, tasks
 
 from discord_utils import handle_error, get_command_mention
 from lib.session import SESSIONS
+from lib.credentials import Credentials
+from lib.hss.api_key import HSSApiKey
 
 class _events(commands.Cog):
     """A class with most events in it"""
@@ -75,7 +77,28 @@ class _events(commands.Cog):
         )
 
         await channel.send(embed=embed)
-
+    
+    @commands.Cog.listener()
+    async def on_guild_remove(self, guild: discord.Guild):
+        all_credentials = Credentials.in_guild(guild.id)
+        for credentials in all_credentials:
+            if credentials.autosession.enabled:
+                credentials.autosession.logger.info("Disabling AutoSession since its credentials are being deleted")
+                credentials.autosession.disable()
+            
+            for session in credentials.get_sessions():
+                if session.active_in() is True:
+                    session.logger.info("Stopping ongoing session since its credentials are being deleted")
+                    await session.stop()
+                
+                session.logger.info("Deleting session since it's being removed from a guild")
+                await session.delete()
+            
+            credentials.delete()
+        
+        all_api_keys = HSSApiKey.in_guild(guild.id)
+        for api_key in all_api_keys:
+            api_key.delete()
 
 async def setup(bot):
     await bot.add_cog(_events(bot))
