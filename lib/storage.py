@@ -36,15 +36,15 @@ class LogLine(BaseModel):
         if v not in {'Allies', 'Axis'}:
             raise ValueError("%s is not a valid team name" % v)
         return v
-    @validator('player_steamid', 'player2_steamid')
-    def validate_steamid(cls, v):
-        try:
-            if len(v) != 17:
-                raise ValueError('Unexpected SteamID size')
-            int(v)
-        except:
-            raise ValueError("%s is not a valid Steam64ID" % v)
-        return v
+    # @validator('player_steamid', 'player2_steamid')
+    # def validate_steamid(cls, v):
+    #     try:
+    #         if len(v) != 17:
+    #             raise ValueError('Unexpected SteamID size')
+    #         int(v)
+    #     except:
+    #         raise ValueError("%s is not a valid Steam64ID" % v)
+    #     return v
     
     @classmethod
     def from_event(cls, event: EventModel):
