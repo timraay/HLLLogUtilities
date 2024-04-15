@@ -58,7 +58,7 @@ class _events(commands.Cog):
                 "\nAnd lastly, we can extract the logs and scores."
                 "\n"
                 f"\n5) **Export logs from a session** → {await get_command_mention(self.bot.tree, 'export', 'logs')}"
-                f"\n6) **Export statistics of a session** → {await get_command_mention(self.bot.tree, 'export', 'logs')}"
+                f"\n6) **Export statistics of a session** → {await get_command_mention(self.bot.tree, 'export', 'scoreboard')}"
                 "\n"
                 "\nThat's all there is to it! Some more useful links can be found below. Thanks for using HLU!"
                 "\n"
