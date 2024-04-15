@@ -9,7 +9,7 @@ from typing import List, TYPE_CHECKING
 
 from lib.protocol import HLLRconProtocol
 from lib.exceptions import HLLConnectionError
-from lib.mappings import SQUAD_LEADER_ROLES, TEAM_LEADER_ROLES, INFANTRY_ROLES, TANK_ROLES, RECON_ROLES
+from lib.mappings import SQUAD_LEADER_ROLES, TEAM_LEADER_ROLES, INFANTRY_ROLES, TANK_ROLES, RECON_ROLES, is_steamid
 from lib.info.models import *
 from utils import to_timedelta, ttl_cache, get_config
 
@@ -347,17 +347,18 @@ class HLLRcon:
             if name.endswith(' '):
                 problematic = True
             elif name.endswith('?') and STEAM_API_KEY:
-                full_name = await get_name_from_steam(steamid, name)
-                chars = 0
-                for char in full_name:
-                    char_size = math.ceil(len(char.encode()) / 3)
-                    chars += char_size
+                if is_steamid(steamid):
+                    full_name = await get_name_from_steam(steamid, name)
+                    chars = 0
+                    for char in full_name:
+                        char_size = math.ceil(len(char.encode()) / 3)
+                        chars += char_size
 
-                    if char_size > 1 and chars > 20:
-                        problematic = True
+                        if char_size > 1 and chars > 20:
+                            problematic = True
 
-                    if chars >= 20:
-                        break
+                        if chars >= 20:
+                            break
 
             if problematic:
                 playerids_problematic[steamid] = name
