@@ -117,7 +117,7 @@ class HLLCaptureSession:
         cursor.execute(LogLine._get_create_query(sess_name))
         database.commit()
 
-        return cls(
+        self = cls(
             id=id_,
             guild_id=guild_id,
             name=name,
@@ -126,6 +126,8 @@ class HLLCaptureSession:
             credentials=credentials,
             modifiers=modifiers
         )
+        self.logger.info("Created new session: %s", self)
+        return self
 
     @property
     def duration(self):
