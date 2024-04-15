@@ -160,6 +160,8 @@ class _util(commands.Cog):
                 "Thank you for understanding."
             ),
             color=discord.Colour(0xdb0505)
+        ).set_image(
+            url="https://github.com/timraay/HLLLogUtilities/blob/main/assets/banner.png?raw=true"
         )
 
         async def confirm(interaction: Interaction):
