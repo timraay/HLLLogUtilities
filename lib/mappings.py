@@ -55,6 +55,7 @@ class Environment(str, Enum):
     DUSK = "Dusk"
     DAWN = "Dawn"
     NIGHT = "Night"
+    RAIN = "Rain"
 
 class Faction(str, Enum):
     US = "us"
@@ -143,7 +144,7 @@ MAPS = { m.id: m for m in (
     Map(
         id="stmariedumont",
         name="ST MARIE DU MONT",
-        tag="BRC",
+        tag="SMDM",
         prettyname="St. Marie Du Mont",
         shortname="SMDM",
         allies=Faction.US,
@@ -266,6 +267,15 @@ MAPS = { m.id: m for m in (
         allies=Faction.GB,
         axis=Faction.GER,
     ),
+    Map(
+        id="mortain",
+        name="MORTAIN",
+        tag="MOR",
+        prettyname="Mortain",
+        shortname="Mortain",
+        allies=Faction.US,
+        axis=Faction.GER,
+    )
 )}
 
 LAYERS = {l.id: l for l in (
@@ -302,6 +312,23 @@ LAYERS = {l.id: l for l in (
         map=MAPS["stmariedumont"],
         gamemode=Gamemode.WARFARE,
         environment=Environment.NIGHT,
+    ),
+    Layer(
+        id="SMDM_S_1944_Day_P_Skirmish",
+        map=MAPS["stmariedumont"],
+        gamemode=Gamemode.CONTROL,
+    ),
+    Layer(
+        id="SMDM_S_1944_Night_P_Skirmish",
+        map=MAPS["stmariedumont"],
+        gamemode=Gamemode.CONTROL,
+        environment=Environment.NIGHT
+    ),
+    Layer(
+        id="SMDM_S_1944_Rain_P_Skirmish",
+        map=MAPS["stmariedumont"],
+        gamemode=Gamemode.CONTROL,
+        environment=Environment.RAIN
     ),
     Layer(
         id="stmariedumont_off_us",
@@ -365,6 +392,7 @@ LAYERS = {l.id: l for l in (
         id="purpleheartlane_warfare",
         map=MAPS["purpleheartlane"],
         gamemode=Gamemode.WARFARE,
+        environment=Environment.RAIN
     ),
     Layer(
         id="purpleheartlane_warfare_night",
@@ -884,7 +912,8 @@ WEAPONS = {
     "SMLE No.1 Mk III": "SMLE Mk III",
     "Rifle No.5 Mk I": "Jungle Carbine",
     "Rifle No.4 Mk I": "No.4 Rifle Mk I",
-    "Sten Gun": "Sten",
+    "Sten Gun Mk.II": "Sten Mk II",
+    "Sten Gun Mk.V": "Sten Mk V",
     "Lanchester": "Lanchester",
     "M1928A1 THOMPSON": "M1928A1 Thompson",
     "Bren Gun": "Bren Gun",
@@ -903,9 +932,12 @@ WEAPONS = {
     "QF 25-POUNDER [QF 25-Pounder]": "GB Artillery",
     "Daimler": "GB Roadkill [Daimler]",
     "Tetrarch": "GB Roadkill [Tetrarch]",
+    "M3 Stuart Honey": "GB Roadkill [Stuart Honey]",
     "Cromwell": "GB Roadkill [Cromwell]",
+    "Crusader": "GB Roadkill [Crusader]",
     "Firefly": "GB Roadkill [Firefly]",
-    "Churchill Mk.III": "GB Roadkill [Churchill]",
+    "Churchill Mk.III": "GB Roadkill [Churchill Mk III]",
+    "Churchill Mk.VII": "GB Roadkill [Churchill Mk VII]",
     "Bedford OYD (Supply)": "GB Roadkill [GB Supply Truck]",
     "Bedford OYD (Transport)": "GB Roadkill [GB Transport Truck]",
     # "M3 Half-track": "GB Roadkill [GB Half-track]",
@@ -914,14 +946,22 @@ WEAPONS = {
     "COAXIAL BESA [Daimler]": "GB Tank Coaxial [Daimler]",
     "QF 2-POUNDER [Tetrarch]": "GB Tank Cannon [Tetrarch]",
     "COAXIAL BESA [Tetrarch]": "GB Tank Coaxial [Tetrarch]",
+    "37MM CANNON [M3 Stuart Honey]": "GB Tank Cannon [Stuart Honey]",
+    "COAXIAL M1919 [M3 Stuart Honey]": "GB Tank Coaxial [Stuart Honey]",
+    "HULL M1919 [M3 Stuart Honey]": "GB Tank Hull MG [Stuart Honey]",
     "QF 75MM [Cromwell]": "GB Tank Cannon [Cromwell]",
     "COAXIAL BESA [Cromwell]": "GB Tank Coaxial [Cromwell]",
     "HULL BESA [Cromwell]": "GB Tank Hull MG [Cromwell]",
+    "OQF 57MM [Crusader Mk.III]": "GB Tank Cannon [Crusader]",
+    "COAXIAL BESA [Crusader Mk.III]": "GB Tank Coaxial [Crusader]",
     "QF 17-POUNDER [Firefly]": "GB Tank Cannon [Firefly]",
     "COAXIAL M1919 [Firefly]": "GB Tank Coaxial [Firefly]",
-    "OQF 6 - POUNDER Mk.V [Churchill Mk.III]": "GB Tank Cannon [Churchill]",
-    "COAXIAL BESA 7.92mm [Churchill Mk.III]": "GB Tank Coaxial [Churchill]",
-    "HULL BESA 7.92mm [Churchill Mk.III]": "GB Tank Hull MG [Churchill]",
+    "OQF 57MM [Churchill Mk.III]": "GB Tank Cannon [Churchill Mk III]",
+    "COAXIAL BESA 7.92mm [Churchill Mk.III]": "GB Tank Coaxial [Churchill Mk III]",
+    "HULL BESA 7.92mm [Churchill Mk.III]": "GB Tank Hull MG [Churchill Mk III]",
+    "OQF 75MM [Churchill Mk.VII]": "GB Tank Cannon [Churchill Mk VII]",
+    "COAXIAL BESA 7.92mm [Churchill Mk.VII]": "GB Tank Coaxial [Churchill Mk VII]",
+    "HULL BESA 7.92mm [Churchill Mk.VII]": "GB Tank Hull MG [Churchill Mk VII]",
     # "M2 Browning [M3 Half-track]": "GB Half-track MG [GB Half-track]",
 
     "UNKNOWN": "Unknown",
@@ -933,13 +973,13 @@ WEAPONS = {
 }
 
 BASIC_CATEGORIES_ALLIES = {value: cat for cat, values in {
-    "Submachine Gun": [ "M1A1 Thompson", "M3 Grease Gun", "PPSh-41", "PPSh-41 Drum", "Sten", "Lanchester", "M1928A1 Thompson" ],
+    "Submachine Gun": [ "M1A1 Thompson", "M3 Grease Gun", "PPSh-41", "PPSh-41 Drum", "Sten Mk II", "Sten Mk V", "Lanchester", "M1928A1 Thompson" ],
     "Semi-Auto Rifle": [ "M1 Garand", "M1 Carbine", "SVT40" ],
-    "Bolt-Action Rifle": [ "Mosin-Nagant 1891", "Mosin-Nagant 91/30", "Mosin-Nagant M38", "SMLE Mk III", "Jungle Carbine", "No.4 Rifle Mk I" ],
+    "Bolt-Action Rifle": [ "Mosin-Nagant 1891", "Mosin-Nagant 91/30", "Mosin-Nagant M38", "SMLE Mk III", "Jungle Carbine", "No.4 Rifle Mk 1" ],
     "Assault Rifle": [ "M1918A2 BAR", "M97 Trench Gun", "Bren Gun" ],
-    "Sniper Rifle": [ "M1903 Springfield (4x)", "Mosin-Nagant 91/30 (4x)", "SVT40 (4x)", "P14 Enfield (8x)" ],
+    "Sniper Rifle": [ "M1903 Springfield (4x)", "Mosin-Nagant 91/30 (4x)", "SVT40 (4x)", "P14 Enfield (8x)", "No.4 Rifle Mk I (8x)" ],
     "Machine Gun": [ "M1919 Browning", "DP-27", "Lewis Gun" ],
-    "Pistol": [ "Colt M1911", "Nagant M1895", "Tokarev TT33", "Webley Mk IV" ],
+    "Pistol": [ "Colt M1911", "Nagant M1895", "Tokarev TT33", "Webley MK IV" ],
     "Melee": ["US Melee", "RUS Melee", "GB Melee" ],
     "Flamethrower": [ "US Flamethrower", "GB Flamethrower" ],
     "Artillery": ["US Artillery", "RUS Artillery", "GB Artillery" ],
@@ -993,23 +1033,37 @@ BASIC_CATEGORIES_ALLIES = {value: cat for cat, values in {
         "RUS Half-track MG [RUS Half-track]",
         "GB Roadkill [Daimler]",
         "GB Roadkill [Tetrarch]",
+        "GB Roadkill [Stuart Honey]",
         "GB Roadkill [Cromwell]",
+        "GB Roadkill [Crusader]",
         "GB Roadkill [Firefly]",
-        "GB Roadkill [Churchill]",
+        "GB Roadkill [Churchill Mk III]",
+        "GB Roadkill [Churchill Mk VII]",
         "GB Roadkill [GB Supply Truck]",
         "GB Roadkill [GB Transport Truck]",
+        "GB Roadkill [GB Half-track]",
+        "GB Roadkill [GB Jeep]",
         "GB Tank Cannon [Daimler]",
         "GB Tank Coaxial [Daimler]",
         "GB Tank Cannon [Tetrarch]",
         "GB Tank Coaxial [Tetrarch]",
+        "GB Tank Cannon [Stuart Honey]",
+        "GB Tank Coaxial [Stuart Honey]",
+        "GB Tank Hull MG [Stuart Honey]",
         "GB Tank Cannon [Cromwell]",
         "GB Tank Coaxial [Cromwell]",
         "GB Tank Hull MG [Cromwell]",
+        "GB Tank Cannon [Crusader]",
+        "GB Tank Coaxial [Crusader]",
         "GB Tank Cannon [Firefly]",
         "GB Tank Coaxial [Firefly]",
-        "GB Tank Cannon [Churchill]",
-        "GB Tank Coaxial [Churchill]",
-        "GB Tank Hull MG [Churchill]",
+        "GB Tank Cannon [Churchill Mk III]",
+        "GB Tank Coaxial [Churchill Mk III]",
+        "GB Tank Hull MG [Churchill Mk III]",
+        "GB Tank Cannon [Churchill Mk VII]",
+        "GB Tank Coaxial [Churchill Mk VII]",
+        "GB Tank Hull MG [Churchill Mk VII]",
+        "GB Half-track MG [GB Half-track]",
     ],
     "Grenade": [
         "US Grenade", "RUS Grenade", "GB Grenade",
@@ -1019,9 +1073,8 @@ BASIC_CATEGORIES_ALLIES = {value: cat for cat, values in {
     "Anti-Tank": [
         "US AT Gun", "RUS AT Gun", "GB AT Gun",
         "US AT Mine", "RUS AT Mine", "GB AT Mine",
-        "Bazooka", "PTRS-41", "PIAT", "Boys AT Rifle"
+        "Bazooka", "PTRS-41", "PIAT", "Boys AT Rifle", "Gammon Bomb"
     ],
-    "Ability": [ "Bombing Run", "Strafing Run", "Precision Strike", "Katyusha Barrage" ],
 }.items() for value in values}
 
 BASIC_CATEGORIES_AXIS = {value: cat for cat, values in {
@@ -1062,21 +1115,26 @@ BASIC_CATEGORIES_AXIS = {value: cat for cat, values in {
     ],
     "Grenade": [ "GER Grenade", "GER AP Mine" ],
     "Anti-Tank": [ "GER AT Gun", "GER AT Mine", "Panzerschreck" ],
+}.items() for value in values}
+
+BASIC_CATEGORIES_SHARED = {value: cat for cat, values in {
     "Ability": [ "Bombing Run", "Strafing Run", "Precision Strike" ],
 }.items() for value in values}
 
 BASIC_CATEGORIES = {
     **BASIC_CATEGORIES_ALLIES,
     **BASIC_CATEGORIES_AXIS,
+    **BASIC_CATEGORIES_SHARED
 }
 
 _VEHICLE_CLASSES = {vehicle: _class for _class, vehicles in {
     "Jeep": [ "US Jeep", "GER Jeep", "RUS Jeep" ],
+    "Truck": [ "US Supply Truck", "US Transport Truck", "GER Supply Truck", "GER Transport Truck", "RUS Supply Truck", "RUS Transport Truck", "GB Supply Truck", "GB Transport Truck" ],
     "Half-track": [ "US Half-track", "GER Half-track" ],
     "Recon Vehicle": [ "M8 Greyhound", "Puma", "BA-10", "Daimler" ],
-    "Light Tank": [ "Stuart M5A1", "Luchs", "T70", "Tetrarch" ],
-    "Medium Tank": [ "Sherman M4", "Sherman M4A3 75w", "Panzer IV", "T34/76", "Cromwell" ],
-    "Heavy Tank": [ "Sherman 75mm", "Sherman 76mm", "Panther", "Tiger 1", "IS-1", "Firefly", "Churchill" ]
+    "Light Tank": [ "Stuart M5A1", "Luchs", "T70", "Tetrarch", "Stuart Honey" ],
+    "Medium Tank": [ "Sherman M4", "Sherman M4A3 75w", "Panzer IV", "T34/76", "Cromwell", "Crusader" ],
+    "Heavy Tank": [ "Sherman 75mm", "Sherman 76mm", "Panther", "Tiger 1", "IS-1", "Firefly", "Churchill Mk III", "Churchill Mk VII" ]
 }.items() for vehicle in vehicles}
 
 VEHICLES = dict()
@@ -1104,6 +1162,6 @@ for weapon in WEAPONS.values():
 
 FACTIONLESS = dict()
 for weapon in WEAPONS.values():
-    match = re.match(r"(US|GER|RUS) (.+)$", weapon)
+    match = re.match(r"(US|GER|RUS|GB) (.+)$", weapon)
     if match:
         FACTIONLESS[weapon] = match.group(2)
