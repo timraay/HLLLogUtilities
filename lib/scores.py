@@ -363,7 +363,7 @@ class MatchData(DataStore):
 
             # Look for map name
             if log_type == EventTypes.server_map_changed:
-                map_name = mappings.Map.load(log.new).pretty()
+                map_name = mappings.parse_layer(log.new).pretty()
                 continue
 
             elif log_type == EventTypes.server_match_started:

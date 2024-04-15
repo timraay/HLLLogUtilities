@@ -16,7 +16,7 @@ from discord_utils import CallableButton, CallableSelect, View, only_once, Custo
 from lib.converters import ExportFormats, Converter
 from lib.hss.api_key import api_keys_in_guild_ttl, HSSApiKey, HSSTeam
 from lib.info.models import EventFlags, EventTypes
-from lib.mappings import get_map_and_mode, Map
+from lib.mappings import get_map_and_mode, parse_layer
 from lib.scores import create_scoreboard, MatchGroup
 from lib.session import HLLCaptureSession, SESSIONS
 from lib.storage import LogLine
@@ -92,12 +92,12 @@ def get_ranges(logs):
 
             if len(ranges) >= 2 and last_start and last_start < 30:
                 # The line appeared after the server_match_started event
-                ranges[-2].map_name = Map.load(log.old).pretty()
-                ranges[-1].map_name = Map.load(log.new).pretty()
+                ranges[-2].map_name = parse_layer(log.old).pretty()
+                ranges[-1].map_name = parse_layer(log.new).pretty()
             
             elif not last_start or last_start > 60:
                 # The line appeared before the server_match_started event
-                ranges[-1].map_name = Map.load(log.old).pretty()
+                ranges[-1].map_name = parse_layer(log.old).pretty()
 
     if len(ranges) == 1:
         ranges.clear()

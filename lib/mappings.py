@@ -1,156 +1,745 @@
 import re
 from enum import Enum
+import pydantic
+import logging
+from typing import Union
 
-MAP_NAMES = {
-    "SAINTE-MÈRE-ÉGLISE": "SME",
-    "ST MARIE DU MONT": "SMDM",
-    "UTAH BEACH": "Utah",
-    "PURPLE HEART LANE": "PHL",
-    "CARENTAN": "Carentan",
-    "HÜRTGEN FOREST": "Hurtgen",
-    "HILL 400": "Hill 400",
-    "FOY": "Foy",
-    "KURSK": "Kursk",
-    "STALINGRAD": "Stalingrad",
-    "REMAGEN": "Remagen",
-    "Kharkov": "Kharkov",
-    "DRIEL": "Driel",
-    "EL ALAMEIN": "Alamein",
-}
+def get_map_and_mode(layer_name: str):
+    map, mode = layer_name.rsplit(' ', 1)
+    map.replace(' NIGHT', '')
 
-LONG_MAP_NAMES = {
-    "SAINTE-MÈRE-ÉGLISE": "Sainte-Mère-Église",
-    "ST MARIE DU MONT": "St. Marie Du Mont",
-    "UTAH BEACH": "Utah Beach",
-    "OMAHA BEACH": "Omaha Beach",
-    "PURPLE HEART LANE": "Purple Heart Lane",
-    "CARENTAN": "Carentan",
-    "HÜRTGEN FOREST": "Hürtgen Forest",
-    "HILL 400": "Hill 400",
-    "FOY": "Foy",
-    "KURSK": "Kursk",
-    "STALINGRAD": "Stalingrad",
-    "REMAGEN": "Remagen",
-    "KHARKOV": "Kharkov",
-    "DRIEL": "Driel",
-    "EL ALAMEIN": "El Alamein",
-}
+    return (
+        MAPS_BY_NAME[map].prettyname if map in MAPS_BY_NAME else map,
+        Gamemode[mode].value.capitalize() if mode in Gamemode._member_names_ else mode
+    )
 
-LONG_MAP_NAMES_BY_ID = {
-    "stmereeglise": "Sainte-Mère-Église",
-    "stmariedumont": "St. Marie Du Mont",
-    "utahbeach": "Utah Beach",
-    "omahabeach": "Omaha Beach",
-    "purpleheartlane": "Purple Heart Lane",
-    "carentan": "Carentan",
-    "hurtgenforest": "Hürtgen Forest",
-    "hill400": "Hill 400",
-    "foy": "Foy",
-    "kursk": "Kursk",
-    "stalingrad": "Stalingrad",
-    "remagen": "Remagen",
-    "kharkov": "Kharkov",
-    "driel": "Driel",
-    "elalamein": "El Alamein",
-}
+RE_LAYER_NAME = re.compile(r"(?P<tag>\w{3})_(?P<size>S|L)_(?P<year>\d{4})_(?:(?P<environment>\w+)_)?P_(?P<gamemode>\w+)$")
 
-GAMEMODE_NAMES = {
-    "WARFARE": "Warfare",
-    "OFFENSIVE": "Offensive"
-}
+def is_steamid(steamid: str):
+    return "-" not in steamid
 
-class Gamemode(Enum):
-    warfare = "warfare"
-    offensive = "offensive"
-
-class Map:
-    def __init__(self, name: str, gamemode: Gamemode, attackers: str = None, night: bool = False,
-                 v2: bool = False, short: bool = False, displayed_attackers: str = None):
-        self.name = str(name)
-        self.gamemode = Gamemode(gamemode)
-        self._attackers = str(attackers)
-        self.night = bool(night)
-        self.v2 = bool(v2)
-        self.short = bool(short)
-        self.displayed_attackers = str(displayed_attackers) if displayed_attackers else None
-    
-    @property
-    def attackers(self):
-        return (self.displayed_attackers or self._attackers).upper()
+class Gamemode(str, Enum):
+    WARFARE = "warfare"
+    OFFENSIVE = "offensive"
+    CONTROL = "control"
+    PHASED = "phased"
+    MAJORITY = "majority"
 
     @classmethod
-    def load(cls, map: str):
-        if "_warfare" in map:
-            name, rest = map.split('_warfare', 1)
-            return cls(
-                name=name,
-                gamemode=Gamemode.warfare,
-                night="_night" in rest,
-                v2="V2" in rest
-            )
-        elif "_offensive_" in map:
-            name, attackers = map.split('_offensive_')
-            if name == "elalamein" and attackers == "CW":
-                displayed_attackers = "GB"
-            elif name == "driel" and attackers == "us":
-                displayed_attackers = "GB"
-            else:
-                displayed_attackers = None
-            return cls(
-                name=name,
-                gamemode=Gamemode.offensive,
-                attackers=attackers,
-                displayed_attackers=displayed_attackers
-            )
-        elif "_off_" in map:
-            name, attackers = map.split('_off_')
-            return cls(
-                name=name,
-                gamemode=Gamemode.offensive,
-                attackers=attackers,
-                short=True
-            )
-        else:
-            raise ValueError('Unknown map %s' % map)
+    def large(cls):
+        return (cls.WARFARE, cls.OFFENSIVE,)
 
-    def pretty(self):
-        out = LONG_MAP_NAMES_BY_ID.get(self.name, self.name.capitalize())
-        if self.gamemode == Gamemode.warfare:
-            out += " Warfare"
-        elif self.gamemode == Gamemode.offensive:
-            out += f" Off. {self.attackers.upper()}"
-        if self.night:
-            out += " (Night)"
-        return out
+    @classmethod
+    def small(cls):
+        return (cls.CONTROL, cls.PHASED, cls.MAJORITY,)
 
-    def __str__(self):
-        if self.gamemode == Gamemode.warfare:
-            out = f"{self.name}_warfare"
-            if self.v2:
-                out += "_V2"
-            if self.night:
-                out += "_night"
-            return out
-        elif self.gamemode == Gamemode.offensive:
-            if self.short:
-                return f"{self.name}_off_{self._attackers}"
-            else:
-                return f"{self.name}_offensive_{self._attackers}"
-        raise ValueError("Map string could not be compiled")
+    def is_small(self):
+        return (
+            self == Gamemode.CONTROL
+            or self == Gamemode.PHASED
+            or self == Gamemode.MAJORITY
+        )
+
+    def is_large(self):
+        return self in Gamemode.large()
+
+    def is_small(self):
+        return self in Gamemode.small()
+
+class Team(str, Enum):
+    ALLIES = "Allies"
+    AXIS = "Axis"
+
+class Environment(str, Enum):
+    DAY = "Day"
+    DUSK = "Dusk"
+    DAWN = "Dawn"
+    NIGHT = "Night"
+
+class Faction(str, Enum):
+    US = "us"
+    GER = "ger"
+    RUS = "rus"
+    GB = "gb"
+    CW = "gb"
+
+class Map(pydantic.BaseModel):
+    id: str
+    name: str
+    tag: str
+    prettyname: str
+    shortname: str
+    allies: 'Faction'
+    axis: 'Faction'
+
+    def __str__(self) -> str:
+        return self.id
     
     def __repr__(self) -> str:
         return str(self)
     
     def __hash__(self) -> int:
-        return hash(self.__str__())
+        return hash(self.id)
     
-    def __eq__(self, other):
-        return str(self) == str(other)
+    def __eq__(self, other) -> bool:
+        if isinstance(other, (Map, str)):
+            return str(self) == str(other)
+        return NotImplemented
 
+class Layer(pydantic.BaseModel):
+    id: str
+    map: Map
+    gamemode: Gamemode
+    attackers: Union[Team, None] = None
+    environment: Environment = Environment.DAY
 
-def get_map_and_mode(layer_name: str):
-    map, mode = layer_name.rsplit(' ', 1)
-    return LONG_MAP_NAMES.get(map, map), GAMEMODE_NAMES.get(mode, mode)
+    def __str__(self) -> str:
+        return self.id
+    
+    def __repr__(self) -> str:
+        return str(self)
+    
+    def __hash__(self) -> int:
+        return hash(self.id)
+    
+    def __eq__(self, other) -> bool:
+        if isinstance(other, (Layer, str)):
+            return str(self) == str(other)
+        return NotImplemented
+    
+    @property
+    def attacking_faction(self):
+        if self.attackers == Team.ALLIES:
+            return self.map.allies
+        elif self.attackers == Team.AXIS:
+            return self.map.axis
+        return None
+
+    def pretty(self):
+        out = self.map.prettyname
+        if self.gamemode == Gamemode.OFFENSIVE:
+            out += " Off."
+            if self.attackers:
+                out += f" {self.attacking_faction.value.upper()}"
+        elif self.gamemode.is_small():
+            # TODO: Remove once more Skirmish modes release
+            out += " Skirmish"
+        else:
+            out += f" {self.gamemode.value.capitalize()}"
+        if self.environment != Environment.DAY:
+            out += f" ({self.environment.value})"
+        return out
+
+MAPS = { m.id: m for m in (
+    Map(
+        id="stmereeglise",
+        name="SAINTE-MÈRE-ÉGLISE",
+        tag="SME",
+        prettyname="St. Mere Eglise",
+        shortname="SME",
+        allies=Faction.US,
+        axis=Faction.GER,
+    ),
+    Map(
+        id="stmariedumont",
+        name="ST MARIE DU MONT",
+        tag="BRC",
+        prettyname="St. Marie Du Mont",
+        shortname="SMDM",
+        allies=Faction.US,
+        axis=Faction.GER,
+    ),
+    Map(
+        id="utahbeach",
+        name="UTAH BEACH",
+        tag="UTA",
+        prettyname="Utah Beach",
+        shortname="Utah",
+        allies=Faction.US,
+        axis=Faction.GER,
+    ),
+    Map(
+        id="omahabeach",
+        name="OMAHA BEACH",
+        tag="OMA",
+        prettyname="Omaha Beach",
+        shortname="Omaha",
+        allies=Faction.US,
+        axis=Faction.GER,
+    ),
+    Map(
+        id="purpleheartlane",
+        name="PURPLE HEART LANE",
+        tag="PHL",
+        prettyname="Purple Heart Lane",
+        shortname="PHL",
+        allies=Faction.US,
+        axis=Faction.GER,
+    ),
+    Map(
+        id="carentan",
+        name="CARENTAN",
+        tag="CAR",
+        prettyname="Carentan",
+        shortname="Carentan",
+        allies=Faction.US,
+        axis=Faction.GER,
+    ),
+    Map(
+        id="hurtgenforest",
+        name="HÜRTGEN FOREST",
+        tag="HUR",
+        prettyname="Hurtgen Forest",
+        shortname="Hurtgen",
+        allies=Faction.US,
+        axis=Faction.GER,
+    ),
+    Map(
+        id="hill400",
+        name="HILL 400",
+        tag="HIL",
+        prettyname="Hill 400",
+        shortname="Hill 400",
+        allies=Faction.US,
+        axis=Faction.GER,
+    ),
+    Map(
+        id="foy",
+        name="FOY",
+        tag="FOY",
+        prettyname="Foy",
+        shortname="Foy",
+        allies=Faction.US,
+        axis=Faction.GER,
+    ),
+    Map(
+        id="kursk",
+        name="KURSK",
+        tag="KUR",
+        prettyname="Kursk",
+        shortname="Kursk",
+        allies=Faction.RUS,
+        axis=Faction.GER,
+    ),
+    Map(
+        id="stalingrad",
+        name="STALINGRAD",
+        tag="STA",
+        prettyname="Stalingrad",
+        shortname="Stalingrad",
+        allies=Faction.RUS,
+        axis=Faction.GER,
+    ),
+    Map(
+        id="remagen",
+        name="REMAGEN",
+        tag="REM",
+        prettyname="Remagen",
+        shortname="Remagen",
+        allies=Faction.US,
+        axis=Faction.GER,
+    ),
+    Map(
+        id="kharkov",
+        name="Kharkov",
+        tag="KHA",
+        prettyname="Kharkov",
+        shortname="Kharkov",
+        allies=Faction.RUS,
+        axis=Faction.GER,
+    ),
+    Map(
+        id="driel",
+        name="DRIEL",
+        tag="DRL",
+        prettyname="Driel",
+        shortname="Driel",
+        allies=Faction.GB,
+        axis=Faction.GER,
+    ),
+    Map(
+        id="elalamein",
+        name="EL ALAMEIN",
+        tag="ELA",
+        prettyname="El Alamein",
+        shortname="Alamein",
+        allies=Faction.GB,
+        axis=Faction.GER,
+    ),
+)}
+
+LAYERS = {l.id: l for l in (
+    Layer(
+        id="stmereeglise_warfare",
+        map=MAPS["stmereeglise"],
+        gamemode=Gamemode.WARFARE,
+    ),
+    Layer(
+        id="stmereeglise_warfare_night",
+        map=MAPS["stmereeglise"],
+        gamemode=Gamemode.WARFARE,
+        environment=Environment.NIGHT,
+    ),
+    Layer(
+        id="stmereeglise_offensive_us",
+        map=MAPS["stmereeglise"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.ALLIES
+    ),
+    Layer(
+        id="stmereeglise_offensive_ger",
+        map=MAPS["stmereeglise"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.AXIS
+    ),
+    Layer(
+        id="stmariedumont_warfare",
+        map=MAPS["stmariedumont"],
+        gamemode=Gamemode.WARFARE,
+    ),
+    Layer(
+        id="stmariedumont_warfare_night",
+        map=MAPS["stmariedumont"],
+        gamemode=Gamemode.WARFARE,
+        environment=Environment.NIGHT,
+    ),
+    Layer(
+        id="stmariedumont_off_us",
+        map=MAPS["stmariedumont"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.ALLIES
+    ),
+    Layer(
+        id="stmariedumont_off_ger",
+        map=MAPS["stmariedumont"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.AXIS
+    ),
+    Layer(
+        id="utahbeach_warfare",
+        map=MAPS["utahbeach"],
+        gamemode=Gamemode.WARFARE,
+    ),
+    Layer(
+        id="utahbeach_warfare_night",
+        map=MAPS["utahbeach"],
+        gamemode=Gamemode.WARFARE,
+        environment=Environment.NIGHT,
+    ),
+    Layer(
+        id="utahbeach_offensive_us",
+        map=MAPS["utahbeach"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.ALLIES
+    ),
+    Layer(
+        id="utahbeach_offensive_ger",
+        map=MAPS["utahbeach"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.AXIS
+    ),
+    Layer(
+        id="omahabeach_warfare",
+        map=MAPS["omahabeach"],
+        gamemode=Gamemode.WARFARE,
+    ),
+    Layer(
+        id="omahabeach_warfare_night",
+        map=MAPS["omahabeach"],
+        gamemode=Gamemode.WARFARE,
+        environment=Environment.NIGHT,
+    ),
+    Layer(
+        id="omahabeach_offensive_us",
+        map=MAPS["omahabeach"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.ALLIES
+    ),
+    Layer(
+        id="omahabeach_offensive_ger",
+        map=MAPS["omahabeach"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.AXIS
+    ),
+    Layer(
+        id="purpleheartlane_warfare",
+        map=MAPS["purpleheartlane"],
+        gamemode=Gamemode.WARFARE,
+    ),
+    Layer(
+        id="purpleheartlane_warfare_night",
+        map=MAPS["purpleheartlane"],
+        gamemode=Gamemode.WARFARE,
+        environment=Environment.NIGHT,
+    ),
+    Layer(
+        id="purpleheartlane_offensive_us",
+        map=MAPS["purpleheartlane"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.ALLIES
+    ),
+    Layer(
+        id="purpleheartlane_offensive_ger",
+        map=MAPS["purpleheartlane"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.AXIS
+    ),
+    Layer(
+        id="carentan_warfare",
+        map=MAPS["carentan"],
+        gamemode=Gamemode.WARFARE,
+    ),
+    Layer(
+        id="carentan_warfare_night",
+        map=MAPS["carentan"],
+        gamemode=Gamemode.WARFARE,
+        environment=Environment.NIGHT,
+    ),
+    Layer(
+        id="carentan_offensive_us",
+        map=MAPS["carentan"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.ALLIES
+    ),
+    Layer(
+        id="carentan_offensive_ger",
+        map=MAPS["carentan"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.AXIS
+    ),
+    Layer(
+        id="hurtgenforest_warfare_V2",
+        map=MAPS["hurtgenforest"],
+        gamemode=Gamemode.WARFARE,
+    ),
+    Layer(
+        id="hurtgenforest_warfare_V2_night",
+        map=MAPS["hurtgenforest"],
+        gamemode=Gamemode.WARFARE,
+        environment=Environment.NIGHT,
+    ),
+    Layer(
+        id="hurtgenforest_offensive_US",
+        map=MAPS["hurtgenforest"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.ALLIES
+    ),
+    Layer(
+        id="hurtgenforest_offensive_ger",
+        map=MAPS["hurtgenforest"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.AXIS
+    ),
+    Layer(
+        id="hill400_warfare",
+        map=MAPS["hill400"],
+        gamemode=Gamemode.WARFARE,
+    ),
+    Layer(
+        id="hill400_warfare_night",
+        map=MAPS["hill400"],
+        gamemode=Gamemode.WARFARE,
+        environment=Environment.NIGHT,
+    ),
+    Layer(
+        id="hill400_offensive_US",
+        map=MAPS["hill400"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.ALLIES
+    ),
+    Layer(
+        id="hill400_offensive_ger",
+        map=MAPS["hill400"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.AXIS
+    ),
+    Layer(
+        id="foy_warfare",
+        map=MAPS["foy"],
+        gamemode=Gamemode.WARFARE,
+    ),
+    Layer(
+        id="foy_warfare_night",
+        map=MAPS["foy"],
+        gamemode=Gamemode.WARFARE,
+        environment=Environment.NIGHT,
+    ),
+    Layer(
+        id="foy_offensive_us",
+        map=MAPS["foy"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.ALLIES
+    ),
+    Layer(
+        id="foy_offensive_ger",
+        map=MAPS["foy"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.AXIS
+    ),
+    Layer(
+        id="kursk_warfare",
+        map=MAPS["kursk"],
+        gamemode=Gamemode.WARFARE,
+    ),
+    Layer(
+        id="kursk_warfare_night",
+        map=MAPS["kursk"],
+        gamemode=Gamemode.WARFARE,
+        environment=Environment.NIGHT,
+    ),
+    Layer(
+        id="kursk_offensive_rus",
+        map=MAPS["kursk"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.ALLIES
+    ),
+    Layer(
+        id="kursk_offensive_ger",
+        map=MAPS["kursk"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.AXIS
+    ),
+    Layer(
+        id="stalingrad_warfare",
+        map=MAPS["stalingrad"],
+        gamemode=Gamemode.WARFARE,
+    ),
+    Layer(
+        id="stalingrad_warfare_night",
+        map=MAPS["stalingrad"],
+        gamemode=Gamemode.WARFARE,
+        environment=Environment.NIGHT,
+    ),
+    Layer(
+        id="stalingrad_offensive_rus",
+        map=MAPS["stalingrad"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.ALLIES
+    ),
+    Layer(
+        id="stalingrad_offensive_ger",
+        map=MAPS["stalingrad"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.AXIS
+    ),
+    Layer(
+        id="remagen_warfare",
+        map=MAPS["remagen"],
+        gamemode=Gamemode.WARFARE,
+    ),
+    Layer(
+        id="remagen_warfare_night",
+        map=MAPS["remagen"],
+        gamemode=Gamemode.WARFARE,
+        environment=Environment.NIGHT,
+    ),
+    Layer(
+        id="remagen_offensive_us",
+        map=MAPS["remagen"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.ALLIES
+    ),
+    Layer(
+        id="remagen_offensive_ger",
+        map=MAPS["remagen"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.AXIS
+    ),
+    Layer(
+        id="kharkov_warfare",
+        map=MAPS["kharkov"],
+        gamemode=Gamemode.WARFARE,
+    ),
+    Layer(
+        id="kharkov_warfare_night",
+        map=MAPS["kharkov"],
+        gamemode=Gamemode.WARFARE,
+        environment=Environment.NIGHT,
+    ),
+    Layer(
+        id="kharkov_offensive_rus",
+        map=MAPS["kharkov"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.ALLIES
+    ),
+    Layer(
+        id="kharkov_offensive_ger",
+        map=MAPS["kharkov"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.AXIS
+    ),
+    Layer(
+        id="driel_warfare",
+        map=MAPS["driel"],
+        gamemode=Gamemode.WARFARE,
+    ),
+    Layer(
+        id="driel_warfare_night",
+        map=MAPS["driel"],
+        gamemode=Gamemode.WARFARE,
+        environment=Environment.NIGHT,
+    ),
+    Layer(
+        id="driel_offensive_us",
+        map=MAPS["driel"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.ALLIES
+    ),
+    Layer(
+        id="driel_offensive_ger",
+        map=MAPS["driel"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.AXIS
+    ),
+    Layer(
+        id="DRL_S_1944_P_Skirmish",
+        map=MAPS["driel"],
+        gamemode=Gamemode.CONTROL,
+        environment=Environment.DAWN,
+    ),
+    Layer(
+        id="DRL_S_1944_Night_P_Skirmish",
+        map=MAPS["driel"],
+        gamemode=Gamemode.CONTROL,
+        environment=Environment.NIGHT,
+    ),
+    Layer(
+        id="DRL_S_1944_Day_P_Skirmish",
+        map=MAPS["driel"],
+        gamemode=Gamemode.CONTROL,
+        environment=Environment.DAY,
+    ),
+    Layer(
+        id="elalamein_warfare",
+        map=MAPS["elalamein"],
+        gamemode=Gamemode.WARFARE,
+    ),
+    Layer(
+        id="elalamein_warfare_night",
+        map=MAPS["elalamein"],
+        gamemode=Gamemode.WARFARE,
+        environment=Environment.DUSK,
+    ),
+    Layer(
+        id="elalamein_offensive_CW",
+        map=MAPS["elalamein"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.ALLIES
+    ),
+    Layer(
+        id="elalamein_offensive_ger",
+        map=MAPS["elalamein"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.AXIS
+    ),
+    Layer(
+        id="ELA_S_1942_P_Skirmish",
+        map=MAPS["elalamein"],
+        gamemode=Gamemode.CONTROL,
+        environment=Environment.DAY,
+    ),
+    Layer(
+        id="ELA_S_1942_Night_P_Skirmish",
+        map=MAPS["elalamein"],
+        gamemode=Gamemode.CONTROL,
+        environment=Environment.DUSK,
+    ),
+)}
+
+MAPS_BY_NAME = { m.name: m for m in MAPS.values() }
+
+def parse_layer(layer_name: str):
+    layer = LAYERS.get(layer_name)
+    if layer:
+        return layer
+    
+    logging.warning("Unknown layer %s", layer_name)
+
+    layer_match = RE_LAYER_NAME.match(layer_name)
+    if not layer_match:
+        return _parse_legacy_layer(layer_name)
+    
+    layer_data = layer_match.groupdict()
+
+    tag = layer_data["tag"]
+    map_ = None
+    for m in MAPS.values():
+        if m.tag == tag:
+            map_ = m
+            break
+    if map_ is None:
+        map_ = Map(
+            id=tag.lower(),
+            name=tag,
+            tag=tag,
+            prettyname=tag.capitalize(),
+            shortname=tag,
+            allies=Faction.US,
+            axis=Faction.GER,
+        )
+
+    if layer_data["gamemode"] == "Skirmish":
+        gamemode = Gamemode.CONTROL
+    else:
+        try:
+            gamemode = Gamemode[layer_data["gamemode"].upper()]
+        except KeyError:
+            gamemode = Gamemode.WARFARE
+        
+    if gamemode == Gamemode.OFFENSIVE:
+        attackers = Team.ALLIES
+    else:
+        attackers = None        
+    
+    try:
+        environment = Environment[layer_data["environment"].upper()]
+    except KeyError:
+        environment = Environment.DAY
+
+    return Layer(
+        id=layer_name,
+        map=map_,
+        gamemode=gamemode,
+        attackers=attackers,
+        environment=environment,
+    )
+
+def _parse_legacy_layer(layer_name: str):
+    _map, _mode = layer_name.split('_', 1)
+    map = MAPS.get(_map)
+
+    if _mode.startswith('off'):
+        mode = Gamemode.OFFENSIVE
+        try:
+            attackers = Faction[_mode.split('_', 1)[1].upper()]
+        except KeyError:
+            attackers = Faction.GER
+        attacking_team = Team.AXIS if attackers == Faction.GER else Team.ALLIES
+    else:
+        mode = Gamemode.WARFARE
+        attackers = None
+        attacking_team = None
+    night = _mode.endswith("night")
+
+    if not map:
+        map = Map(
+            id=_map.lower(),
+            name=_map.upper(),
+            tag=_map.upper()[:3],
+            prettyname=_map.capitalize(),
+            shortname=_map.capitalize(),
+            allies=attackers if attacking_team == Team.ALLIES else Faction.US,
+            axis=attackers if attacking_team == Team.AXIS else Faction.GER,
+        )
+    
+    return Layer(
+        id=layer_name,
+        map=map,
+        gamemode=mode,
+        attackers=attacking_team,
+        night=Environment.NIGHT if night else Environment.DAY,
+    )
+
 
 SQUAD_LEADER_ROLES = {"Officer", "TankCommander", "Spotter"}
 TEAM_LEADER_ROLES = {"ArmyCommander"}
