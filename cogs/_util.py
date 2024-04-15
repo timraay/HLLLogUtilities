@@ -1,12 +1,14 @@
 import discord
 from discord.ext import commands, tasks
-from discord import Interaction, app_commands
+from discord import ButtonStyle, Interaction, app_commands
 import asyncio
 import aiohttp
 import ast
 import logging
 from typing import List
 
+from discord_utils import CallableButton, CustomException, View
+from lib.credentials import Credentials
 from utils import get_config
 
 REPO_AUTHOR_NAME = "timraay/HLLLogUtilities"
@@ -120,6 +122,78 @@ class _util(commands.Cog):
         except discord.HTTPException:
             pass
 
+    @commands.command(name="force-disable-autosession", hidden=True)
+    @commands.is_owner()
+    async def disable_autosession(self, ctx, *credentials_ids: int):
+        if not credentials_ids:
+            raise ValueError("Missing credentials")
+        
+        credentials = [Credentials.get(c_id) for c_id in credentials_ids]
+        guild_id = credentials[0].guild_id
+        guild = await self.bot.fetch_guild(guild_id)
+
+        for credential in credentials:
+            if credential.guild_id != guild_id:
+                raise ValueError("Credentials #%s and #%s are from different guilds" % (credentials[0].id, credential.id))
+            if not credential.autosession_enabled:
+                raise ValueError("Credentials #%s does not have AutoSession enabled" % credential.id)
+        
+        display_list = "\n".join([
+            f"- `{credential.name}` (#{credential.id})"
+            for credential in credentials
+        ])
+
+        embed = discord.Embed(
+            title="AutoSession has been disabled by the author.",
+            description=(
+                "Hello community,"
+                "\n\n"
+                "After manual review I have concluded that you are using AutoSession on one or more of your public servers."
+                " HLU is a free service with limited resources. I ask you to only utilize AutoSession on private or event"
+                " servers to reduce system load."
+                "\n\n"
+                "I have disabled AutoSession for the following servers:"
+                f"\n{display_list}\n\n"
+                "Please do not re-enable AutoSession for these servers. For [better coverage without limitations](https://github.com/timraay/HLLLogUtilities#full-time-coverage),"
+                " please consider [self-hosting](https://github.com/timraay/HLLLogUtilities?tab=readme-ov-file#full-time-coverage) instead."
+                "\n\n"
+                "Thank you for understanding."
+            ),
+            color=discord.Colour(0xdb0505)
+        )
+
+        async def confirm(interaction: Interaction):
+            if interaction.user != ctx.author:
+                raise CustomException("Only the owner can use this!")
+            
+            button.disabled = True
+            await interaction.response.edit_message(view=view)
+
+            for credential in credentials:
+                try:
+                    credential.delete()
+                except Exception as e:
+                    await ctx.send(f"#{credential.id} -> `{e.__class__.__name__}: {e}`")
+                else:
+                    await ctx.send(f"#{credential.id} -> Disabled!")
+
+            if guild.public_updates_channel and guild.public_updates_channel.permissions_for(guild.me).send_messages:
+                channel = guild.public_updates_channel
+            elif guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
+                channel = guild.system_channel
+            else:
+                channel = None
+
+            if channel:
+                await ctx.send("Sending to " + channel.mention)
+                await channel.send(embed=embed)
+            else:
+                await ctx.send("No channel to send to :(")
+
+        view = View()
+        button = CallableButton(confirm, style=ButtonStyle.blurple, label="Confirm")
+        view.add_item(button)
+        await ctx.send(embed=embed, view=view)
     
     async def get_latest_release(self):
         async with aiohttp.ClientSession() as session:
