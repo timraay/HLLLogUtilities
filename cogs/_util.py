@@ -126,7 +126,7 @@ class _util(commands.Cog):
     @commands.is_owner()
     async def disable_autosession(self, ctx, *credentials_ids: int):
         if not credentials_ids:
-            raise ValueError("Missing credentials")
+            raise CustomException("Missing credentials")
         
         credentials = [Credentials.get(c_id) for c_id in credentials_ids]
         guild_id = credentials[0].guild_id
@@ -134,9 +134,15 @@ class _util(commands.Cog):
 
         for credential in credentials:
             if credential.guild_id != guild_id:
-                raise ValueError("Credentials #%s and #%s are from different guilds" % (credentials[0].id, credential.id))
+                raise CustomException(
+                    "Invalid credentials!",
+                    "Credentials #%s and #%s are from different guilds" % (credentials[0].id, credential.id)
+                )
             if not credential.autosession_enabled:
-                raise ValueError("Credentials #%s does not have AutoSession enabled" % credential.id)
+                raise CustomException(
+                    "Invalid credentials!",
+                    "Credentials #%s does not have AutoSession enabled" % credential.id
+                )
         
         display_list = "\n".join([
             f"- `{credential.name}` (#{credential.id})"
@@ -155,7 +161,7 @@ class _util(commands.Cog):
                 "I have disabled AutoSession for the following servers:"
                 f"\n{display_list}\n\n"
                 "Please do not re-enable AutoSession for these servers. For [better coverage without limitations](https://github.com/timraay/HLLLogUtilities#full-time-coverage),"
-                " please consider [self-hosting](https://github.com/timraay/HLLLogUtilities?tab=readme-ov-file#full-time-coverage) instead."
+                " please consider [self-hosting](https://github.com/timraay/HLLLogUtilities#full-time-coverage) instead."
                 "\n\n"
                 "Thank you for understanding."
             ),
@@ -173,7 +179,7 @@ class _util(commands.Cog):
 
             for credential in credentials:
                 try:
-                    credential.delete()
+                    credential.autosession.disable()
                 except Exception as e:
                     await ctx.send(f"#{credential.id} -> `{e.__class__.__name__}: {e}`")
                 else:
