@@ -235,7 +235,13 @@ class HLLRconProtocol(asyncio.Protocol):
     async def authenticate(self, password):
         if self.logger:
             self.logger.debug('Waiting to login...')
-        await self.has_key # Wait for XOR-key
+        
+        # Wait for XOR-key
+        await asyncio.wait_for(
+            asyncio.shield(self.has_key),
+            timeout=self.timeout
+        )
+        
         res = await self.execute(f'login {password}', can_fail=True)
         if res != True:
             raise HLLAuthError()
