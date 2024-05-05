@@ -645,7 +645,10 @@ class InfoHopper(ModelTree):
 
             for player in others:
                 if other.server.state == "in_progress":
-                    events.add(PlayerScoreUpdateEvent(self, event_time=event_time,
+                    # Note that we add this directly instead of merging later. That is because this event is partially computed
+                    # by RCON and partially by comparing with the previous iteration. We don't want this discarded if RCON has
+                    # already added some player_score_update events.
+                    self.events.add(PlayerScoreUpdateEvent(self, event_time=event_time,
                         player=player.create_link(with_fallback=True, hopper=self)
                     ))
 
