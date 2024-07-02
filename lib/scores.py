@@ -938,7 +938,7 @@ def create_scoreboard(data: Union['MatchData', 'MatchGroup']):
     output += [
         f"Duration: {int(stats.duration.total_seconds() / 60 + 0.5)} minutes",
         "",
-        f"Players: {len(filter(lambda p: p.steam_id, stats.players))}",
+        f"Players: {len(list(filter(lambda p: p.steam_id, stats.players)))}",
         f"Deaths: {stats.total_deaths}",
         f"  Kills: {stats.total_kills}",
         f"  Teamkills: {stats.total_teamkills}",
