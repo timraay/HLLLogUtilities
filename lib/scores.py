@@ -285,7 +285,14 @@ class DataStore:
         return self + other
     
     def to_text(self, single_match: bool = False):
-        data = sorted(self.players, key=lambda player: player.kills_per_minute*1000000-player.deaths, reverse=True)
+        data = sorted(
+            filter(
+                lambda player: player.steam_id,
+                self.players
+            ),
+            key=lambda player: player.kills_per_minute * 1000000 - player.deaths,
+            reverse=True
+        )
     
         headers = ['RANK', 'NAME', 'KILLS', 'DEATHS', 'K/D', 'TKS', 'SUIC', 'STREAK', 'WEAPON', 'VICTIM', 'NEMESIS', 'COMB', 'OFF', 'DEF', 'SUPP', 'PLAYTIME'] if single_match else \
             ['RANK', 'STEAMID', 'PLAYED', 'NAME', 'KILLS', 'DEATHS', 'K/D', 'TKS', 'SUIC', 'STREAK', 'WEAPON', 'VICTIM', 'NEMESIS', 'COMB', 'OFF', 'DEF', 'SUPP', 'PLAYTIME', 'K/MIN']
@@ -295,14 +302,19 @@ class DataStore:
         else:
             output = "{: <6} {: <13} {: <6}  {: <25} {: <6} {: <6} {: <5} {: <5} {: <5} {: <6} {: <27} {: <25} {: <25} {: <4} {: <4} {: <4} {: <4} {: <9} {}".format(*headers)
         for i, player in enumerate(data):
-            if not player.steam_id:
-                continue
             output = output + '\n' + player.to_string(i+1, single_match)
         
         return output
     
     def to_csv(self, single_match: bool = False):
-        data = sorted(self.players, key=lambda player: player.kills_per_minute*1000000-player.deaths, reverse=True)
+        data = sorted(
+            filter(
+                lambda player: player.steam_id,
+                self.players
+            ),
+            key=lambda player: player.kills_per_minute * 1000000 - player.deaths,
+            reverse=True
+        )
     
         if single_match:
             output = ",".join([
@@ -318,8 +330,6 @@ class DataStore:
             ])
 
         for i, player in enumerate(data):
-            if not player.steam_id:
-                continue
             output = output + '\n' + player.to_csv(i+1, single_match)
         
         return output
@@ -928,7 +938,7 @@ def create_scoreboard(data: Union['MatchData', 'MatchGroup']):
     output += [
         f"Duration: {int(stats.duration.total_seconds() / 60 + 0.5)} minutes",
         "",
-        f"Players: {len(stats.players)}",
+        f"Players: {len(filter(lambda p: p.steam_id, stats.players))}",
         f"Deaths: {stats.total_deaths}",
         f"  Kills: {stats.total_kills}",
         f"  Teamkills: {stats.total_teamkills}",
