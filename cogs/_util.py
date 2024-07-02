@@ -43,6 +43,14 @@ def insert_returns(body):
     if isinstance(body[-1], ast.With):
         insert_returns(body[-1].body)
 
+async def safe_send_message(channel: discord.TextChannel, *args, **kwargs):
+    if not args and not kwargs:
+        raise ValueError("Both args and kwargs cannot be empty")
+    
+    try:
+        await channel.send(*args, **kwargs)
+    except Exception as e:
+        print(f"Failed to send to {channel.guild.name} #{channel.name}: {e}")
 
 class _util(commands.Cog):
     """Utility commands to get help, stats, links and more"""
@@ -251,7 +259,7 @@ class _util(commands.Cog):
                     embed.set_footer(text="A short downtime will occur shortly to apply the update.")
             
                 await asyncio.gather(*[
-                    channel.send(embed=embed)
+                    safe_send_message(channel, embed=embed)
                     for channel in channels
                 ])
 
