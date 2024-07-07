@@ -79,13 +79,13 @@ class HSSApi:
                                 headers={'Authorization': f'Bearer {key}'}) as resp:
                 if resp.status != http.HTTPStatus.OK:
                     raise HTTPException(resp.status, 'Could not load teams. Expected 200 OK response, got: ' + str(resp.status))
-                
+
                 body = await resp.json()
                 
                 tag = body.get('tag')
                 if tag is None:
                     raise HTTPException(resp.status, 'Received invalid data. Body does not include tag.')
-                
+
                 return HSSTeam(
                     tag=tag,
                     name=body.get('name'),
