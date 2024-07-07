@@ -6,7 +6,7 @@ import logging
 
 from lib.info.models import *
 
-DB_VERSION = 5
+DB_VERSION = 6
 HLU_VERSION = "v2.2.8"
 
 class LogLine(BaseModel):
@@ -157,7 +157,7 @@ cursor.execute("""
 CREATE TABLE IF NOT EXISTS "hss_api_keys" (
 	"guild_id"	VARCHAR(18) NOT NULL,
 	"tag"	VARCHAR(10) NOT NULL,
-	"key"	VARCHAR(55)
+	"key"	VARCHAR(120)
 );
 """)
 cursor.execute("""
@@ -265,6 +265,28 @@ elif db_version < DB_VERSION:
         cursor.execute('INSERT INTO "sessions_new" SELECT * FROM "sessions";')
         cursor.execute(str(Query.drop_table("sessions")))
         cursor.execute('ALTER TABLE "sessions_new" RENAME TO "sessions";')
+
+    if db_version < 6:
+        # Create a new table with the proper columns
+        table_name = 'hss_api_keys'
+        table_name_new = f'{table_name}_new'
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS "{table_name_new}" (
+                "guild_id"	VARCHAR(18) NOT NULL,
+                "tag"	VARCHAR(10) NOT NULL,
+                "key"	VARCHAR(120)
+            );
+            """)
+        # Copy over the values
+        to_copy = ['guild_id', 'tag', 'key']
+        query = Query.into(table_name_new).columns(*to_copy).from_(table_name).select(*to_copy)
+        cursor.execute(str(query))
+        # Drop the old table
+        cursor.execute(str(Query.drop_table(table_name)))
+        # Rename the new table
+        cursor.execute(f'ALTER TABLE "{table_name_new}" RENAME TO "{table_name}";')
+
+        database.commit()
 
 
     cursor.execute('UPDATE "db_version" SET "format_version" = ?', (DB_VERSION,))
