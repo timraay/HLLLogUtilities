@@ -6,7 +6,7 @@ import logging
 
 from lib.info.models import *
 
-DB_VERSION = 5
+DB_VERSION = 6
 HLU_VERSION = "v2.2.8"
 
 class LogLine(BaseModel):
@@ -266,7 +266,7 @@ elif db_version < DB_VERSION:
         cursor.execute(str(Query.drop_table("sessions")))
         cursor.execute('ALTER TABLE "sessions_new" RENAME TO "sessions";')
 
-    if db_version < 5:
+    if db_version < 6:
         # Create a new table with the proper columns
         table_name = 'hss_api_keys'
         table_name_new = f'{table_name}_new'
