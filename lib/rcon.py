@@ -533,7 +533,7 @@ class HLLRcon:
 
                     if log.startswith('KILL') or log.startswith('TEAM KILL'):
                         p1_name, p1_team, p1_steamid, p2_name, p2_team, p2_steamid, weapon = re.search(
-                            r"KILL: (.+)\((Allies|Axis)\/(\d{17}|[\da-f-]{36})\) -> (.+)\((Allies|Axis)\/(\d{17}|[\da-f-]{36})\) with (.+)", log).groups()
+                            r"KILL: (.+)\((Allies|Axis)\/(\d{17}|[\da-f]{32})\) -> (.+)\((Allies|Axis)\/(\d{17}|[\da-f]{32})\) with (.+)", log).groups()
                         e_cls = PlayerTeamkillEvent if log.startswith('TEAM KILL') else PlayerKillEvent
                         self._info.events.add(e_cls(self._info,
                             event_time=time,
@@ -552,7 +552,7 @@ class HLLRcon:
                             self.logger.warning('Could not find player %s %s', p2_steamid, p2_name)
 
                     elif log.startswith('CHAT'):
-                        channel, name, team, steamid, message = re.match(r"CHAT\[(Team|Unit)\]\[(.+)\((Allies|Axis)\/(\d{17}|[\da-f-]{36})\)\]: (.+)", log).groups()
+                        channel, name, team, steamid, message = re.match(r"CHAT\[(Team|Unit)\]\[(.+)\((Allies|Axis)\/(\d{17}|[\da-f]{32})\)\]: (.+)", log).groups()
                         player = self._info.find_players(single=True, steamid=steamid)
                         self._info.events.add(PlayerMessageEvent(self._info,
                             event_time=time,
@@ -562,7 +562,7 @@ class HLLRcon:
                         ))
 
                     elif log.startswith('Player'):
-                        name, steamid, action = re.match(r"Player \[(.+) \((\d{17}|[\da-f-]{36})\)\] (Left|Entered) Admin Camera", log).groups()
+                        name, steamid, action = re.match(r"Player \[(.+) \((\d{17}|[\da-f]{32})\)\] (Left|Entered) Admin Camera", log).groups()
                         player = Link('players', {'steamid': steamid})
                         if action == "Entered":
                             self._info.events.add(PlayerEnterAdminCamEvent(self._info, event_time=time, player=player))
