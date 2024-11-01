@@ -197,11 +197,12 @@ class ExportView(View):
         ))
         
     async def send(self):
+        await self.interaction.response.defer(thinking=True)
         content, file = self.get_message_payload()
         if file:
-            await self.interaction.response.send_message(content, file=file)
+            await self.interaction.followup.send(content, file=file)
         else:
-            await self.interaction.response.send_message(content)
+            await self.interaction.followup.send(content)
 
         await self.interaction.followup.send(
             content="Select any of the options to change the output above!",
