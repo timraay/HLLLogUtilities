@@ -413,25 +413,25 @@ LAYERS = {l.id: l for l in (
         attackers=Team.AXIS
     ),
     Layer(
-        id="purpleheartlane_warfare",
+        id="PHL_L_1944_Warfare",
         map=MAPS["purpleheartlane"],
         gamemode=Gamemode.WARFARE,
         environment=Environment.RAIN
     ),
     Layer(
-        id="purpleheartlane_warfare_night",
+        id="PHL_L_1944_Warfare_Night",
         map=MAPS["purpleheartlane"],
         gamemode=Gamemode.WARFARE,
         environment=Environment.NIGHT,
     ),
     Layer(
-        id="purpleheartlane_offensive_us",
+        id="PHL_L_1944_OffensiveUS",
         map=MAPS["purpleheartlane"],
         gamemode=Gamemode.OFFENSIVE,
         attackers=Team.ALLIES
     ),
     Layer(
-        id="purpleheartlane_offensive_ger",
+        id="PHL_L_1944_OffensiveGER",
         map=MAPS["purpleheartlane"],
         gamemode=Gamemode.OFFENSIVE,
         attackers=Team.AXIS
