@@ -1,7 +1,5 @@
 from .base import Modifier
-from .enforce_name_validity import EnforceNameValidityModifier
 from .modifier_notif import ModifierNotifModifier
-from .no_medic import NoMedicModifier
 from .no_panther import NoPantherModifier
 from .one_arty import OneArtyModifier
 
@@ -13,17 +11,13 @@ __all__ = (
     'Modifier',
     'ModifierFlags',
 
-    'EnforceNameValidityModifier',
     'ModifierNotifModifier',
-    'NoMedicModifier',
     'NoPantherModifier',
     'OneArtyModifier',
 )
 
 ALL_MODIFIERS: Tuple[Type[Modifier], ...] = (
-    EnforceNameValidityModifier,
     ModifierNotifModifier,
-    NoMedicModifier,
     NoPantherModifier,
     OneArtyModifier,
 )

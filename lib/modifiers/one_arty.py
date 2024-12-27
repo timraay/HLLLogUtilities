@@ -67,7 +67,6 @@ class OneArtyModifier(Modifier):
         name = "One-man arty"
         emoji = "💥"
         description = "Only one player per team may use artillery"
-        enforce_name_validity = True
 
     @event_listener(['activation', 'server_match_started'])
     async def initialize(self, event: ActivationEvent):
