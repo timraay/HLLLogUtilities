@@ -154,17 +154,20 @@ That's all the files installed! Now let's create our bot account over on Discord
 5. Go to the "Bot" tab and add a bot.
 6. (optional) Add a profile picture
 7. (optional) Disable the "Public Bot" setting
+8. Go to the "OAuth2" tab and scroll to the "OAuth2 URL Generator"
+9. Select the following options: "applications.commands", "bot" and the following in the newly opened permissions: "Send Messages", "Attach files"
+10. Copy the "Generated URL", open it in a new browser tab and invite the bot to your server
 
 We've just prepared our application. Now we need to share it with our code.
 
-8. Click on the "Reset Token" button and copy your token.
-9. Open the "config.ini" file and fill in the token you've just copied. Make sure there's no trailing spaces.
+11. Click on the "Reset Token" button and copy your token.
+12. Open the "config.ini" file and fill in the token you've just copied. Make sure there's no trailing spaces.
 
 Almost done now! From here on out though, how to proceed depends on how you've decided to run the bot.
 
 ### If you want to **run natively from source**...
 
-10. Install all needed Python libraries.
+13. Install all needed Python libraries.
 ```shell
 pip3 install -r requirements.txt
 ```
@@ -175,7 +178,7 @@ pip3 install -r requirements.txt
 > 3. Under "Invidivual components", select most relevant versions of both "C++ x64/x86 build tools" and "Windows SDK"
 > 4. Install everything
 
-11. Start the bot!
+14. Start the bot!
 ```shell
 python3 bot.py
 ```
@@ -186,16 +189,23 @@ This terminal will need to stay open for the bot to work. Closing down this term
 
 ### If you want to run **run through Docker**...
 
-10. Create an empty database file, assuming you don't yet have a file named "sessions.db".
+13. Create an empty database file, assuming you don't yet have a file named "sessions.db".
 ```shell
 sqlite3 sessions.db "VACUUM;"
 ```
-11. Start the container!
+14. Start the container!
 ```shell
 docker-compose up -d
 ```
 
 This container will run in the background, and restart automatically after a system reboot. In case you ever want to stop it, you can use the `docker-compose down` command.
+
+### Discord permissions
+
+The bot can, by default, not be used by any other user, except ones with the "Manage Server" permission.
+You can add roles and users, as well as in what channels the bot can be used, by navigating to, within your Discord server settings, "Integrations" -> your bot.
+Make sure to override each command with the roles that should be allowed to use it.
+By default, only users with the "Manage Server" permission can use the commands, no matter what "Roles & Member" you configured outside of the commands config.
 
 # **FAQ**
 Frequently Asked Questions can be found [here](https://github.com/timraay/HLLLogUtilities/blob/main/FAQ.md)!
