@@ -88,13 +88,13 @@ class Map(pydantic.BaseModel):
 
     def __str__(self) -> str:
         return self.id
-    
+
     def __repr__(self) -> str:
         return str(self)
-    
+
     def __hash__(self) -> int:
         return hash(self.id)
-    
+
     def __eq__(self, other) -> bool:
         if isinstance(other, (Map, str)):
             return str(self) == str(other)
@@ -109,18 +109,18 @@ class Layer(pydantic.BaseModel):
 
     def __str__(self) -> str:
         return self.id
-    
+
     def __repr__(self) -> str:
         return str(self)
-    
+
     def __hash__(self) -> int:
         return hash(self.id)
-    
+
     def __eq__(self, other) -> bool:
         if isinstance(other, (Layer, str)):
             return str(self) == str(other)
         return NotImplemented
-    
+
     @property
     def attacking_faction(self):
         if self.attackers == Team.ALLIES:
@@ -296,6 +296,15 @@ MAPS = { m.id: m for m in (
         prettyname="Elsenborn Ridge",
         shortname="Elsenborn",
         allies=Faction.US,
+        axis=Faction.GER,
+    ),
+    Map(
+        id="tobruk",
+        name="TOBRUK",
+        tag="TBK",
+        prettyname="Tobruk",
+        shortname="Tobruk",
+        allies=Faction.GB,
         axis=Faction.GER,
     ),
 )}
@@ -970,6 +979,84 @@ LAYERS = {l.id: l for l in (
         gamemode=Gamemode.CONTROL,
         environment=Environment.NIGHT,
     ),
+    Layer(
+        id="tobruk_warfare_day",
+        map=MAPS["tobruk"],
+        game_mode=GameMode.WARFARE,
+        environment=Environment.DAY,
+    ),
+    Layer(
+        id="tobruk_warfare_dusk",
+        map=MAPS["tobruk"],
+        game_mode=GameMode.WARFARE,
+        environment=Environment.DUSK,
+    ),
+    Layer(
+        id="tobruk_warfare_morning",
+        map=MAPS["tobruk"],
+        game_mode=GameMode.WARFARE,
+        environment=Environment.DAWN,
+    ),
+    Layer(
+        id="tobruk_offensivebritish_day",
+        map=MAPS["tobruk"],
+        game_mode=GameMode.OFFENSIVE,
+        attackers=Team.ALLIES,
+        environment=Environment.DAY,
+    ),
+    Layer(
+        id="tobruk_offensiveger_day",
+        map=MAPS["tobruk"],
+        game_mode=GameMode.OFFENSIVE,
+        attackers=Team.AXIS,
+        environment=Environment.DAY,
+    ),
+    Layer(
+        id="tobruk_offensivebritish_dusk",
+        map=MAPS["tobruk"],
+        game_mode=GameMode.OFFENSIVE,
+        attackers=Team.ALLIES,
+        environment=Environment.DUSK,
+    ),
+    Layer(
+        id="tobruk_offensiveger_dusk",
+        map=MAPS["tobruk"],
+        game_mode=GameMode.OFFENSIVE,
+        attackers=Team.AXIS,
+        environment=Environment.DUSK,
+    ),
+    Layer(
+        id="tobruk_offensivebritish_morning",
+        map=MAPS["tobruk"],
+        game_mode=GameMode.OFFENSIVE,
+        attackers=Team.ALLIES,
+        environment=Environment.DAWN,
+    ),
+    Layer(
+        id="tobruk_offensiveger_morning",
+        map=MAPS["tobruk"],
+        game_mode=GameMode.OFFENSIVE,
+        attackers=Team.AXIS,
+        environment=Environment.DAWN,
+    ),
+    Layer(
+        id="tobruk_skirmish_day",
+        map=MAPS["tobruk"],
+        game_mode=GameMode.CONTROL,
+        environment=Environment.DAY,
+    ),
+    Layer(
+        id="tobruk_skirmish_dusk",
+        map=MAPS["tobruk"],
+        game_mode=GameMode.CONTROL,
+        environment=Environment.DUSK,
+    ),
+    Layer(
+        id="tobruk_skirmish_morning",
+        map=MAPS["tobruk"],
+        game_mode=GameMode.CONTROL,
+        environment=Environment.DAWN,
+    ),
 )}
 
 MAPS_BY_NAME = { m.name: m for m in MAPS.values() }
@@ -978,13 +1065,13 @@ def parse_layer(layer_name: str):
     layer = LAYERS.get(layer_name)
     if layer:
         return layer
-    
+
     logging.warning("Unknown layer %s", layer_name)
 
     layer_match = RE_LAYER_NAME_LARGE.match(layer_name) or RE_LAYER_NAME_SMALL.match(layer_name)
     if not layer_match:
         return _parse_legacy_layer(layer_name)
-    
+
     layer_data = layer_match.groupdict()
 
     tag = layer_data["tag"]
@@ -1011,12 +1098,12 @@ def parse_layer(layer_name: str):
             gamemode = Gamemode[layer_data["gamemode"].upper()]
         except KeyError:
             gamemode = Gamemode.WARFARE
-        
+
     if gamemode == Gamemode.OFFENSIVE:
         attackers = Team.ALLIES
     else:
-        attackers = None        
-    
+        attackers = None
+
     if layer_data["environment"]:
         try:
             environment = Environment[layer_data["environment"].upper()]
@@ -1037,9 +1124,9 @@ def _parse_legacy_layer(layer_name: str):
     layer_match = RE_LEGACY_LAYER_NAME.match(layer_name)
     if not layer_match:
         raise ValueError("Unparsable layer '%s'" % layer_name)
-    
+
     layer_data = layer_match.groupdict()
-    
+
     name = layer_data["name"]
     map_ = MAPS.get(layer_data["name"])
     if not map_:
@@ -1071,14 +1158,14 @@ def _parse_legacy_layer(layer_name: str):
             result.gamemode = Gamemode[layer_data["gamemode"].upper()]
         except KeyError:
             pass
-    
+
     environment = layer_data["environment"]
     if environment:
         try:
             result.environment = Environment[environment.upper()]
         except KeyError:
             pass
-    
+
     return result
 
 
@@ -1181,7 +1268,7 @@ WEAPONS = {
     "COAXIAL MG34 [Sd.Kfz.181 Tiger 1]": "GER Tank Coaxial [Tiger 1]",
     "HULL MG34 [Sd.Kfz.181 Tiger 1]": "GER Tank Hull MG [Tiger 1]",
     "MG 42 [Sd.Kfz 251 Half-track]": "GER Half-track MG [GER Half-track]",
-    
+
     "MOSIN NAGANT 1891": "Mosin-Nagant 1891",
     "MOSIN NAGANT 91/30": "Mosin-Nagant 91/30",
     "MOSIN NAGANT M38": "Mosin-Nagant M38",
@@ -1460,7 +1547,7 @@ for weapon in WEAPONS.values():
     match = re.match(r"((US|GER|RUS|GB) (.+)) \[(.+)\]$", weapon)
     if match:
         vic_weapon, vic_faction, vic_weapon_factionless, vic_name = match.groups()
-        
+
         VEHICLES[weapon] = vic_name
         if weapon in BASIC_CATEGORIES_ALLIES:
             VEHICLES_ALLIES[weapon] = vic_name
