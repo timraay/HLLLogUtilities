@@ -13,6 +13,8 @@ from lib.modifiers import ModifierFlags, Modifier, INTERNAL_MODIFIERS
 from lib.info.models import EventFlags, EventModel, ActivationEvent, IterationEvent, DeactivationEvent, InfoHopper, PrivateEventModel
 from lib.info.events import EventListener
 from utils import get_config, schedule_coro, get_logger
+from sinks import WebhookSink
+import os
 
 SECONDS_BETWEEN_ITERATIONS = get_config().getint('Session', 'SecondsBetweenIterations')
 NUM_LOGS_REQUIRED_FOR_INSERT = get_config().getint('Session', 'NumLogsRequiredForInsert')
@@ -58,6 +60,22 @@ class HLLCaptureSession:
         self.modifiers = [modifier(self) for modifier in INTERNAL_MODIFIERS] + [modifier(self) for modifier in modifiers.get_modifier_types()]
         self.modifier_flags = modifiers.copy()
         self.logger.info("Installed modifiers: %s", ", ".join([modifier.config.name for modifier in self.modifiers]))
+        
+        # Optional webhook sink (code-configured via environment variables)
+        # Set HLU_WEBHOOK_URL to enable.
+        webhook_url = os.getenv("HLU_WEBHOOK_URL")
+        if webhook_url:
+            include_env = os.getenv("HLU_WEBHOOK_INCLUDE", "vehicle_destroyed")
+            include = [s.strip() for s in include_env.split(",") if s.strip()]
+            secret = os.getenv("HLU_WEBHOOK_SHARED_SECRET", "")
+            try:
+                self.webhook_sink = WebhookSink(url=webhook_url, secret=secret, include=include)
+                self.logger.info("Webhook sink enabled at %s for %s", webhook_url, ",".join(include))
+            except Exception:
+                self.logger.exception("Failed to initialize webhook sink; continuing without it")
+                self.webhook_sink = None
+        else:
+            self.webhook_sink = None
         
         if self.active_in():
             self._start_task = schedule_coro(self.start_time, self.activate, error_logger=self.logger)
@@ -236,6 +254,14 @@ class HLLCaptureSession:
                     for listener in modifier.get_listeners_for_event(event):
                         asyncio.create_task(listener.invoke(modifier, event))
                 
+                # Dispatch to webhook sink for normalization (armor squad deaths, etc.)
+                if getattr(self, "webhook_sink", None):
+                    try:
+                        asyncio.create_task(self.webhook_sink.handle_hlu_event(event))
+                    except Exception:
+                        # Never break loop due to sink issues
+                        pass
+                
             if len(self._logs) > NUM_LOGS_REQUIRED_FOR_INSERT:
                 self.push_to_db()
         
@@ -266,6 +292,13 @@ class HLLCaptureSession:
 
         event = ActivationEvent(InfoHopper())
         await self.invoke_event(event)
+        
+        # Start webhook sink if configured
+        try:
+            if getattr(self, "webhook_sink", None):
+                await self.webhook_sink.start()
+        except Exception:
+            self.logger.exception('Failed to start webhook sink')
 
     @gatherer.after_loop
     async def after_gatherer_stop(self):
@@ -277,6 +310,13 @@ class HLLCaptureSession:
         except Exception:
             self.logger.exception('Failed to stop RCON')
         self.push_to_db()
+        
+        # Stop webhook sink if configured
+        try:
+            if getattr(self, "webhook_sink", None):
+                await self.webhook_sink.stop()
+        except Exception:
+            self.logger.exception('Failed to stop webhook sink')
 
     def _clear_tasks(self):
         if self._start_task and not self._start_task.done():
