@@ -1,13 +1,12 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
-from functools import update_wrapper, wraps
 from inspect import isfunction, iscoroutinefunction, isclass
 from enum import Enum
 
-from lib.info.models import EventModel, EventTypes, PlayerKillEvent, PlayerSuicideEvent
+from lib.rcon.models import EventModel, EventTypes
 from utils import to_timedelta
 
-from typing import Union, List, Tuple, Any, Callable, Sequence, Coroutine
+from typing import Union, List, Tuple, Any, Callable, Sequence
 
 
 class CooldownType(Enum):
@@ -17,7 +16,12 @@ class CooldownType(Enum):
     server='server'
 
 class ListenerCooldown:
-    def __init__(self, bucket_type: CooldownType, duration: Union[int, timedelta, datetime], callback: Callable = None):
+    def __init__(
+        self,
+        bucket_type: CooldownType,
+        duration: Union[int, timedelta, datetime],
+        callback: Callable | None = None,
+    ):
         self.duration = to_timedelta(duration)
         self.bucket_type = CooldownType(bucket_type)
         self._cooldowns: List[Tuple[Any, datetime]] = list()
@@ -80,8 +84,8 @@ class EventListener:
         event_types: Sequence[str],
         func: Callable,
         timeout: Union[float, None] = None,
-        conditions: Sequence[Callable[[EventModel], bool]] = None,
-        cooldowns: Sequence[ListenerCooldown] = None,
+        conditions: Sequence[Callable[[EventModel], bool]] | None = None,
+        cooldowns: Sequence[ListenerCooldown] | None = None,
     ):
         if not asyncio.iscoroutinefunction(func):
             raise TypeError('Method \'%s\' must be a coroutine function' % func.__name__)
@@ -110,9 +114,9 @@ class EventListener:
         """
         for condition in self._conditions:
             if iscoroutinefunction(condition):
-                res = await condition(sf, event)
+                res = await condition(sf, event) # type: ignore
             else:
-                res = condition(sf, event)
+                res = condition(sf, event) # type: ignore
 
             if not res:
                 return
@@ -151,7 +155,7 @@ def add_condition(callable: Callable):
         return func
     return decorator
 
-def add_cooldown(bucket_type: CooldownType, duration: Union[int, timedelta, datetime], callback: Callable = None):
+def add_cooldown(bucket_type: CooldownType, duration: Union[int, timedelta, datetime], callback: Callable | None = None):
     cd = ListenerCooldown(CooldownType(bucket_type), duration, callback)
     def decorator(func):
         cooldowns = getattr(func, '_cooldowns', list())
@@ -162,7 +166,12 @@ def add_cooldown(bucket_type: CooldownType, duration: Union[int, timedelta, date
 
 
 
-def event_listener(event_types: Sequence[Union[EventModel, EventTypes, str]], timeout: float = 10.0, conditions: List[Callable] = None, cls=EventListener):
+def event_listener(
+    event_types: Sequence[Union[EventModel, EventTypes, str]],
+    timeout: float | None = 10.0,
+    conditions: List[Callable] | None = None,
+    cls=EventListener
+):
     try:
         timeout = float(timeout) if timeout else None
     except TypeError:
@@ -176,20 +185,20 @@ def event_listener(event_types: Sequence[Union[EventModel, EventTypes, str]], ti
     if not issubclass(cls, EventListener):
         raise ValueError("Cls %s must be a subclass of EventListener" % cls.__name__)
 
-    event_types = list(event_types)
-    for i, event_type in enumerate(event_types):
+    event_type_strs = []
+    for event_type in event_types:
         if isinstance(event_type, EventModel):
-            event_type = event_type.__event_name__
+            event_type_strs.append(event_type.get_type().name)
         elif isinstance(event_type, EventTypes):
-            event_type = event_type.name
-        elif not isinstance(event_type, str):
+            event_type_strs.append(event_type.name)
+        elif isinstance(event_type, str):
+            event_type_strs.append(event_type)
+        else:
             raise TypeError("event_type must be either an EventModel, EventTypes or str, not %s" % type(event_type).__name__)
-        event_types[i] = event_type
-    
 
     def decorator(func):
         return cls(
-            event_types=event_types,
+            event_types=event_type_strs,
             func=func,
             timeout=timeout,
             conditions=conditions
@@ -219,35 +228,35 @@ def on_player_join_server(timeout: float = 10.0):
 
 def on_server_map_changed(timeout: float = 10.0):
     """Adds an event listener for the server changing map."""
-    return event_listener([EventTypes.server_map_changed], timeout=timeout)
+    return event_listener([EventTypes.server_map_change], timeout=timeout)
 
 def on_server_match_started(timeout: float = 10.0):
     """Adds an event listener for a new match being started."""
-    return event_listener([EventTypes.server_match_started], timeout=timeout)
+    return event_listener([EventTypes.server_match_start], timeout=timeout)
 
 def on_server_warmup_ended(timeout: float = 10.0):
     """Adds an event listener for a match's warmup phase ending."""
-    return event_listener([EventTypes.server_match_ended], timeout=timeout)
+    return event_listener([EventTypes.server_warmup_end], timeout=timeout)
 
 def on_server_match_ended(timeout: float = 10.0):
     """Adds an event listener for a match being finished."""
-    return event_listener([EventTypes.server_match_ended], timeout=timeout)
+    return event_listener([EventTypes.server_match_end], timeout=timeout)
 
 def on_squad_created(timeout: float = 10.0):
     """Adds an event listener for squads being created."""
-    return event_listener([EventTypes.squad_created], timeout=timeout)
+    return event_listener([EventTypes.squad_create], timeout=timeout)
 
 def on_player_switch_team(timeout: float = 10.0):
     """Adds an event listener for players switching team."""
-    return event_listener([EventTypes.player_switch_team], timeout=timeout)
+    return event_listener([EventTypes.player_change_team], timeout=timeout)
 
 def on_player_switch_squad(timeout: float = 10.0):
     """Adds an event listener for players switching squad."""
-    return event_listener([EventTypes.player_switch_squad], timeout=timeout)
+    return event_listener([EventTypes.player_change_squad], timeout=timeout)
 
 def on_squad_leader_change(timeout: float = 10.0):
     """Adds an event listener for when a squad gets a different leader."""
-    return event_listener([EventTypes.squad_leader_change], timeout=timeout)
+    return event_listener([EventTypes.squad_change_leader], timeout=timeout)
 
 def on_player_change_role(timeout: float = 10.0):
     """Adds an event listener for when a player changes their role."""
@@ -283,7 +292,7 @@ def on_player_suicide(timeout: float = 10.0):
 
 def on_objective_capture(timeout: float = 10.0):
     """Adds an event listener for an objective being captured."""
-    return event_listener([EventTypes.objective_capture], timeout=timeout)
+    return event_listener([EventTypes.team_capture_objective], timeout=timeout)
 
 def on_player_level_up(timeout: float = 10.0):
     """Adds an event listener for players leveling up."""
@@ -305,4 +314,4 @@ def on_player_leave_server(timeout: float = 10.0):
 
 def on_squad_disbanded(timeout: float = 10.0):
     """Adds an event listener for squads being disbanded."""
-    return event_listener([EventTypes.squad_disbanded], timeout=timeout)
+    return event_listener([EventTypes.squad_disband], timeout=timeout)

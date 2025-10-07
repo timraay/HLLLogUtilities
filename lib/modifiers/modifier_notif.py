@@ -1,8 +1,8 @@
 import asyncio
 
 from .base import Modifier
-from lib.info.events import on_iteration, add_condition
-from lib.info.models import IterationEvent
+from lib.events import on_iteration
+from lib.rcon.models import IterationEvent, Player
 
 MODIFIER_NOTIFICATION_MSG = (
     "[  HLL LOG UTILITIES  ]\n"
@@ -44,7 +44,7 @@ class ModifierNotifModifier(Modifier):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.steamids = set()
+        self.player_ids: set[str] = set()
         self.last_seen = None
 
     @on_iteration()
@@ -52,33 +52,34 @@ class ModifierNotifModifier(Modifier):
         has_modifiers = bool(self.session.modifier_flags)
         send_update = self.last_seen is not None and self.last_seen != self.session.modifier_flags
 
-        all_players = event.root.get('players', ())
-        players_new = list()
-        players_update = list()
-        for player in all_players:
-            if player.steamid not in self.steamids:
+        players_new: list[Player] = list()
+        players_update: list[Player] = list()
+        for player in event.snapshot.players:
+            if player.id not in self.player_ids:
                 players_new.append(player)
             elif send_update:
                 players_update.append(player)
 
         
         if players_new and has_modifiers:
+            rcon = self.get_rcon()
             message = self.get_modifier_notif_msg()
             await asyncio.gather(*[
-                self.rcon.send_direct_message(
+                rcon.client.message_player(
                     message=message,
-                    target=player
+                    player_id=player.id,
                 ) for player in players_new
             ])
 
         if players_update:
+            rcon = self.get_rcon()
             message = self.get_modifier_notif_msg(update=True)
             await asyncio.gather(*[
-                self.rcon.send_direct_message(
+                rcon.client.message_player(
                     message=message,
-                    target=player
+                    player_id=player.id,
                 ) for player in players_update
             ])
         
-        self.steamids = {player.steamid for player in all_players}
+        self.player_ids = {player.id for player in event.snapshot.players}
         self.last_seen = self.session.modifier_flags.copy()

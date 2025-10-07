@@ -131,7 +131,7 @@ class api_keys(commands.Cog):
                     new_key.insert_in_db()
                     await interaction.response.edit_message(embed=get_success_embed(
                         title=f"Added API Key for {api_key.team}!",
-                    ), ephemeral=True)
+                    ))
 
                 view = View()
                 view.add_item(CallableButton(on_overwrite_key, label="Overwrite key", style=discord.ButtonStyle.gray))

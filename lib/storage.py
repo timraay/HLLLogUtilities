@@ -1,140 +1,12 @@
-from pydantic import BaseModel, validator
-from datetime import datetime
-from pypika import Table, Query, Column
-import sqlite3
 import logging
+from pypika import Table, Query
+import sqlite3
+from typing import Sequence
 
-from lib.info.models import *
+from lib.logs import LogLine
 
 DB_VERSION = 6
 HLU_VERSION = "v2.2.10"
-
-class LogLine(BaseModel):
-    event_time: datetime = None
-    type: str = None
-    player_name: str = None
-    player_steamid: str = None
-    player_team: str = None
-    player_role: str = None
-    player_combat_score: int = None
-    player_offense_score: int = None
-    player_defense_score: int = None
-    player_support_score: int = None
-    player2_name: str = None
-    player2_steamid: str = None
-    player2_team: str = None
-    player2_role: str = None
-    weapon: str = None
-    old: str = None
-    new: str = None
-    team_name: str = None
-    squad_name: str = None
-    message: str = None
-
-    @validator('player_team', 'player2_team', 'team_name')
-    def validate_team(cls, v):
-        if v not in {'Allies', 'Axis'}:
-            raise ValueError("%s is not a valid team name" % v)
-        return v
-    # @validator('player_steamid', 'player2_steamid')
-    # def validate_steamid(cls, v):
-    #     try:
-    #         if len(v) != 17:
-    #             raise ValueError('Unexpected SteamID size')
-    #         int(v)
-    #     except:
-    #         raise ValueError("%s is not a valid Steam64ID" % v)
-    #     return v
-    
-    @classmethod
-    def from_event(cls, event: EventModel):
-        player = event.get('player')
-        player2 = event.get('other')
-        squad = event.get('squad') or (player.get('squad') if player else None)
-        team = event.get('team') or (squad.get('team') if squad else None) or (player.get('team') if player else None)
-
-        old = event.get('old')
-        new = event.get('new') or event.get('map')
-        message = event.get('message')
-
-        if isinstance(event, SquadLeaderChangeEvent):
-            player = event.new
-            player2 = event.old
-            old = None
-            new = None
-        elif isinstance(event, (PlayerSwitchSquadEvent, PlayerSwitchTeamEvent)):
-            old = event.old.name if event.old else None
-            new = event.new.name if event.new else None
-        elif isinstance(event, PlayerScoreUpdateEvent):
-            # Bit confusing, but cba to add two new columns to the table for this event alone
-            new = event.player.get('kills', 0)
-            message = event.player.get('deaths', 0)
-        elif isinstance(event, (ServerMatchEndedEvent, ObjectiveCaptureEvent)):
-            message = event.score
-        
-        if isinstance(event, PlayerMessageEvent):
-            if isinstance(event.channel, Squad):
-                squad = event.channel
-                team = event.channel.team
-            else:
-                team = event.channel
-        
-        payload = dict()
-        if player:
-            player_team = player.get('team', team)
-            payload.update(
-                player_name=player.name,
-                player_steamid=player.steamid,
-                player_team=player_team.name if player_team else None,
-                player_role=player.get('role'),
-            )
-            if player.has('score'):
-                payload.update(
-                    player_combat_score=player.score.combat,
-                    player_offense_score=player.score.offense,
-                    player_defense_score=player.score.defense,
-                    player_support_score=player.score.support,
-                )
-        if player2:
-            player2_team = player2.get('team')
-            payload.update(
-                player2_name=player2.name,
-                player2_steamid=player2.steamid,
-                player2_team=player2_team.name if player2_team else None,
-                player2_role=player2.get('role'),
-            )
-        if team:
-            payload['team_name'] = team.name
-        if squad:
-            payload['squad_name'] = squad.name
-
-        payload['old'] = old
-        payload['new'] = new
-        payload['message'] = message
-        
-        payload['weapon'] = event.get('weapon')
-
-        payload.setdefault('type', str(EventTypes(event.__class__)))
-        return cls(event_time=event.event_time, **{k: v for k, v in payload.items() if v is not None})
-
-    @staticmethod
-    def _get_create_query(table_name: str, _explicit_fields: Sequence = None):
-        if _explicit_fields:
-            field_names = list(_explicit_fields)
-        else:
-            field_names = [field.name for field in LogLine.__fields__.values()]
-
-        # I really need to look into a better way to do this at some point
-        exceptions = dict(
-            player_combat_score='INTEGER',
-            player_offense_score='INTEGER',
-            player_defense_score='INTEGER',
-            player_support_score='INTEGER',
-        )
-        query = Query.create_table(table_name).columns(*[
-            Column(field_name, exceptions.get(field_name, 'TEXT')) for field_name in field_names
-        ])
-        return str(query)
 
 database = sqlite3.connect('sessions.db')
 cursor = database.cursor()
@@ -182,7 +54,7 @@ INSERT INTO "db_version" ("format_version")
 database.commit()
 
 
-def update_table_columns(table_name: str, old: list, new: list, defaults: dict = {}):
+def update_table_columns(table_name: str, old: list[str], new: list[str], defaults: dict = {}):
     table_name_new = table_name + "_new"
 
     # Create a new table with the proper columns
@@ -299,12 +171,12 @@ def insert_many_logs(sess_id: int, logs: Sequence['LogLine'], sort: bool = True)
     table = Table(sess_name)
 
     if sort:
-        logs = sorted(logs, key=lambda l: l.event_time)
+        logs = sorted(logs, key=lambda log: log.event_time)
 
     # Insert the logs
     insert_query = table
     for log in logs:
-        insert_query = insert_query.insert(*log.dict().values())
+        insert_query = insert_query.insert(*log.model_dump().values())
     cursor.execute(str(insert_query))
     
     database.commit()

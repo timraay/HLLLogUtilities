@@ -2,8 +2,8 @@ import asyncio
 from datetime import datetime, timezone
 
 from .base import Modifier
-from lib.storage import LogLine
-from lib.info.events import on_player_any_kill, PlayerKillEvent, add_condition, add_cooldown, CooldownType
+from lib.events import on_player_any_kill, add_condition, add_cooldown, CooldownType
+from lib.rcon.models import PlayerKillEvent
 from lib.mappings import WEAPONS, VEHICLES
 
 class NoPantherModifier(Modifier):
@@ -19,22 +19,24 @@ class NoPantherModifier(Modifier):
     @add_condition(lambda _, event: VEHICLES.get(WEAPONS.get(event.weapon, event.weapon)) == "Panther")
     @add_cooldown(CooldownType.squad, duration=10)
     async def punish_on_panther_usage(self, event: PlayerKillEvent):
-        player = event.player
+        player = event.get_player()
 
-        log = LogLine.from_event(event)
-        log.type = "rule_violated"
-        log.event_time=datetime.now(tz=timezone.utc)
+        log = event.to_log_line()
+        log.event_type = "rule_violated"
+        log.event_time = datetime.now(tz=timezone.utc)
         log.message = "Used a Panther in combat"
         self.session._logs.append(log)
 
-        reason = "The use of Panthers this match has been disallowed."
-        await asyncio.gather(*[
-            self.rcon.kill_player(p, reason)
-            for p in player.squad.players
-        ])
+        if player:
+            rcon = self.get_rcon()
+            reason = "The use of Panthers this match has been disallowed."
 
-        commander = player.team.leader if player.get('team') else None
-        if commander:
-            await self.rcon.kill_player(commander, reason)
-            await self.rcon.send_direct_message(reason + "\n\nAs a commander, you should not be spawning these tanks.", commander)
-        
+            if squad := player.get_squad():
+                await asyncio.gather(*[
+                    rcon.client.kill_player(player_id=p.id, message=reason)
+                    for p in squad.get_players()
+                ])
+
+            if (team := player.get_team()) and (commander := team.get_commander()):
+                await rcon.client.kill_player(commander.id, reason)
+                await rcon.client.message_player(commander.id, reason + "\n\nAs a commander, you should not be spawning these tanks.")

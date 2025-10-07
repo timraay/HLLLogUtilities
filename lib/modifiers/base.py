@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Dict, List
 
-from lib.info.models import EventModel, EventTypes
-from lib.info.events import EventListener
+from lib.rcon.models import EventModel, EventTypes
+from lib.events import EventListener
 from lib.config import Configurable, BasicConfig, skip_config_init
 
 if TYPE_CHECKING:
@@ -38,6 +38,10 @@ class Modifier(Configurable):
             for event_type in listener.events:
                 self.listeners.setdefault(event_type, list()).append(listener)
     
+    def get_rcon(self):
+        assert self.session.rcon is not None
+        return self.session.rcon
+
     @property
     def rcon(self):
         return self.session.rcon

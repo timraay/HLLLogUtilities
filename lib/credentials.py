@@ -1,16 +1,14 @@
-from typing import Union, Dict
-
 from lib.storage import cursor, database
 from lib.exceptions import NotFound, TemporaryCredentialsError, CredentialsAlreadyCreatedError
 from lib.modifiers import ModifierFlags
 from lib.autosession import AutoSessionManager
 from utils import ttl_cache
 
-CREDENTIALS: Dict[int, 'Credentials'] = dict()
+CREDENTIALS: dict[int, 'Credentials'] = dict()
 
 class Credentials:
-    def __init__(self, id: Union[int, None], guild_id: int, name: str, address: str, port: int,
-            password: str, default_modifiers: ModifierFlags = None, autosession_enabled: bool = False):
+    def __init__(self, id: int | None, guild_id: int, name: str, address: str, port: int,
+            password: str, default_modifiers: ModifierFlags | None = None, autosession_enabled: bool = False):
         self.id = id
         self.guild_id = guild_id
         self.name = name
@@ -31,6 +29,7 @@ class Credentials:
             
             self.autosession = AutoSessionManager(self, autosession_enabled)
             
+            assert self.id is not None
             CREDENTIALS[self.id] = self
 
     @classmethod
@@ -67,7 +66,7 @@ class Credentials:
         return cursor.lastrowid
 
     @classmethod
-    def create_in_db(cls, guild_id: int, name: str, address: str, port: int, password: str, default_modifiers: ModifierFlags = None):
+    def create_in_db(cls, guild_id: int, name: str, address: str, port: int, password: str, default_modifiers: ModifierFlags | None = None):
         if default_modifiers:
             default_modifiers = default_modifiers.copy()
         else:
@@ -85,7 +84,7 @@ class Credentials:
         )
 
     @classmethod
-    def create_temporary(cls, guild_id: int, name: str, address: str, port: int, password: str, default_modifiers: ModifierFlags = None):
+    def create_temporary(cls, guild_id: int, name: str, address: str, port: int, password: str, default_modifiers: ModifierFlags | None = None):
         if default_modifiers:
             default_modifiers = default_modifiers.copy()
         else:
@@ -127,7 +126,7 @@ class Credentials:
     
     @property
     def temporary(self):
-        return not bool(self.id)
+        return self.id is None
 
     @property
     def autosession_enabled(self):
@@ -155,6 +154,7 @@ class Credentials:
         
         if self.autosession is None:
             self.autosession = AutoSessionManager(self, False)
+        assert self.id is not None
         CREDENTIALS[self.id] = self
 
     def save(self):
@@ -172,6 +172,7 @@ class Credentials:
         cursor.execute('DELETE FROM credentials WHERE ROWID = ?', (self.id,))
         database.commit()
         
+        assert self.id is not None
         del CREDENTIALS[self.id]
         self.id = None
 

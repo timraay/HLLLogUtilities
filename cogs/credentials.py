@@ -9,9 +9,10 @@ from functools import wraps
 from typing import Optional, Callable
 import logging
 
+from hllrcon import Rcon
+
 from lib.credentials import Credentials, credentials_in_guild_tll
 from lib.exceptions import HLLAuthError, HLLConnectionError, HLLConnectionRefusedError
-from lib.rcon import create_plain_transport
 from lib.autosession import MIN_PLAYERS_TO_START, MIN_PLAYERS_UNTIL_STOP, SECONDS_BETWEEN_ITERATIONS, MAX_DURATION_MINUTES
 from lib.modifiers import ModifierFlags
 from discord_utils import CallableButton, get_error_embed, get_success_embed, get_question_embed, handle_error, CustomException, View, Modal, only_once, ExpiredButtonError
@@ -42,7 +43,7 @@ class RCONCredentialsModal(Modal):
             address, port = self.address.value.split(':', 1)
             address = str(IPv4Address(address))
             port = int(port)
-        except:
+        except Exception:
             raise CustomException(
                 "Invalid RCON Address!",
                 "The given input is not a valid IPv4 address with port."
@@ -75,12 +76,13 @@ class RCONCredentialsModal(Modal):
         await interaction.response.defer(ephemeral=True, thinking=True)
 
         try:
-            transport = await create_plain_transport(
+            rcon = Rcon(
                 host=address,
                 port=port,
                 password=password
             )
-            transport._transport.close()
+            async with rcon.connect():
+                pass
         except HLLConnectionError as error:
             logging.error('Failed connection to %s:%s (GID: %s) - %s: %s', address, port, interaction.guild_id, type(error).__name__, str(error))
             if isinstance(error, HLLAuthError):

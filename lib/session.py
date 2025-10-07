@@ -1,17 +1,17 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 from discord.ext import tasks
-from pypika import Query, Table, Column
+from pypika import Table
 from typing import Union, Dict, Tuple, Sequence
-import re
 
-from lib.rcon import HLLRcon
 from lib.credentials import Credentials
-from lib.storage import LogLine, database, cursor, insert_many_logs, delete_logs
 from lib.exceptions import NotFound, SessionDeletedError, SessionAlreadyRunningError, SessionMissingCredentialsError
+from lib.events import EventListener
+from lib.flags import EventFlags
 from lib.modifiers import ModifierFlags, Modifier, INTERNAL_MODIFIERS
-from lib.info.models import EventFlags, EventModel, ActivationEvent, IterationEvent, DeactivationEvent, InfoHopper, PrivateEventModel
-from lib.info.events import EventListener
+from lib.rcon import HLLRcon
+from lib.rcon.models import ActivationEvent, DeactivationEvent, EventModel, IterationEvent, PrivateEventModel, Snapshot
+from lib.storage import LogLine, database, cursor, insert_many_logs, delete_logs
 from utils import get_config, schedule_coro, get_logger
 
 SECONDS_BETWEEN_ITERATIONS = get_config().getint('Session', 'SecondsBetweenIterations')
@@ -30,7 +30,7 @@ def get_sessions(guild_id: int):
 
 class HLLCaptureSession:
     def __init__(self, id: int, guild_id: int, name: str, start_time: datetime, end_time: Union[datetime, None],
-            credentials: Credentials, modifiers: ModifierFlags = ModifierFlags(), loop: asyncio.AbstractEventLoop = None):
+            credentials: Credentials | None, modifiers: ModifierFlags = ModifierFlags(), loop: asyncio.AbstractEventLoop | None = None):
         self.id = id
         self.guild_id = guild_id
         self.name = name
@@ -52,10 +52,14 @@ class HLLCaptureSession:
 
         self.logger = get_logger(self)
 
-        self.rcon = None
-        self.info = None
+        self.rcon: HLLRcon | None = None
+        self.snapshot: Snapshot = Snapshot()
 
-        self.modifiers = [modifier(self) for modifier in INTERNAL_MODIFIERS] + [modifier(self) for modifier in modifiers.get_modifier_types()]
+        self.modifiers = [
+            modifier(self) for modifier in INTERNAL_MODIFIERS
+        ] + [
+            modifier(self) for modifier in modifiers.get_modifier_types()
+        ]
         self.modifier_flags = modifiers.copy()
         self.logger.info("Installed modifiers: %s", ", ".join([modifier.config.name for modifier in self.modifiers]))
         
@@ -104,13 +108,15 @@ class HLLCaptureSession:
         )
     
     @classmethod
-    def create_in_db(cls, guild_id: int, name: str, start_time: datetime, end_time: datetime, credentials: Credentials, modifiers: ModifierFlags = ModifierFlags()):
+    def create_in_db(cls, guild_id: int, name: str, start_time: datetime, end_time: datetime | None, credentials: Credentials, modifiers: ModifierFlags = ModifierFlags()):
         if end_time is not None and datetime.now(tz=timezone.utc) > end_time:
             raise ValueError('This capture session would have already ended')
 
         cursor.execute('INSERT INTO sessions (guild_id, name, start_time, end_time, credentials_id, modifiers) VALUES (?,?,?,?,?,?)',
             (guild_id, name, start_time, end_time, credentials.id, modifiers.value))
         id_ = cursor.lastrowid
+        if id_ is None:
+            raise Exception("Failed to create session in the database")
 
         # Create the table if needed
         sess_name = f"session{id_}"
@@ -130,7 +136,9 @@ class HLLCaptureSession:
         return self
 
     @property
-    def duration(self):
+    def duration(self) -> timedelta:
+        if not self.end_time:
+            raise ValueError("Session does not have an end time")
         return self.end_time - self.start_time
 
     @property
@@ -173,19 +181,21 @@ class HLLCaptureSession:
             return True
     
     def should_delete(self):
+        if self.end_time is None:
+            return False
         return datetime.now(tz=timezone.utc) > (self.end_time + DELETE_SESSION_AFTER)
 
     async def activate(self):
         if not self.credentials:
             raise SessionMissingCredentialsError(f"Session with ID {self.id} does not have server credentials")
         
-        autosession = next((
-            session for session in get_sessions(self.credentials.guild_id)
-            if session.credentials == self.credentials and session != self and session.is_auto_session
-        ), None)
-        if autosession:
-            autosession.credentials.autosession.logger.info("Disabling active session since a manual session was started")
-            await autosession.stop()
+        for session in get_sessions(self.credentials.guild_id):
+            if session.credentials == self.credentials and session != self and session.is_auto_session:
+                assert session.credentials is not None
+                assert session.credentials.autosession is not None
+                session.credentials.autosession.logger.info("Disabling active session since a manual session was started")
+                await session.stop()
+                break
 
         if self.rcon is None:
             self.rcon = HLLRcon(session=self)
@@ -198,9 +208,9 @@ class HLLCaptureSession:
         self.is_auto_session = False
         active = self.active_in()
 
-        if active == False:
+        if active is False:
             pass
-        elif active == True:
+        elif active is True:
             self.end_time = datetime.now(tz=timezone.utc)
             self.save()
         else:
@@ -212,23 +222,27 @@ class HLLCaptureSession:
 
     @tasks.loop(seconds=SECONDS_BETWEEN_ITERATIONS)
     async def gatherer(self):
-        info = await self.rcon.update()
+        snapshot = None
 
-        if info:
-            if self.info:
-                info.compare_older(self.info, event_time=self.rcon._logs_seen_time)
+        if self.rcon is None:
+            # This realistically shouldn't happen
+            await self.deactivate()
+            return
 
-            self.info = info
-            
-            events = list(info.events.flatten())
-            events.insert(0, IterationEvent(info))
+        try:
+            snapshot = await self.rcon.create_snapshot()
+            self.snapshot = snapshot
+        except Exception:
+            self.logger.exception("Failed to create snapshot")
+        else:
+            events = [IterationEvent(snapshot=snapshot)] + snapshot.events
             for event in events:
                 if not isinstance(event, PrivateEventModel):
                     try:
-                        log = LogLine.from_event(event)
-                        # print(event.to_dict(exclude_unset=True))
-                    except:
-                        self.logger.exception('Failed to cast event to log line: %s %s' % (type(event).__name__, event.to_dict(exclude_unset=True)))
+                        log = event.to_log_line()
+                        print(event.get_type().name, event.model_dump(exclude={"snapshot"}))
+                    except Exception:
+                        self.logger.exception('Failed to cast event to log line: %s %s' % (type(event).__name__, event.model_dump()))
                     else:
                         self._logs.append(log)
                 
@@ -240,7 +254,9 @@ class HLLCaptureSession:
                 self.push_to_db()
         
         if self.is_auto_session:
-            playercount = len(info.get('players', [])) if info else 0
+            assert self.credentials is not None
+            assert self.credentials.autosession is not None
+            playercount = len(snapshot.players) if snapshot else 0
             if playercount < MIN_PLAYERS_UNTIL_AUTOSESSION_STOP:
                 self._session_expiration_count += 1
                 self.credentials.autosession.logger.info("%s/%s players online, session will expire after %s more iterations",
@@ -258,24 +274,26 @@ class HLLCaptureSession:
     @gatherer.before_loop
     async def before_gatherer_start(self):
         try:
-            await self.rcon.start(force=False)
+            assert self.rcon is not None
+            await self.rcon.start()
         except Exception:
             self.logger.exception('Failed to start RCON')
         
         self._session_expiration_count = 0
 
-        event = ActivationEvent(InfoHopper())
+        event = ActivationEvent(snapshot=Snapshot())
         await self.invoke_event(event)
 
     @gatherer.after_loop
     async def after_gatherer_stop(self):
-        event = DeactivationEvent(self.info)
+        event = DeactivationEvent(snapshot=self.snapshot)
         await self.invoke_event(event)
 
-        try:
-            await self.rcon.stop(force=True)
-        except Exception:
-            self.logger.exception('Failed to stop RCON')
+        if self.rcon:
+            try:
+                await self.rcon.stop()
+            except Exception:
+                self.logger.exception('Failed to stop RCON')
         self.push_to_db()
 
     def _clear_tasks(self):
@@ -306,9 +324,9 @@ class HLLCaptureSession:
         EventListener
             A corresponding event listener
         """
-        yield from self.listeners.get(event.event_time, list())
+        yield from self.listeners.get(event.get_type().name, ())
 
-    async def invoke_event(self, event: EventModel, modifiers: Sequence['Modifier'] = None):
+    async def invoke_event(self, event: EventModel, modifiers: Sequence['Modifier'] | None = None):
         if modifiers is None:
             modifiers = self.modifiers
 
@@ -325,11 +343,17 @@ class HLLCaptureSession:
             insert_many_logs(sess_id=self.id, logs=self._logs)
         self._logs = list()
 
-    def get_logs(self, from_: datetime = None, to: datetime = None, filter: EventFlags = None, limit: int = None):
+    def get_logs(
+        self,
+        from_: datetime | None = None,
+        to: datetime | None = None,
+        filter: EventFlags | None = None,
+        limit: int | None = None,
+    ):
         self.push_to_db()
 
         sess_name = f"session{self.id}"
-        columns = tuple(LogLine.__fields__)
+        columns = tuple(LogLine.model_fields)
 
         table = Table(sess_name)
         query = table.select(*columns)
@@ -339,7 +363,7 @@ class HLLCaptureSession:
         if to:
             query = query.where(table.event_time < to)
         if filter is not None:
-            query = query.where(table.type.isin([k for k, v in filter if v]))
+            query = query.where(table.event_type.isin([k for k, v in filter if v]))
         if limit:
             query = query.limit(limit)
         
@@ -362,9 +386,9 @@ class HLLCaptureSession:
         del SESSIONS[self.id]
 
     async def edit(self,
-        start_time: datetime = None,
-        end_time: datetime = None,
-        credentials: Credentials = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        credentials: Credentials | None = None,
         modifiers: ModifierFlags = ModifierFlags()
     ):
         # Get differences between old and new modifier flags
@@ -384,7 +408,7 @@ class HLLCaptureSession:
         if modifiers_to_remove:
             self.modifier_flags ^= modifier_flags_to_remove
             self.__listeners = None
-            event = DeactivationEvent(InfoHopper())
+            event = DeactivationEvent(snapshot=Snapshot())
             await self.invoke_event(event, modifiers_to_remove)
         
         # Update start and end time
@@ -414,7 +438,7 @@ class HLLCaptureSession:
             self.__listeners = None
             self.modifiers += modifiers_to_add
             self.modifier_flags |= modifier_flags_to_add
-            event = ActivationEvent(InfoHopper())
+            event = ActivationEvent(snapshot=Snapshot())
             await self.invoke_event(event, modifiers_to_add)
 
         # At last, save
@@ -427,12 +451,15 @@ class HLLCaptureSession:
         active_in = self.active_in()
         
         if force_reconnect and self.rcon:
-            await self.rcon.stop(force=False)
+            await self.rcon.stop()
 
         self._start_task = None
         self._stop_task = None
 
+        end_time = self.end_time
+        assert end_time is not None
+
         if active_in and not is_activated:
             self._start_task = schedule_coro(self.start_time, self.activate, error_logger=self.logger)
         if active_in or is_activated:
-            self._stop_task = schedule_coro(self.end_time, self.deactivate, error_logger=self.logger)
+            self._stop_task = schedule_coro(end_time, self.deactivate, error_logger=self.logger)

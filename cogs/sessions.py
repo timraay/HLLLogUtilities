@@ -201,7 +201,7 @@ class SessionCreateView(View):
 
                 embed = discord.Embed(
                     title="Do you want me to save these credentials?",
-                    description=f"That way you don't have to type 'em in every time, and can I recover your session in case of a restart.",
+                    description="That way you don't have to type 'em in every time, and can I recover your session in case of a restart.",
                     url=SECURITY_URL
                 )
 
@@ -362,7 +362,7 @@ class sessions(commands.Cog):
             if id_ not in SESSIONS:
                 try:
                     HLLCaptureSession.load_from_db(id_)
-                except:
+                except Exception:
                     print('Failed to load session', id_)
                     print_exc()
         
@@ -371,7 +371,7 @@ class sessions(commands.Cog):
             if id_ not in CREDENTIALS:
                 try:
                     Credentials.load_from_db(id_)
-                except:
+                except Exception:
                     print('Failed to load credentials and initialize autosession', id_)
                     print_exc()
 
@@ -392,7 +392,7 @@ class sessions(commands.Cog):
                     start_time = datetime.now(tz=timezone.utc)
                 else:
                     start_time = dt_parse(start_time, fuzzy=True, dayfirst=True)
-            except:
+            except Exception:
                 raise CustomException(
                     "Couldn't interpret start time!",
                     "A few examples of what works:\n• `1/10/42 18:30`\n• `January 10 2042 6:30pm`\n• `6:30pm, 10th day of Jan, 2042`\n• `Now`"
@@ -418,7 +418,7 @@ class sessions(commands.Cog):
             else:
                 try:
                     end_time = dt_parse(end_time, fuzzy=True, dayfirst=True)
-                except:
+                except Exception:
                     raise CustomException(
                         "Couldn't interpret end time!",
                         "A few examples of what works:\n• `1/10/42 20:30`\n• `January 10 2042 8:30pm`\n• `8:30pm, 10th day of Jan, 2042`\n• `Now`"
@@ -500,7 +500,7 @@ class sessions(commands.Cog):
                     description = f"> 🕓 <t:{int(session.start_time.timestamp())}:f> - <t:{int(session.end_time.timestamp())}:t> ({int(session.duration.total_seconds() // 60)} mins.)"
                     description += f"\n> 🚩 `{session.credentials.name if session.credentials else 'Unknown'}`"
                     if session.modifier_flags:
-                        description += f" | 🧮 " + ", ".join([
+                        description += " | 🧮 " + ", ".join([
                             f"[{m.config.name}]({MODIFIERS_URL}#{m.config.name.lower().replace(' ', '-')})"
                             for m in session.modifier_flags.get_modifier_types()
                         ])
@@ -526,7 +526,7 @@ class sessions(commands.Cog):
                     description = f"> 🕓 <t:{int(session.start_time.timestamp())}:f> - <t:{int(session.end_time.timestamp())}:t> ({int(session.duration.total_seconds() // 60)} mins.)"
                     description += f"\n> 🚩 `{session.credentials.name if session.credentials else 'Unknown'}`"
                     if session.modifier_flags:
-                        description += f" | 🧮 " + ", ".join([
+                        description += " | 🧮 " + ", ".join([
                             f"[{m.config.name}]({MODIFIERS_URL}#{m.config.name.lower().replace(' ', '-')})"
                             for m in session.modifier_flags.get_modifier_types()
                         ])

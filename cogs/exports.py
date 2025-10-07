@@ -1,6 +1,6 @@
 from datetime import datetime
 from io import StringIO
-from typing import Callable, List, Optional, Union
+from typing import List, Optional
 
 import discord
 from discord import app_commands, Interaction, ui, ButtonStyle, SelectOption
@@ -12,20 +12,21 @@ from pydantic import BaseModel
 from cogs.sessions import autocomplete_sessions
 from cogs.credentials import SECURITY_URL
 from cogs.apikeys import HSSApiKeysModal
-from discord_utils import CallableButton, CallableSelect, View, only_once, CustomException, get_error_embed, get_success_embed
+from discord_utils import CallableButton, CallableSelect, View, CustomException, get_error_embed, get_success_embed
 from lib.converters import ExportFormats, Converter
 from lib.hss.api_key import api_keys_in_guild_ttl, HSSApiKey, HSSTeam
-from lib.info.models import EventFlags, EventTypes
+from lib.rcon.models import EventTypes
+from lib.flags import EventFlags
 from lib.mappings import get_map_and_mode, parse_layer
-from lib.scores import create_scoreboard, MatchGroup
+from lib.scores import MatchGroup
 from lib.session import HLLCaptureSession, SESSIONS
 from lib.storage import LogLine
 
 class ExportRange(BaseModel):
-    start_time: Optional[datetime]
-    end_time: Optional[datetime]
-    unload_time: Optional[datetime]
-    map_name: Optional[str]
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    unload_time: Optional[datetime] = None
+    map_name: Optional[str] = None
 
     @property
     def has_end_time(self):
@@ -64,40 +65,41 @@ class ExportRange(BaseModel):
         return self.start_time and self.has_end_time
 
 def get_ranges(logs):
-    flags = EventFlags(server_match_started=True, server_match_ended=True, server_map_changed=True)
+    flags = EventFlags(server_match_start=True, server_match_end=True, server_map_change=True)
     ranges = [ExportRange()]
     for log in flags.filter_logs(logs):
         try:
-            log_type = EventTypes(log.type)
+            log_type = EventTypes(log.event_type)
         except ValueError:
             continue
 
-        if log_type == EventTypes.server_match_ended:
+        if log_type == EventTypes.server_match_end:
             ranges[-1].end_time = log.event_time
             if not ranges[-1].map_name:
                 ranges[-1].map_name = " ".join(get_map_and_mode(log.new))
 
-        elif log_type == EventTypes.server_match_started:
+        elif log_type == EventTypes.server_match_start:
             ranges[-1].unload_time = log.event_time
             ranges.append(ExportRange(
                 start_time=log.event_time,
                 map_name=" ".join(get_map_and_mode(log.new))
             ))
 
-        elif log_type == EventTypes.server_map_changed:
-            if not ranges[-1].start_time:
-                last_start = None
-            else:
-                last_start = (log.event_time - ranges[-1].start_time).total_seconds()
+        # TODO: Re-enable after U18 hotfix or U19 release, once `server.map` returns the layer name again
+        # elif log_type == EventTypes.server_map_change:
+        #     if not ranges[-1].start_time:
+        #         last_start = None
+        #     else:
+        #         last_start = (log.event_time - ranges[-1].start_time).total_seconds()
 
-            if len(ranges) >= 2 and last_start and last_start < 30:
-                # The line appeared after the server_match_started event
-                ranges[-2].map_name = parse_layer(log.old).pretty()
-                ranges[-1].map_name = parse_layer(log.new).pretty()
+        #     if len(ranges) >= 2 and last_start and last_start < 30:
+        #         # The line appeared after the server_match_started event
+        #         ranges[-2].map_name = parse_layer(log.old).pretty()
+        #         ranges[-1].map_name = parse_layer(log.new).pretty()
             
-            elif not last_start or last_start > 60:
-                # The line appeared before the server_match_started event
-                ranges[-1].map_name = parse_layer(log.old).pretty()
+        #     elif not last_start or last_start > 60:
+        #         # The line appeared before the server_match_started event
+        #         ranges[-1].map_name = parse_layer(log.old).pretty()
 
     if len(ranges) == 1:
         ranges.clear()
@@ -360,7 +362,7 @@ class ToHeLOExportView(View):
         embed = None
 
         if self.range.is_eligible_for_helo():
-            end_log = next(log for log in self.logs if log.type == str(EventTypes.server_match_ended))
+            end_log = next(log for log in self.logs if log.event_type == str(EventTypes.server_match_ended))
             map_name = get_map_and_mode(end_log.new)[0]
             allies_score = int(end_log.message.split(' - ')[0])
             axis_score = int(end_log.message.split(' - ')[1])
@@ -472,7 +474,7 @@ class HeLOSubmitSelectOpponentView(View):
         self.api_key = api_key
         self.logs = logs
 
-        end_log = next(log for log in logs if log.type == str(EventTypes.server_match_ended))
+        end_log = next(log for log in logs if log.event_type == str(EventTypes.server_match_ended))
         self.map_name = get_map_and_mode(end_log.new)[0]
         self.allies_score = int(end_log.message.split(' - ')[0])
         self.axis_score = int(end_log.message.split(' - ')[1])

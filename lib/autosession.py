@@ -1,9 +1,9 @@
 import asyncio
 from datetime import datetime, timezone
 from discord.ext import tasks
+from hllrcon import Rcon
 
 from lib.exceptions import AutoSessionAlreadyCreatedError, TemporaryCredentialsError, HLLConnectionError, HLLAuthError
-from lib.rcon import create_plain_transport
 from utils import get_autosession_logger, get_config
 
 from typing import Dict, TYPE_CHECKING
@@ -25,7 +25,7 @@ NUM_ATTEMPTS_PER_ITERATION = 3
 AUTOSESSIONS: Dict[int, 'AutoSessionManager'] = dict()
 
 class AutoSessionManager:
-    def __init__(self, credentials: 'Credentials', enabled: bool = False, loop: asyncio.AbstractEventLoop = None):
+    def __init__(self, credentials: 'Credentials', enabled: bool = False, loop: asyncio.AbstractEventLoop | None = None):
         self.credentials = credentials
         self.loop = loop or asyncio.get_running_loop()
         self.id = self.credentials.id
@@ -34,10 +34,15 @@ class AutoSessionManager:
             raise TemporaryCredentialsError("Credentials %s are temporary" % self.credentials.name)
         if self.id in AUTOSESSIONS:
             raise AutoSessionAlreadyCreatedError("An auto-session with ID %s is already known" % self.id)
+        assert self.id is not None
 
         self._logger = None
 
-        self.protocol = None
+        self.client = Rcon(
+            host=self.credentials.address,
+            port=self.credentials.port,
+            password=self.credentials.password,
+        )
         self._failed_attempts = 0
         self._cooldown = 0
 
@@ -80,30 +85,13 @@ class AutoSessionManager:
     
     def delete(self):
         self.disable()
-        del AUTOSESSIONS[self.id]
+        if self.id is not None:
+            AUTOSESSIONS.pop(self.id, None)
         self.id = None
 
-    def close_protocol(self):
-        if self.protocol and self.protocol._transport:
-            self.protocol._transport.close()
-        self.protocol = None
-
     async def _check_for_session_start(self):
-        if not self.protocol or not self.protocol._transport:
-            self.protocol = await create_plain_transport(
-                host=self.credentials.address,
-                port=self.credentials.port,
-                password=self.credentials.password,
-                loop=self.loop,
-                logger=self.logger,
-            )
-        
-        resp = await asyncio.wait_for(
-            self.protocol.execute("get slots"),
-            timeout=5
-        )
-        playercount, _ = resp.split('/', 1)
-        playercount = int(playercount)
+        resp = await self.client.get_server_session()
+        playercount = resp['playerCount']
 
         self.last_seen_playercount = playercount
         self.last_seen_time = datetime.now(tz=timezone.utc)
@@ -134,7 +122,7 @@ class AutoSessionManager:
             if is_final_attempt:
                 # If on its third attempt, force the connection to be
                 # reopened, hoping that that might resolve the issue
-                self.close_protocol()
+                self.client.disconnect()
 
             try:
                 await self._check_for_session_start()
@@ -155,7 +143,7 @@ class AutoSessionManager:
                     self.logger.error("Failed to receive player count, %s attempts left", 2 - i)
 
                 if isinstance(exc, HLLConnectionError):
-                    self.close_protocol()
+                    self.client.disconnect()
                     self.last_error = str(exc)
                 elif isinstance(exc, asyncio.TimeoutError):
                     self.last_error = "Server took too long to respond"
@@ -169,7 +157,7 @@ class AutoSessionManager:
         
         if self._failed_attempts >= NUM_FAILED_ATTEMPTS_UNTIL_DISABLE:
             self.disable()
-            self.logger.warning("Failed %s iterations in a row, disabling AutoSession"),
+            self.logger.warning("Failed %s iterations in a row, disabling AutoSession", self._failed_attempts)
         elif self._failed_attempts >= NUM_FAILED_ATTEMPTS_UNTIL_SLOW:
             if not self.is_slowed:
                 self.gatherer.change_interval(seconds=SECONDS_BETWEEN_ITERATIONS_AFTER_FAIL)
@@ -185,13 +173,18 @@ class AutoSessionManager:
 
     @gatherer.before_loop
     async def before_gatherer_start(self):
-        self.close_protocol()
+        self.client.disconnect()
+        
+        self.client.host = self.credentials.address
+        self.client.port = self.credentials.port
+        self.client.password = self.credentials.password
+
         self._failed_attempts = 0
         self.logger.info('Started AutoSession for %s', self.credentials.name)
 
     @gatherer.after_loop
     async def after_gatherer_stop(self):
-        self.close_protocol()
+        self.client.disconnect()
         self.logger.info('Stopped AutoSession for %s', self.credentials.name)
 
 

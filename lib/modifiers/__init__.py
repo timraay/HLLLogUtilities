@@ -1,7 +1,5 @@
 from .base import Modifier
-from .enforce_name_validity import EnforceNameValidityModifier
 from .modifier_notif import ModifierNotifModifier
-from .no_medic import NoMedicModifier
 from .no_panther import NoPantherModifier
 from .one_arty import OneArtyModifier
 
@@ -9,21 +7,16 @@ from typing import Tuple, Type
 
 __all__ = (
     'ALL_MODIFIERS',
-    'get_modifier',
     'Modifier',
     'ModifierFlags',
 
-    'EnforceNameValidityModifier',
     'ModifierNotifModifier',
-    'NoMedicModifier',
     'NoPantherModifier',
     'OneArtyModifier',
 )
 
 ALL_MODIFIERS: Tuple[Type[Modifier], ...] = (
-    EnforceNameValidityModifier,
     ModifierNotifModifier,
-    NoMedicModifier,
     NoPantherModifier,
     OneArtyModifier,
 )
@@ -34,7 +27,7 @@ INTERNAL_MODIFIERS: Tuple[Type[Modifier], ...] = tuple(
 )
 
 
-from lib.info.types import Flags
+from lib.flags import Flags
 from discord.flags import flag_value, fill_with_flags
 
 @fill_with_flags()
@@ -55,4 +48,6 @@ class ModifierFlags(Flags):
     def get_modifier_types(self):
         for modifier_id, enabled in self:
             if enabled:
-                yield next((m for m in ALL_MODIFIERS if m.config.id == modifier_id), None)
+                modifier = next((m for m in ALL_MODIFIERS if m.config.id == modifier_id), None)
+                if modifier:
+                    yield modifier

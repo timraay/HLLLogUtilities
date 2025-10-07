@@ -1,13 +1,12 @@
 import operator
 from datetime import datetime, timedelta
 from enum import Enum
-import operator
 from pydantic import BaseModel
 from typing import Dict, List, Union, TYPE_CHECKING
 import logging
 
 from lib import mappings
-from lib.info.models import EventTypes
+from lib.rcon.models import EventTypes
 from utils import toTable, side_by_side
 
 if TYPE_CHECKING:
@@ -61,11 +60,11 @@ class MatchGroup:
         while logs:
             log = logs.pop(0)
             try:
-                log_type = EventTypes(log.type)
+                log_type = EventTypes(log.event_type)
             except ValueError:
                 continue
 
-            if log_type == EventTypes.server_match_started:
+            if log_type == EventTypes.server_match_start:
                 if match_logs:
                     match_data = MatchData.from_logs(match_logs)
                     matches.append(match_data)
@@ -369,19 +368,20 @@ class MatchData(DataStore):
         match_ended = None
         map_name = None
         for log in logs:
-            log_type = EventTypes(log.type)
+            log_type = EventTypes(log.event_type)
 
             # Look for map name
-            if log_type == EventTypes.server_map_changed:
-                map_name = mappings.parse_layer(log.new).pretty()
-                continue
+            # TODO: Re-enable after U18 hotfix or U19 release, once `server.map` returns the layer name again
+            # if log_type == EventTypes.server_map_change:
+            #     map_name = mappings.parse_layer(log.new).pretty()
+            #     continue
 
-            elif log_type == EventTypes.server_match_started:
+            if log_type == EventTypes.server_match_start:
                 if not map_name:
                     map_name = " ".join(mappings.get_map_and_mode(log.new))
                 continue
 
-            elif log_type == EventTypes.server_match_ended:
+            elif log_type == EventTypes.server_match_end:
                 if not map_name:
                     map_name = " ".join(mappings.get_map_and_mode(log.new))
                 match_ended = log
@@ -440,7 +440,7 @@ class MatchData(DataStore):
                 killer_data.leave(log.event_time)
 
             # Update player faction
-            elif log_type == EventTypes.player_switch_team:
+            elif log_type == EventTypes.player_change_team:
                 if all([log.old, log.new]):
                     killer_data.update_faction(Faction.Any)
                 elif log.new:

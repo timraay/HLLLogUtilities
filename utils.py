@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 import asyncio
 from pathlib import Path
 import re
+from typing import Coroutine
 
 def to_timedelta(value):
     if not value:
@@ -241,3 +242,21 @@ def side_by_side(text1, *others, spacing=5):
                 output.append(line1)
         text1 = "\n".join(output)
     return text1
+
+def safe_create_task(
+        coro: Coroutine,
+        err_msg: str | None = None,
+        name: str | None = None,
+        logger: logging.Logger = logging # type: ignore
+):
+    def _task_inner(t: asyncio.Task):
+        if t.cancelled():
+            logger.warning(f"Task {task.get_name()} was cancelled")
+        elif exc := t.exception():
+            logger.error(
+                err_msg or f"Unexpected error during task {task.get_name()}",
+                exc_info=exc
+            )
+    task = asyncio.create_task(coro, name=name)
+    task.add_done_callback(_task_inner)
+    return task
