@@ -91,7 +91,7 @@ class AutoSessionManager:
 
     async def _check_for_session_start(self):
         resp = await self.client.get_server_session()
-        playercount = resp['playerCount']
+        playercount = resp.player_count
 
         self.last_seen_playercount = playercount
         self.last_seen_time = datetime.now(tz=timezone.utc)
