@@ -647,6 +647,41 @@ LAYERS = {l.id: l for l in (
         attackers=Team.AXIS
     ),
     Layer(
+        id="STA_L_1942_Warfare",
+        map=MAPS["stalingrad"],
+        gamemode=Gamemode.WARFARE,
+    ),
+    Layer(
+        id="STA_L_1942_Warfare_Night",
+        map=MAPS["stalingrad"],
+        gamemode=Gamemode.WARFARE,
+        environment=Environment.NIGHT,
+    ),
+    Layer(
+        id="STA_L_1942_OffensiveRUS",
+        map=MAPS["stalingrad"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.ALLIES
+    ),
+    Layer(
+        id="STA_L_1942_OffensiveGER",
+        map=MAPS["stalingrad"],
+        gamemode=Gamemode.OFFENSIVE,
+        attackers=Team.AXIS
+    ),
+    Layer(
+        id="STA_S_1942_P_Skirmish_Dusk",
+        map=MAPS["stalingrad"],
+        gamemode=Gamemode.CONTROL,
+        environment=Environment.DUSK,
+    ),
+    Layer(
+        id="STA_S_1942_P_Skirmish_Overcast",
+        map=MAPS["stalingrad"],
+        gamemode=Gamemode.CONTROL,
+        environment=Environment.OVERCAST,
+    ),
+    Layer(
         id="remagen_warfare",
         map=MAPS["remagen"],
         gamemode=Gamemode.WARFARE,
@@ -1368,6 +1403,7 @@ WEAPONS = {
     "BOMBING RUN": "Bombing Run",
     "STRAFING RUN": "Strafing Run",
     "PRECISION STRIKE": "Precision Strike",
+    "ARTILLERY STRIKE": "Artillery Strike",
     "Unknown": "Katyusha Barrage",
     "FLARE GUN": "Flare Gun"
 }
@@ -1518,7 +1554,7 @@ BASIC_CATEGORIES_AXIS = {value: cat for cat, values in {
 }.items() for value in values}
 
 BASIC_CATEGORIES_SHARED = {value: cat for cat, values in {
-    "Ability": [ "Bombing Run", "Strafing Run", "Precision Strike" ],
+    "Ability": [ "Bombing Run", "Strafing Run", "Precision Strike", "Artillery Strike" ],
 }.items() for value in values}
 
 BASIC_CATEGORIES = {
