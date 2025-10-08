@@ -126,7 +126,7 @@ If you choose to host your own instance of the bot, you can run it natively from
 ### **Prerequisites (Native)**
 - A machine to host on, such as a VPS, dedicated server or your own PC
 - [Git](https://git-scm.com/downloads)
-- [Python](https://www.python.org/downloads) 3.8 or above
+- [Python](https://www.python.org/downloads) 3.11 or above
 
 ### **Prerequisites (Docker)**
 - A machine to host on, such as a VPS, dedicated server or your own PC
