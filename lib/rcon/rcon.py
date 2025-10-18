@@ -65,6 +65,7 @@ class HLLRcon:
             host=self.credentials.address,
             port=self.credentials.port,
             password=self.credentials.password,
+            logger=self.logger,
         )
     
     async def stop(self):
