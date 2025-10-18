@@ -1,7 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 from inspect import isfunction, iscoroutinefunction, isclass
-from enum import Enum
 
 from lib.rcon.models import EventModel, EventTypes
 from utils import to_timedelta
@@ -9,21 +8,15 @@ from utils import to_timedelta
 from typing import Union, List, Tuple, Any, Callable, Sequence
 
 
-class CooldownType(Enum):
-    player='player'
-    squad='squad'
-    team='team'
-    server='server'
-
 class ListenerCooldown:
     def __init__(
         self,
-        bucket_type: CooldownType,
+        field_name: str,
         duration: Union[int, timedelta, datetime],
         callback: Callable | None = None,
     ):
         self.duration = to_timedelta(duration)
-        self.bucket_type = CooldownType(bucket_type)
+        self.field_names = field_name.split(".")
         self._cooldowns: List[Tuple[Any, datetime]] = list()
         self.callback = callback
     
@@ -34,27 +27,17 @@ class ListenerCooldown:
                 new.append(cooldown)
         self._cooldowns = new
 
-    def get_property(self, event):
-        fields = set(event.__fields__)
-        if self.bucket_type == CooldownType.player:
-            if 'player' in fields and event.has('player'):
-                return event.player
-        elif self.bucket_type == CooldownType.squad:
-            if 'squad' in fields and event.has('squad'):
-                return event.squad
-            elif 'player' in fields and event.has('player') and event.player.has('squad'):
-                return event.player.squad
-        elif self.bucket_type == CooldownType.team:
-            if 'team' in fields and event.has('team'):
-                return event.team
-            elif 'squad' in fields and event.has('squad') and event.squad.has('team'):
-                return event.squad.team
-            elif 'player' in fields and event.has('player') and event.player.has('team'):
-                return event.player.team
-        elif self.bucket_type == CooldownType.server:
-            if event.root.has('server'):
-                return event.root.server
-        raise TypeError('%s does not have required attributes to apply cooldown %s: %s', type(event).__name__, self.bucket_type, event.to_dict(exclude_unset=True))
+    def get_property(self, event: EventModel):
+        value = event
+        for field_name in self.field_names:
+            try:
+                value = getattr(value, field_name)
+            except AttributeError:
+                raise TypeError(
+                    '%s does not have required attributes to apply cooldown %s (failed on %s): %s',
+                    type(event).__name__, self.field_names, field_name, event.model_dump(),
+                )
+        return value
 
     def validate(self, event):
         try:
@@ -70,13 +53,9 @@ class ListenerCooldown:
         return True
 
     def add(self, event):
-        try:
-            prop = self.get_property(event)
-        except TypeError:
-            print('%s does not have attribute %s, cannot apply cooldown condition', type(event).__name__, self.bucket_type)
-        else:
-            cooldown = (prop, datetime.now(tz=timezone.utc))
-            self._cooldowns.append(cooldown)
+        prop = self.get_property(event)
+        cooldown = (prop, datetime.now(tz=timezone.utc))
+        self._cooldowns.append(cooldown)
 
 
 class EventListener:
@@ -155,8 +134,8 @@ def add_condition(callable: Callable):
         return func
     return decorator
 
-def add_cooldown(bucket_type: CooldownType, duration: Union[int, timedelta, datetime], callback: Callable | None = None):
-    cd = ListenerCooldown(CooldownType(bucket_type), duration, callback)
+def add_cooldown(field_name: str, duration: Union[int, timedelta, datetime], callback: Callable | None = None):
+    cd = ListenerCooldown(field_name, duration, callback)
     def decorator(func):
         cooldowns = getattr(func, '_cooldowns', list())
         cooldowns.append(cd)

@@ -7,7 +7,7 @@ from lib.rcon.models import EventTypes, ActivationEvent, PlayerKillEvent, Player
 
 from .base import Modifier
 from lib.events import (on_player_kill, on_player_any_kill, on_player_leave_server, on_player_join_server,
-    add_condition, add_cooldown, CooldownType, event_listener)
+    add_condition, add_cooldown, event_listener)
 from lib.logs import LogLine
 from lib.mappings import WEAPONS, BASIC_CATEGORIES, VEHICLE_WEAPONS_FACTIONLESS
 from utils import get_config
@@ -144,7 +144,7 @@ class OneArtyModifier(Modifier):
     @on_player_any_kill()
     @is_arty_condition(True)
     @add_condition(lambda mod, event: not mod.dap[event.get_player().team_id])
-    @add_cooldown(CooldownType.player, duration=10)
+    @add_cooldown("instigator.player_id", duration=10)
     async def assign_players_to_arty(self, event: PlayerKillEvent):
         player = event.get_player()
         assert player is not None
@@ -179,7 +179,7 @@ class OneArtyModifier(Modifier):
     @on_player_any_kill()
     @is_arty_condition(True)
     @add_condition(lambda mod, event: mod.dap[event.get_player().team_id] and not mod.is_dap(event.get_player()))
-    @add_cooldown(CooldownType.player, duration=30)
+    @add_cooldown("instigator.player_id", duration=30)
     async def punish_second_arty_player(self, event: PlayerKillEvent):
         player = event.get_player()
         victim = event.get_victim()

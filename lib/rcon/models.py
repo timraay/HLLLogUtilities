@@ -283,7 +283,7 @@ class Snapshot:
 
 
 class BaseModel(pydantic.BaseModel, arbitrary_types_allowed=True):
-    snapshot: 'Snapshot'
+    snapshot: 'Snapshot' = pydantic.Field(exclude=True)
 
 class TeamModelMixin(BaseModel):
     team_id: int | None

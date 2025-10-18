@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 
 from .base import Modifier
-from lib.events import on_player_any_kill, add_condition, add_cooldown, CooldownType
+from lib.events import on_player_any_kill, add_condition, add_cooldown
 from lib.rcon.models import PlayerKillEvent
 from lib.mappings import WEAPONS, VEHICLES
 
@@ -17,7 +17,7 @@ class NoPantherModifier(Modifier):
 
     @on_player_any_kill()
     @add_condition(lambda _, event: VEHICLES.get(WEAPONS.get(event.weapon, event.weapon)) == "Panther")
-    @add_cooldown(CooldownType.squad, duration=10)
+    @add_cooldown("instigator.player_id", duration=10)
     async def punish_on_panther_usage(self, event: PlayerKillEvent):
         player = event.get_player()
 
