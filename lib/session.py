@@ -240,7 +240,6 @@ class HLLCaptureSession:
                 if not isinstance(event, PrivateEventModel):
                     try:
                         log = event.to_log_line()
-                        print(event.get_type().name, event.model_dump(exclude={"snapshot"}))
                     except Exception:
                         self.logger.exception('Failed to cast event to log line: %s %s' % (type(event).__name__, event.model_dump()))
                     else:
