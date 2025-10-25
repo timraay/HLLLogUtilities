@@ -23,9 +23,6 @@ RE_LEGACY_LAYER_NAME = re.compile(
     r"^(?P<name>[a-z0-9]+)_(?:(?P<offensive>off(?:ensive)?)_?(?P<attackers>[a-zA-Z]+)|(?P<gamemode>[a-z]+)(?:_V2)?)(?:_(?P<environment>[a-z]+))?$"
 )
 
-def is_steamid(steamid: str):
-    return "-" not in steamid
-
 class Gamemode(str, Enum):
     WARFARE = "warfare"
     OFFENSIVE = "offensive"
@@ -40,13 +37,6 @@ class Gamemode(str, Enum):
     @classmethod
     def small(cls):
         return (cls.CONTROL, cls.PHASED, cls.MAJORITY,)
-
-    def is_small(self):
-        return (
-            self == Gamemode.CONTROL
-            or self == Gamemode.PHASED
-            or self == Gamemode.MAJORITY
-        )
 
     def is_large(self):
         return self in Gamemode.large()

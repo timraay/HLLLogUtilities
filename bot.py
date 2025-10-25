@@ -7,8 +7,8 @@ from datetime import datetime
 import os
 from pathlib import Path
 
-from lib.hss.api import HSSApi
 from utils import get_config, ttl_cache
+from lib.hss.api import HSSApi
 
 HSS_API_BASE = get_config().get('HSS', 'ApiBaseUrl')
 

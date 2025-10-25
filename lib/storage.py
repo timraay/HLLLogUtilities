@@ -5,8 +5,8 @@ from typing import Sequence
 
 from lib.logs import LogLine
 
-DB_VERSION = 6
-HLU_VERSION = "v2.2.11"
+DB_VERSION = 7
+HLU_VERSION = "v2.2.12"
 
 database = sqlite3.connect('sessions.db')
 cursor = database.cursor()
@@ -52,6 +52,29 @@ INSERT INTO "db_version" ("format_version")
 """)
 
 database.commit()
+
+
+def rename_table_columns(table_name: str, old: list[str], new: list[str]):
+    if len(old) != len(new):
+        raise ValueError("Old and new column lists must be of the same length")
+
+    table_name_new = table_name + "_new"
+
+    # Create a new table with the proper columns
+    cursor.execute(LogLine._get_create_query(table_name_new, _explicit_fields=new))
+    # Copy over the values
+    query = Query.into(table_name_new).columns(*new).from_(table_name).select(*old)
+    cursor.execute(str(query))
+    # Drop the old table
+    cursor.execute(str(Query.drop_table(table_name)))
+    # Rename the new table
+    cursor.execute(f'ALTER TABLE "{table_name_new}" RENAME TO "{table_name}";')
+
+    database.commit()
+
+    added = [c for c in new if c not in old]
+    removed = [c for c in old if c not in new]
+    logging.info("Altered table %s: Added %s and removed %s", table_name, added, removed)
 
 
 def update_table_columns(table_name: str, old: list[str], new: list[str], defaults: dict = {}):
@@ -106,10 +129,10 @@ elif db_version < DB_VERSION:
                 continue
 
             update_table_columns(table_name,
-                old=['event_time', 'type', 'player_name', 'player_steamid', 'player_team', 'player_role', 'player2_name', 'player2_steamid',
+                old=['event_time', 'type', 'player_name', 'player_id', 'player_team', 'player_role', 'player2_name', 'player2_id',
                      'player2_team', 'player2_role', 'weapon', 'old', 'new', 'team_name', 'squad_name', 'message'],
-                new=['event_time', 'type', 'player_name', 'player_steamid', 'player_team', 'player_role', 'player_combat_score',
-                     'player_offense_score', 'player_defense_score', 'player_support_score', 'player2_name', 'player2_steamid', 'player2_team',
+                new=['event_time', 'type', 'player_name', 'player_id', 'player_team', 'player_role', 'player_combat_score',
+                     'player_offense_score', 'player_defense_score', 'player_support_score', 'player2_name', 'player2_id', 'player2_team',
                      'player2_role', 'weapon', 'old', 'new', 'team_name', 'squad_name', 'message']
             )
     
@@ -160,6 +183,25 @@ elif db_version < DB_VERSION:
 
         database.commit()
 
+    if db_version < 7:
+        # Rename "player_steamid" and "player2_steamid" columns to "player_id" and "player2_id" respectively in all session logs tables
+        cursor.execute('SELECT name FROM sqlite_master WHERE type = "table" AND name LIKE "session%";')
+        for (table_name,) in cursor.fetchall():
+            try:
+                int(table_name[7:])
+            except ValueError:
+                if table_name.endswith('_new'):
+                    logging.warning('Found table with name %s, you will likely need to manually delete it', table_name)
+                continue
+
+            rename_table_columns(table_name,
+                old=['event_time', 'type', 'player_name', 'player_steamid', 'player_team', 'player_role', 'player_combat_score',
+                     'player_offense_score', 'player_defense_score', 'player_support_score', 'player2_name', 'player2_steamid', 'player2_team',
+                     'player2_role', 'weapon', 'old', 'new', 'team_name', 'squad_name', 'message'],
+                new=['event_time', 'event_type', 'player_name', 'player_id', 'player_team', 'player_role', 'player_combat_score',
+                     'player_offense_score', 'player_defense_score', 'player_support_score', 'player2_name', 'player2_id', 'player2_team',
+                     'player2_role', 'weapon', 'old', 'new', 'team_name', 'squad_name', 'message']
+            )
 
     cursor.execute('UPDATE "db_version" SET "format_version" = ?', (DB_VERSION,))
     database.commit()

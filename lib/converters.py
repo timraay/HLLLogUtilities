@@ -86,19 +86,19 @@ class Converter:
         return create_scoreboard(scores)
 
 class TextConverter(Converter):
-    player_join_server      = "CONNECTED           \t{player_name} ({player_steamid})"
-    player_leave_server     = "DISCONNECTED        \t{player_name} ({player_steamid})"
-    player_change_team      = "TEAM SWITCHED       \t{player_name} ({player_steamid}): {old} -> {new}"
-    player_change_squad     = "UNIT SWITCHED       \t{player_name} ({team_name}/{player_steamid}): {old} -> {new}"
-    player_change_role      = "ROLE CHANGED        \t{player_name} ({player_team}/{player_steamid}) changed role: {old} -> {new}"
-    player_change_loadout   = "LOADOUT CHANGED     \t{player_name} ({player_team}/{player_steamid}) changed loadout: {old} -> {new}"
-    player_enter_admin_cam  = "CAMERA ENTERED      \t{player_name} ({player_team}/{player_steamid}) entered admin cam"
-    player_exit_admin_cam   = "CAMERA EXITED       \t{player_name} ({player_team}/{player_steamid}) exited admin cam"
-    player_level_up         = "LEVELUP             \t{player_name} ({player_steamid}) leveled up: {old} -> {new}"
-    player_score_update     = "PLAYER SCORE        \t{player_name} ({player_steamid}): {player_combat_score} C, {player_offense_score} O, {player_defense_score} D, {player_support_score} S (KD: {new}/{message})"
-    player_kill             = "KILL                \t{player_name} ({player_team}/{player_steamid}) -> {player2_name} ({player2_team}/{player2_steamid}) with {weapon}"
-    player_teamkill         = "TEAM KILL           \t{player_name} ({player_team}/{player_steamid}) -> {player2_name} ({player2_team}/{player2_steamid}) with {weapon}"
-    player_suicide          = "SUICIDE             \t{player_name} ({player_team}/{player_steamid})"
+    player_join_server      = "CONNECTED           \t{player_name} ({player_id})"
+    player_leave_server     = "DISCONNECTED        \t{player_name} ({player_id})"
+    player_change_team      = "TEAM SWITCHED       \t{player_name} ({player_id}): {old} -> {new}"
+    player_change_squad     = "UNIT SWITCHED       \t{player_name} ({player_team}/{player_id}): {old} -> {new}"
+    player_change_role      = "ROLE CHANGED        \t{player_name} ({player_team}/{player_id}) changed role: {old} -> {new}"
+    player_change_loadout   = "LOADOUT CHANGED     \t{player_name} ({player_team}/{player_id}) changed loadout: {old} -> {new}"
+    player_enter_admin_cam  = "CAMERA ENTERED      \t{player_name} ({player_team}/{player_id}) entered admin cam"
+    player_exit_admin_cam   = "CAMERA EXITED       \t{player_name} ({player_team}/{player_id}) exited admin cam"
+    player_level_up         = "LEVELUP             \t{player_name} ({player_id}) leveled up: {old} -> {new}"
+    player_score_update     = "PLAYER SCORE        \t{player_name} ({player_id}): {player_combat_score} C, {player_offense_score} O, {player_defense_score} D, {player_support_score} S (KD: {new}/{message})"
+    player_kill             = "KILL                \t{player_name} ({player_team}/{player_id}) -> {player2_name} ({player2_team}/{player2_id}) with {weapon}"
+    player_teamkill         = "TEAM KILL           \t{player_name} ({player_team}/{player_id}) -> {player2_name} ({player2_team}/{player2_id}) with {weapon}"
+    player_suicide          = "SUICIDE             \t{player_name} ({player_team}/{player_id})"
 
     server_map_change       = "MAP CHANGED         \tMap changed from {old} to {new}"
     server_match_start      = "MATCH STARTED       \tMATCH START {new}"
@@ -109,30 +109,30 @@ class TextConverter(Converter):
     squad_create            = "UNIT CREATED        \tUnit {squad_name} created on team {team_name}"
     squad_disband           = "UNIT DISBANDED      \tUnit {squad_name} disbanded on team {team_name}"
 
-    arty_assigned           = "ARTILLERY ASSIGNED  \t{player_name} ({player_team}/{player_steamid}) with {weapon}: {message}"
-    arty_unassigned         = "ARTILLERY UNASSIGNED\t{player_name} ({player_team}/{player_steamid}): {message}"
-    start_arty_cooldown     = "COOLDOWN STARTED    \t{player_name} ({player_team}/{player_steamid}): {message}"
-    cancel_arty_cooldown    = "COOLDOWN CANCELED   \t{player_name} ({player_steamid}): {message}"
-    player_kicked           = "KICKED              \t{player_name} ({player_steamid}): {message}"
+    arty_assigned           = "ARTILLERY ASSIGNED  \t{player_name} ({player_team}/{player_id}) with {weapon}: {message}"
+    arty_unassigned         = "ARTILLERY UNASSIGNED\t{player_name} ({player_team}/{player_id}): {message}"
+    start_arty_cooldown     = "COOLDOWN STARTED    \t{player_name} ({player_team}/{player_id}): {message}"
+    cancel_arty_cooldown    = "COOLDOWN CANCELED   \t{player_name} ({player_id}): {message}"
+    player_kicked           = "KICKED              \t{player_name} ({player_id}): {message}"
 
     @staticmethod
     def player_message(log: 'LogLine'):
         if log.squad_name:
-            return f"CHAT[{log.team_name}][{log.squad_name}]".ljust(20) + f"\t{log.player_name}: {log.message} ({log.player_steamid})"
+            return f"CHAT[{log.team_name}][{log.squad_name}]".ljust(20) + f"\t{log.player_name}: {log.message} ({log.player_id})"
         else:
-            return f"CHAT[{log.team_name}]".ljust(20) + f"\t{log.player_name}: {log.message} ({log.player_steamid})"
+            return f"CHAT[{log.team_name}]".ljust(20) + f"\t{log.player_name}: {log.message} ({log.player_id})"
     
     @staticmethod
     def squad_leader_change(log: 'LogLine'):
-        p1 = f"{log.player_name} ({log.player_steamid})" if log.player_name is not None else "None"
-        p2 = f"{log.player2_name} ({log.player2_steamid})" if log.player2_name is not None else "None"
+        p1 = f"{log.player_name} ({log.player_id})" if log.player_name is not None else "None"
+        p2 = f"{log.player2_name} ({log.player2_id})" if log.player2_name is not None else "None"
         return "OFFICER CHANGED".ljust(20) + f"\tOfficer for {log.squad_name} ({log.team_name}): {p2} -> {p1}"
     
     @staticmethod
     def rule_violated(log: 'LogLine'):
-        msg = "RULE VIOLATED".ljust(20) + f"\t{log.player_name} ({log.player_team}/{log.player_steamid})"
+        msg = "RULE VIOLATED".ljust(20) + f"\t{log.player_name} ({log.player_team}/{log.player_id})"
         if log.player2_name:
-            msg += f" -> {log.player2_name} ({log.player2_team}/{log.player2_steamid})"
+            msg += f" -> {log.player2_name} ({log.player2_team}/{log.player2_id})"
         if log.weapon:
             msg += f" with {log.weapon}"
         if log.message:

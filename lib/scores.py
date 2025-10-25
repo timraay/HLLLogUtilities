@@ -269,8 +269,8 @@ class DataStore:
     def deaths_per_min(self):
         round(self.total_deaths * 60 / self.duration.total_seconds(), 2)
     
-    def find_player(self, steamid: str):
-        return next((player for player in self.players if player.steam_id == steamid), None)
+    def find_player(self, player_id: str):
+        return next((player for player in self.players if player.steam_id == player_id), None)
 
     def __add__(self, other: 'DataStore'):
         if not isinstance(other, DataStore):
@@ -317,13 +317,13 @@ class DataStore:
     
         if single_match:
             output = ",".join([
-                'rank', 'steamid', 'name', 'kills', 'deaths', 'teamkills', 'suicides', 'top_killstreak', 'top_weapon_name',
+                'rank', 'player_id', 'name', 'kills', 'deaths', 'teamkills', 'suicides', 'top_killstreak', 'top_weapon_name',
                 'top_weapon_kills', 'top_victim_name', 'top_victim_kills', 'top_nemesis_name', 'top_nemesis_deaths', 'combat_score',
                 'offense_score', 'defense_score', 'support_score', 'seconds_played'
             ])
         else:
             output = ",".join([
-                'rank', 'steamid', 'name', 'matches_played', 'kills', 'deaths', 'teamkills', 'suicides', 'top_killstreak',
+                'rank', 'player_id', 'name', 'matches_played', 'kills', 'deaths', 'teamkills', 'suicides', 'top_killstreak',
                 'top_weapon_name', 'top_weapon_kills', 'top_victim_name', 'top_victim_kills', 'top_nemesis_name', 'top_nemesis_deaths',
                 'combat_score', 'offense_score', 'defense_score', 'support_score', 'seconds_played'
             ])
@@ -388,17 +388,17 @@ class MatchData(DataStore):
                 continue
 
             # Get or create killer and victim data
-            if log.player_steamid in data.keys():
-                killer_data = data[log.player_steamid]
+            if log.player_id in data.keys():
+                killer_data = data[log.player_id]
             else:
-                killer_data = PlayerData(log.player_steamid, log.player_name, logs_start, logs_end)
-                data[log.player_steamid] = killer_data
+                killer_data = PlayerData(log.player_id, log.player_name, logs_start, logs_end)
+                data[log.player_id] = killer_data
             
-            if log.player2_steamid in data.keys():
-                victim_data = data[log.player2_steamid]
-            elif log.player2_steamid:
-                victim_data = PlayerData(log.player2_steamid, log.player2_name, logs_start, logs_end)
-                data[log.player2_steamid] = victim_data
+            if log.player2_id in data.keys():
+                victim_data = data[log.player2_id]
+            elif log.player2_id:
+                victim_data = PlayerData(log.player2_id, log.player2_name, logs_start, logs_end)
+                data[log.player2_id] = victim_data
             else:
                 victim_data = None
             

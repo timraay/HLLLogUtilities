@@ -34,8 +34,8 @@ class ListenerCooldown:
                 value = getattr(value, field_name)
             except AttributeError:
                 raise TypeError(
-                    '%s does not have required attributes to apply cooldown %s (failed on %s): %s',
-                    type(event).__name__, self.field_names, field_name, event.model_dump(),
+                    f"{type(event).__name__} does not have required attributes to apply cooldown"
+                    f" {self.field_names} (failed on {field_name}): {event.model_dump()}",
                 )
         return value
 

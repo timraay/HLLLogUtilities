@@ -4,4 +4,4 @@ pydantic==2.*
 cachetools
 python-dateutil
 sortedcontainers
-hllrcon==0.2.*
+hllrcon==0.3.*

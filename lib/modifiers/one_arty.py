@@ -39,18 +39,18 @@ def get_log_payload(player: Player, player2: Player | None = None):
 
     payload.update(
         player_name=player.name,
-        player_steamid=player.id,
+        player_id=player.id,
         player_team=team.name if team else None,
-        player_role=player.role,
+        player_role=player.role.name,
     )
     
     if player2:
         player2_team = player2.get_team()
         payload.update(
             player2_name=player2.name,
-            player2_steamid=player2.id,
+            player2_id=player2.id,
             player2_team=player2_team.name if player2_team else None,
-            player2_role=player2.role,
+            player2_role=player2.role.name,
         )
 
     if team:
@@ -123,7 +123,7 @@ class OneArtyModifier(Modifier):
         )
 
         players.insert(0, player)
-        punished = list()
+        punished: list[Player] = []
         for i, success in enumerate(res[1:]):
 
             if success is True:
@@ -135,7 +135,7 @@ class OneArtyModifier(Modifier):
                     player.name, player.id, type(success).__name__, success)
                 
         self.logger.info("Punished %s/%s players: %s",
-            len(punished), len(players), ", ".join([f"{player.name} ({player.steamid})" for player in punished]))
+            len(punished), len(players), ", ".join([f"{player.name} ({player.id})" for player in punished]))
 
         return punished
 
@@ -144,7 +144,7 @@ class OneArtyModifier(Modifier):
     @on_player_any_kill()
     @is_arty_condition(True)
     @add_condition(lambda mod, event: not mod.dap[event.get_player().team_id])
-    @add_cooldown("instigator.player_id", duration=10)
+    @add_cooldown("player_id", duration=10)
     async def assign_players_to_arty(self, event: PlayerKillEvent):
         player = event.get_player()
         assert player is not None
@@ -166,7 +166,7 @@ class OneArtyModifier(Modifier):
 
         message = (
             "You have become your team's designated artillery player! You must"
-            "adhere to a few rules:\n\n- You must not leave or swap between guns"
+            " adhere to a few rules:\n\n- You must not leave or swap between guns"
             "\n- You may not use any firearms\n- You may not be killed by enemies"
         )
         await self.get_rcon().client.message_player(player_id=player.id, message=message)
@@ -179,7 +179,7 @@ class OneArtyModifier(Modifier):
     @on_player_any_kill()
     @is_arty_condition(True)
     @add_condition(lambda mod, event: mod.dap[event.get_player().team_id] and not mod.is_dap(event.get_player()))
-    @add_cooldown("instigator.player_id", duration=30)
+    @add_cooldown("player_id", duration=30)
     async def punish_second_arty_player(self, event: PlayerKillEvent):
         player = event.get_player()
         victim = event.get_victim()
@@ -206,7 +206,8 @@ class OneArtyModifier(Modifier):
 
     @on_player_leave_server()
     async def start_expiration_on_dap_disconnect(self, event: PlayerLeaveServerEvent):
-        player = event.player
+        player = event.get_player()
+        assert player is not None
         team_id = self.get_dap_team_id(player)
         if team_id and not self.expire_tasks[team_id]:
             asyncio.create_task(self.expire_dap_after_cooldown(player, team_id))

@@ -10,7 +10,7 @@ class LogLine(BaseModel):
     event_time: datetime
     event_type: str
     player_name: str | None = None
-    player_steamid: str | None = None
+    player_id: str | None = None
     player_team: str | None = None
     player_role: str | None = None
     player_combat_score: int | None = None
@@ -18,7 +18,7 @@ class LogLine(BaseModel):
     player_defense_score: int | None = None
     player_support_score: int | None = None
     player2_name: str | None = None
-    player2_steamid: str | None = None
+    player2_id: str | None = None
     player2_team: str | None = None
     player2_role: str | None = None
     weapon: str | None = None
@@ -72,8 +72,8 @@ class LogLineBuilder:
         if player:
             self.payload.update({
                 'player_name': player.name,
-                'player_steamid': player.id,
-                'player_role': player.name,
+                'player_id': player.id,
+                'player_role': player.role.name,
             })
             if team := player.get_team():
                 self.payload['player_team'] = team.name
@@ -83,11 +83,13 @@ class LogLineBuilder:
                     'player_offense_score': player.score.offense,
                     'player_defense_score': player.score.defense,
                     'player_support_score': player.score.support,
+                    'new': str(player.kills),
+                    'message': str(player.deaths),
                 })
         else:
             self.payload.update({
                 'player_name': None,
-                'player_steamid': None,
+                'player_id': None,
                 'player_role': None,
                 'player_team': None,
                 'player_combat_score': None,
@@ -101,7 +103,7 @@ class LogLineBuilder:
         if player:
             self.payload.update({
                 'player2_name': player.name,
-                'player2_steamid': player.id,
+                'player2_id': player.id,
                 'player2_role': player.name,
             })
             if team := player.get_team():
@@ -109,7 +111,7 @@ class LogLineBuilder:
         else:
             self.payload.update({
                 'player2_name': None,
-                'player2_steamid': None,
+                'player2_id': None,
                 'player2_role': None,
                 'player2_team': None,
             })

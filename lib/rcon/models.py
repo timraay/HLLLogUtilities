@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from enum import Enum, unique
 from functools import total_ordering
+import itertools
 import pydantic
 from sortedcontainers import SortedList
 from typing import Any, Generator, Iterator, Literal, Protocol, Sequence, TypeVar, cast
@@ -78,22 +79,30 @@ def align_sorted_lists(a: Sequence[T], b: Sequence[T]) -> Iterator[tuple[T | Non
 
 class Snapshot:
     players: list['Player']
+    disconnected_players: list['Player']
     squads: list['Squad']
+    disbanded_squads: list['Squad']
     teams: list['Team']
     server: 'Server'
     events: list['EventModel']
 
     def __init__(self) -> None:
         self.players = SortedList(key=lambda x: x.id)
+        self.disconnected_players = SortedList(key=lambda x: x.id)
         self.squads = SortedList(key=lambda x: x.id)
+        self.disbanded_squads = SortedList(key=lambda x: x.id)
         self.teams = SortedList(key=lambda x: x.id)
         self.server = None # type: ignore
         self.events = []
 
     def add_players(self, *players: 'Player'):
         cast('SortedList', self.players).update(players)
+    def add_disconnected_players(self, *players: 'Player'):
+        cast('SortedList', self.disconnected_players).update(players)
     def add_squads(self, *squads: 'Squad'):
         cast('SortedList', self.squads).update(squads)
+    def add_disbanded_squads(self, *squads: 'Squad'):
+        cast('SortedList', self.disbanded_squads).update(squads)
     def add_teams(self, *teams: 'Team'):
         cast('SortedList', self.teams).update(teams)
     def set_server(self, server: 'Server'):
@@ -142,18 +151,20 @@ class Snapshot:
             if new_player is None:
                 assert old_player is not None
                 new_role = old_role
+                disconnected_player = old_player.model_copy(update={"snapshot": self})
+                self.add_disconnected_players(disconnected_player)
                 events.append(
                     PlayerLeaveServerEvent(
                         snapshot=self,
                         event_time=event_time,
-                        player=old_player
+                        player_id=disconnected_player.id
                     )
                 )
                 if other.server and other.server.state == "in_progress":
                     events.append(PlayerScoreUpdateEvent(
                         snapshot=self,
                         event_time=event_time,
-                        player=old_player,
+                        player_id=disconnected_player.id
                     ))
             else:
                 player_id = new_player.id
@@ -231,6 +242,7 @@ class Snapshot:
             if new_squad is None:
                 assert old_squad is not None
                 new_leader = old_leader
+                self.add_disbanded_squads(old_squad.model_copy(update={"snapshot": self}))
                 events.append(
                     SquadDisbandEvent(
                         snapshot=self,
@@ -305,7 +317,7 @@ class SquadModelMixin(TeamModelMixin):
         if self.squad_id is None or self.team_id is None:
             return None
 
-        for squad in self.snapshot.squads:
+        for squad in itertools.chain(self.snapshot.squads, self.snapshot.disbanded_squads):
             if squad.id == self.squad_id and squad.team_id == self.team_id:
                 return squad
         
@@ -318,7 +330,7 @@ class PlayerModelMixin(BaseModel):
         if self.player_id is None:
             return None
 
-        for player in self.snapshot.players:
+        for player in itertools.chain(self.snapshot.players, self.snapshot.disconnected_players):
             if player.id == self.player_id:
                 return player
         
@@ -572,7 +584,7 @@ class PlayerChangeSquadEvent(PlayerModelMixin, EventModel):
     def get_old_squad(self) -> 'Squad | None':
         if self.old_squad_id is None:
             return None
-        for squad in self.snapshot.squads:
+        for squad in itertools.chain(self.snapshot.squads, self.snapshot.disbanded_squads):
             if squad.id == self.old_squad_id:
                 return squad
         return None
@@ -704,7 +716,7 @@ class PlayerKillEvent(PlayerModelMixin, EventModel):
     weapon: str
 
     def get_victim(self) -> 'Player | None':
-        for player in self.snapshot.players:
+        for player in itertools.chain(self.snapshot.players, self.snapshot.disconnected_players):
             if player.id == self.victim_id:
                 return player
         return None
@@ -725,7 +737,7 @@ class PlayerTeamkillEvent(PlayerModelMixin, EventModel):
     weapon: str
 
     def get_victim(self) -> 'Player | None':
-        for player in self.snapshot.players:
+        for player in itertools.chain(self.snapshot.players, self.snapshot.disconnected_players):
             if player.id == self.victim_id:
                 return player
         return None
@@ -778,25 +790,21 @@ class PlayerLevelUpEvent(PlayerModelMixin, EventModel):
                 .to_log_line()
         )
 
-class PlayerScoreUpdateEvent(EventModel):
-    player: Player
-
+class PlayerScoreUpdateEvent(PlayerModelMixin, EventModel):
     def to_log_line(self) -> LogLine:
         return (
             LogLineBuilder
                 .from_event(self)
-                .set_player(self.player, include_score=True)
+                .set_player(self.get_player(), include_score=True)
                 .to_log_line()
         )
 
-class PlayerLeaveServerEvent(EventModel):
-    player: Player
-
+class PlayerLeaveServerEvent(PlayerModelMixin, EventModel):
     def to_log_line(self) -> LogLine:
         return (
             LogLineBuilder
                 .from_event(self)
-                .set_player(self.player)
+                .set_player(self.get_player())
                 .to_log_line()
         )
 

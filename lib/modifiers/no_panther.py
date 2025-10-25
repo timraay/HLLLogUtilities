@@ -17,7 +17,7 @@ class NoPantherModifier(Modifier):
 
     @on_player_any_kill()
     @add_condition(lambda _, event: VEHICLES.get(WEAPONS.get(event.weapon, event.weapon)) == "Panther")
-    @add_cooldown("instigator.player_id", duration=10)
+    @add_cooldown("player_id", duration=10)
     async def punish_on_panther_usage(self, event: PlayerKillEvent):
         player = event.get_player()
 
