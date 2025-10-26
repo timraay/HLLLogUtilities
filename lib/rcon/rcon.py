@@ -232,7 +232,7 @@ class HLLRcon:
                         PlayerScoreUpdateEvent(
                             snapshot=self._snapshot,
                             event_time=event_time,
-                            player=player,
+                            player_id=player.id,
                         )
                     )
 
