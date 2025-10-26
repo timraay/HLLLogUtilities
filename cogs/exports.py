@@ -362,7 +362,7 @@ class ToHeLOExportView(View):
         embed = None
 
         if self.range.is_eligible_for_helo():
-            end_log = next(log for log in self.logs if log.event_type == str(EventTypes.server_match_ended))
+            end_log = next(log for log in self.logs if log.event_type == str(EventTypes.server_match_end))
             map_name = get_map_and_mode(end_log.new)[0]
             allies_score = int(end_log.message.split(' - ')[0])
             axis_score = int(end_log.message.split(' - ')[1])
@@ -474,7 +474,7 @@ class HeLOSubmitSelectOpponentView(View):
         self.api_key = api_key
         self.logs = logs
 
-        end_log = next(log for log in logs if log.event_type == str(EventTypes.server_match_ended))
+        end_log = next(log for log in logs if log.event_type == str(EventTypes.server_match_end))
         self.map_name = get_map_and_mode(end_log.new)[0]
         self.allies_score = int(end_log.message.split(' - ')[0])
         self.axis_score = int(end_log.message.split(' - ')[1])
