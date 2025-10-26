@@ -77,10 +77,7 @@ class HLLRcon:
     async def create_snapshot(self):
         self._snapshot = Snapshot()
         logs_last_seen_time = await self._fetch_logs()
-        await asyncio.gather(
-            self._fetch_players(),
-            self._fetch_server(),
-        )
+        await self._fetch_server_state()
 
         self._update_state()
 
@@ -243,8 +240,11 @@ class HLLRcon:
         else:
             raise Exception("Unknown log line: %s", log)
 
-    async def _fetch_players(self):
-        response = await self.client.get_players()
+    async def _fetch_server_state(self):
+        players_response, server_response = await asyncio.gather(
+            self.client.get_players(),
+            self.client.get_server_session(),
+        )
 
         squads: dict[tuple[int, int], Squad] = {}
         teams: dict[int, Team] = {
@@ -253,19 +253,19 @@ class HLLRcon:
                 id=1,
                 name="Allies",
                 faction="US",
-                score=2,
+                score=server_response.allied_score,
             ),
             2: Team(
                 snapshot=self._snapshot,
                 id=2,
                 name="Axis",
                 faction="GER",
-                score=2,
+                score=server_response.axis_score,
             )
         }
         self._snapshot.add_teams(*teams.values())
 
-        for player_data in response.players:
+        for player_data in players_response.players:
             team_id: int | None = None
             squad_id: int | None = None
 
@@ -321,14 +321,11 @@ class HLLRcon:
             )
             self._snapshot.add_players(player)
 
-    async def _fetch_server(self):
-        response = await self.client.get_server_session()
-
         server = Server(
             snapshot=self._snapshot,
-            name=response.server_name,
-            map=response.map_name,
-            max_players=response.max_player_count,
+            name=server_response.server_name,
+            map=server_response.map_name,
+            max_players=server_response.max_player_count,
             round_start=self._match_start_time,
             state=self._match_state,
         )
