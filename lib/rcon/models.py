@@ -676,7 +676,7 @@ class PlayerExitAdminCamEvent(PlayerModelMixin, EventModel):
                 .to_log_line()
         )
 
-class PlayerMessageEvent(PlayerModelMixin, SquadModelMixin, EventModel):
+class PlayerMessageEvent(PlayerModelMixin, EventModel):
     player_id: str
     message: str
     channel_name: Literal["Unit", "Team"]
