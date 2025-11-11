@@ -16,7 +16,7 @@ RE_LOG_KILL = re.compile(r"^(?P<is_teamkill>TEAM )?KILL: .+\((?:Allies|Axis)\/(?
 RE_LOG_CHAT = re.compile(r"^CHAT\[(?P<channel_name>Team|Unit)\]\[.+\((?:Allies|Axis)\/(?P<player_id>\d{17}|[\da-f]{32})\)\]: (?P<message>.+)$")
 RE_LOG_ADMIN_CAM = re.compile(r"^Player \[.+ \((?P<player_id>\d{17}|[\da-f]{32})\)\] (?:Left|(?P<is_entering>Entered)) Admin Camera$")
 RE_LOG_MATCH_START = re.compile(r"^MATCH START (?P<map_name>.+)$")
-RE_LOG_MATCH_ENDED = re.compile(r"^MATCH ENDED `(?P<map_name>.+)` ALLIED \((?P<score>.+)\) AXIS$")
+RE_LOG_MATCH_ENDED = re.compile(r"^MATCH ENDED `(?P<map_name>.+)` ALLIED \((?P<score>.+)\) AXIS *$")
 
 class HLLRcon:
     def __init__(self, session: 'HLLCaptureSession'):
