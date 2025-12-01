@@ -324,7 +324,7 @@ class HLLRcon:
         server = Server(
             snapshot=self._snapshot,
             name=server_response.server_name,
-            map=server_response.map_name,
+            map=server_response.map_id,
             max_players=server_response.max_player_count,
             round_start=self._match_start_time,
             state=self._match_state,

@@ -85,21 +85,20 @@ def get_ranges(logs):
                 map_name=" ".join(get_map_and_mode(log.new))
             ))
 
-        # TODO: Re-enable after U18 hotfix or U19 release, once `server.map` returns the layer name again
-        # elif log_type == EventTypes.server_map_change:
-        #     if not ranges[-1].start_time:
-        #         last_start = None
-        #     else:
-        #         last_start = (log.event_time - ranges[-1].start_time).total_seconds()
+        elif log_type == EventTypes.server_map_change:
+            if not ranges[-1].start_time:
+                last_start = None
+            else:
+                last_start = (log.event_time - ranges[-1].start_time).total_seconds()
 
-        #     if len(ranges) >= 2 and last_start and last_start < 30:
-        #         # The line appeared after the server_match_started event
-        #         ranges[-2].map_name = parse_layer(log.old).pretty()
-        #         ranges[-1].map_name = parse_layer(log.new).pretty()
+            if len(ranges) >= 2 and last_start and last_start < 30:
+                # The line appeared after the server_match_started event
+                ranges[-2].map_name = parse_layer(log.old).pretty_name
+                ranges[-1].map_name = parse_layer(log.new).pretty_name
             
-        #     elif not last_start or last_start > 60:
-        #         # The line appeared before the server_match_started event
-        #         ranges[-1].map_name = parse_layer(log.old).pretty()
+            elif not last_start or last_start > 60:
+                # The line appeared before the server_match_started event
+                ranges[-1].map_name = parse_layer(log.old).pretty_name
 
     if len(ranges) == 1:
         ranges.clear()
