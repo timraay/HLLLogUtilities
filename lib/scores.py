@@ -2,22 +2,25 @@ import operator
 from datetime import datetime, timedelta
 from enum import Enum
 from pydantic import BaseModel
-from typing import Dict, List, Union, TYPE_CHECKING
+from typing import Any, Iterable, Mapping, TypeVar, Union, TYPE_CHECKING
 import logging
+from hllrcon.data import Weapon, WeaponType, Faction
 
 from lib import mappings
 from lib.rcon.models import EventTypes
 from utils import toTable, side_by_side
 
+IntDictT = TypeVar('IntDictT', bound=Mapping[Any, 'int | PlayerScore | PlayerData'])
+
 if TYPE_CHECKING:
     from lib.storage import LogLine
 
-def combine_dicts(a, b, op=operator.add):
+def combine_dicts(a: IntDictT, b: IntDictT, op=operator.add) -> IntDictT:
     return dict(list(a.items()) + list(b.items()) +
-        [(k, op(a[k], b[k])) for k in set(b) & set(a)])
+        [(k, op(a[k], b[k])) for k in set(b) & set(a)])  # type: ignore
 
 
-class Faction(Enum):
+class EFaction(Enum):
     def __str__(self):
         return self.name
     Allies = "Allies"
@@ -33,17 +36,17 @@ class PlayerScore(BaseModel):
     def __add__(self, other: 'PlayerScore'):
         if not isinstance(other, PlayerScore):
             return NotImplemented
-        return PlayerScore(**combine_dicts(self.dict(), other.dict()))
+        return PlayerScore(**combine_dicts(self.model_dump(), other.model_dump()))
     def __sub__(self, other: 'PlayerScore'):
         if not isinstance(other, PlayerScore):
             return NotImplemented
-        return PlayerScore(**combine_dicts(self.dict(), other.dict(), op=operator.sub))
+        return PlayerScore(**combine_dicts(self.model_dump(), other.model_dump(), op=operator.sub))
 
 
 
 class MatchGroup:
     def __init__(self, matches: list = []):
-        self.matches: List['MatchData'] = list(matches)
+        self.matches: list['MatchData'] = list(matches)
     
     def __len__(self):
         return self.num_matches_played
@@ -53,7 +56,7 @@ class MatchGroup:
         return True
     
     @classmethod
-    def from_logs(cls, logs: List['LogLine']):
+    def from_logs(cls, logs: list['LogLine']):
         matches = list()
         match_logs = list()
         
@@ -79,12 +82,12 @@ class MatchGroup:
                 
     def get_matches_for_player(self, player: Union['PlayerData', str]):
         if not isinstance(player, PlayerData):
-            player = self.stats.find_player(player)
-        if not player:
+            player_data = self.stats.find_player(player)
+        if not player_data:
             raise ValueError('Player with Steam ID %s could not be found' % player)
-        matches = [match for match in self.matches if player in match.players]
-        return MatchGroup(player.name, matches)
-    
+        matches = [match for match in self.matches if player_data in match.players]
+        return MatchGroup(matches)
+
     @property
     def stats(self):
         return DataStore.union(*self.matches)
@@ -113,16 +116,16 @@ class MatchGroup:
 
     @property
     def winner_kills(self):
-        return sum((match.total_allied_kills if match.winner == Faction.Allies else match.total_axis_kills) for match in self.matches)
+        return sum((match.total_allied_kills if match.winner == EFaction.Allies else match.total_axis_kills) for match in self.matches)
     @property
     def loser_kills(self):
-        return sum((match.total_allied_kills if match.winner != Faction.Allies else match.total_axis_kills) for match in self.matches)
+        return sum((match.total_allied_kills if match.winner != EFaction.Allies else match.total_axis_kills) for match in self.matches)
     @property
     def winner_deaths(self):
-        return sum((match.total_allied_deaths if match.winner == Faction.Allies else match.total_axis_deaths) for match in self.matches)
+        return sum((match.total_allied_deaths if match.winner == EFaction.Allies else match.total_axis_deaths) for match in self.matches)
     @property
     def loser_deaths(self):
-        return sum((match.total_allied_deaths if match.winner != Faction.Allies else match.total_axis_deaths) for match in self.matches)
+        return sum((match.total_allied_deaths if match.winner != EFaction.Allies else match.total_axis_deaths) for match in self.matches)
     
     def to_dict(self):
         return dict(
@@ -140,7 +143,7 @@ class DataStore:
     """A storage to collect and access various stats
     from players.
     """
-    def __init__(self, duration: timedelta, players: List["PlayerData"]):
+    def __init__(self, duration: timedelta, players: Iterable["PlayerData"]):
         self.duration = duration
         self.players = list(players)
     
@@ -228,56 +231,70 @@ class DataStore:
         return self.total_deaths * 60 / self.duration.total_seconds()
 
     @staticmethod
-    def map_weapons(weapons: dict, *mappings, skip_unmapped=False):
+    def map_weapons(weapons: dict[Weapon, int], *mappings: dict[Weapon, str], skip_unmapped=False) -> dict[str, int]:
         if not mappings:
-            return weapons
+            return {
+                weapon.name: value
+                for weapon, value in weapons.items()
+            }
+
         new_map = {old: new for d in mappings[::-1] for old, new in d.items()}
 
-        res = dict()
+        res: dict[str, int] = {}
         for weapon, value in weapons.items():
             if weapon in new_map:
-                weapon = new_map[weapon]
+                weapon_name = new_map[weapon]
             elif skip_unmapped:
                 continue
-            
-            if weapon in res:
-                res[weapon] += value
             else:
-                res[weapon] = value
-        
+                weapon_name = weapon.name
+
+            if weapon_name in res:
+                res[weapon_name] += value
+            else:
+                res[weapon_name] = value
+
         return res
 
-    def weapons_killed_with(self, *mappings, skip_unmapped=False):
-        all_weapons = dict()
+    def weapons_killed_with(self, *mappings: dict[Weapon, str], skip_unmapped=False) -> dict[str, int]:
+        all_weapons: dict[Weapon, int] = {}
         for player in self.players:
             all_weapons = combine_dicts(all_weapons, player.weapons)
         return self.map_weapons(all_weapons, *mappings, skip_unmapped=skip_unmapped)
-    def weapons_died_to(self, *mappings, skip_unmapped=False):
-        all_weapons = dict()
+    def weapons_died_to(self, *mappings, skip_unmapped=False) -> dict[str, int]:
+        all_weapons: dict[Weapon, int] = {}
         for player in self.players:
             all_weapons = combine_dicts(all_weapons, player.causes)
         return self.map_weapons(all_weapons, *mappings, skip_unmapped=skip_unmapped)
-    def weapons_teamkilled_with(self, *mappings, skip_unmapped=False):
-        all_weapons = {
+    def weapons_teamkilled_with(self, *mappings, skip_unmapped=False) -> dict[str, int]:
+        weapons_killed_with: dict[Weapon, int] = {}
+        for player in self.players:
+            weapons_killed_with = combine_dicts(weapons_killed_with, player.weapons)
+
+        weapons_died_to: dict[Weapon, int] = {}
+        for player in self.players:
+            weapons_died_to = combine_dicts(weapons_died_to, player.weapons)
+
+        all_weapons: dict[Weapon, int] = {
             name: amount for name, amount
-            in combine_dicts(self.weapons_died_to(), self.weapons_killed_with(), operator.sub).items()
+            in combine_dicts(weapons_died_to, weapons_killed_with, operator.sub).items()
             if amount > 0
         }
         return self.map_weapons(all_weapons, *mappings, skip_unmapped=skip_unmapped)
     
     @property
-    def deaths_per_min(self):
-        round(self.total_deaths * 60 / self.duration.total_seconds(), 2)
-    
-    def find_player(self, player_id: str):
-        return next((player for player in self.players if player.steam_id == player_id), None)
+    def deaths_per_min(self) -> float:
+        return round(self.total_deaths * 60 / self.duration.total_seconds(), 2)
 
-    def __add__(self, other: 'DataStore'):
+    def find_player(self, player_id: str) -> 'PlayerData | None':
+        return next((player for player in self.players if player.player_id == player_id), None)
+
+    def __add__(self, other: 'DataStore') -> 'DataStore':
         if not isinstance(other, DataStore):
             return NotImplemented
         
         duration = self.duration + other.duration
-        players = combine_dicts({p.steam_id: p for p in self.players}, {p.steam_id: p for p in other.players})
+        players = combine_dicts({p.player_id: p for p in self.players}, {p.player_id: p for p in other.players})
         return DataStore(duration, players.values())
     
     def __radd__(self, other):
@@ -286,7 +303,7 @@ class DataStore:
     def to_text(self, single_match: bool = False):
         data = sorted(
             filter(
-                lambda player: player.steam_id,
+                lambda player: player.player_id,
                 self.players
             ),
             key=lambda player: player.kills_per_minute * 1000000 - player.deaths,
@@ -308,7 +325,7 @@ class DataStore:
     def to_csv(self, single_match: bool = False):
         data = sorted(
             filter(
-                lambda player: player.steam_id,
+                lambda player: player.player_id,
                 self.players
             ),
             key=lambda player: player.kills_per_minute * 1000000 - player.deaths,
@@ -333,7 +350,7 @@ class DataStore:
         
         return output
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         return dict(
             duration=self.duration.total_seconds(),
             players=[player.to_dict() for player in self.players]
@@ -343,8 +360,8 @@ class DataStore:
 class MatchData(DataStore):
     """A particular type of DataStore that represents an in-game match
     """
-    def __init__(self, players: List["PlayerData"], duration: timedelta,
-            map: str = None, team1_score: int = 0, team2_score: int = 0):
+    def __init__(self, players: Iterable["PlayerData"], duration: timedelta,
+            map: str | None = None, team1_score: int = 0, team2_score: int = 0):
 
         self.map = map
         self.team1_score = int(team1_score)
@@ -353,14 +370,14 @@ class MatchData(DataStore):
         DataStore.__init__(self, duration, players)
     
     @classmethod
-    def from_logs(cls, logs: List['LogLine']):
+    def from_logs(cls, logs: list['LogLine']):
         if not logs:
             return cls(
                 players=[],
                 duration=timedelta()
             )
 
-        data = dict()
+        data: dict[str, 'PlayerData'] = {}
         logs_start, logs_end = sorted((logs[0].event_time, logs[-1].event_time))
         if logs_start != logs[0].event_time: # Logs are reversed
             logs.reverse()
@@ -377,11 +394,13 @@ class MatchData(DataStore):
             #     continue
 
             if log_type == EventTypes.server_match_start:
+                assert log.new is not None
                 if not map_name:
                     map_name = " ".join(mappings.get_map_and_mode(log.new))
                 continue
 
             elif log_type == EventTypes.server_match_end:
+                assert log.new is not None
                 if not map_name:
                     map_name = " ".join(mappings.get_map_and_mode(log.new))
                 match_ended = log
@@ -389,47 +408,62 @@ class MatchData(DataStore):
 
             # Get or create killer and victim data
             if log.player_id in data.keys():
+                assert log.player_id is not None
                 killer_data = data[log.player_id]
             else:
+                assert log.player_id is not None
+                assert log.player_name is not None
                 killer_data = PlayerData(log.player_id, log.player_name, logs_start, logs_end)
                 data[log.player_id] = killer_data
             
             if log.player2_id in data.keys():
+                assert log.player2_id is not None
                 victim_data = data[log.player2_id]
             elif log.player2_id:
+                assert log.player2_id is not None
+                assert log.player2_name is not None
                 victim_data = PlayerData(log.player2_id, log.player2_name, logs_start, logs_end)
                 data[log.player2_id] = victim_data
             else:
                 victim_data = None
             
-            killer_faction = Faction(log.player_team) if log.player_team else Faction.Any
-            victim_faction = Faction(log.player2_team) if log.player2_team else Faction.Any
-            
-            # Get weapon
-            weapon = log.weapon
-            if weapon:
-                if weapon not in mappings.WEAPONS:
-                    logging.warn('Weapon "%s" is not mapped', weapon)
-                else:
-                    weapon = mappings.WEAPONS[weapon]
+            killer_faction = EFaction(log.player_team) if log.player_team else EFaction.Any
+            victim_faction = EFaction(log.player2_team) if log.player2_team else EFaction.Any
 
+            if log.weapon:
+                try:
+                    weapon = Weapon.by_id(log.weapon)
+                except KeyError:
+                    weapon = Weapon(
+                        id=log.weapon,
+                        name=log.weapon,
+                        type=WeaponType.UNKNOWN,
+                        factions=set(Faction.all())
+                    )
+            else:
+                weapon = None
+            
             # Update player score
             if log.player_combat_score is not None:
                 killer_data.update_score(log)
 
             # Process event
             if log_type == EventTypes.player_kill:
+                assert victim_data is not None
+                assert weapon is not None
                 killer_data.update_faction(killer_faction)
                 victim_data.update_faction(victim_faction)
                 killer_data.kill(victim_data, weapon, killer_faction)
                 victim_data.death(killer_data, weapon, victim_faction)
-            
+
             elif log_type == EventTypes.player_teamkill:
+                assert victim_data is not None
+                assert weapon is not None
                 killer_data.update_faction(killer_faction)
                 victim_data.update_faction(victim_faction)
                 killer_data.teamkill(victim_data, weapon, killer_faction)
                 victim_data.death(killer_data, weapon, victim_faction)
-            
+
             elif log_type == EventTypes.player_suicide:
                 killer_data.update_faction(killer_faction)
                 killer_data.suicide(killer_faction)
@@ -442,19 +476,20 @@ class MatchData(DataStore):
             # Update player faction
             elif log_type == EventTypes.player_change_team:
                 if all([log.old, log.new]):
-                    killer_data.update_faction(Faction.Any)
+                    killer_data.update_faction(EFaction.Any)
                 elif log.new:
-                    killer_data.update_faction(Faction(log.new))
+                    killer_data.update_faction(EFaction(log.new))
 
         duration = logs_end - logs_start
 
         if match_ended:
+            assert match_ended.message is not None
             return cls(
                 players=data.values(),
                 duration=duration,
                 map=map_name,
-                team1_score=match_ended.message.split(' - ')[0],
-                team2_score=match_ended.message.split(' - ')[1],
+                team1_score=int(match_ended.message.split(' - ')[0]),
+                team2_score=int(match_ended.message.split(' - ')[1]),
             )
         else:
             return cls(
@@ -466,24 +501,24 @@ class MatchData(DataStore):
     @property
     def winner(self):
         if self.team1_score > self.team2_score:
-            return Faction.Allies
+            return EFaction.Allies
         elif self.team1_score < self.team2_score:
-            return Faction.Axis
+            return EFaction.Axis
         else:
-            return Faction.Any
+            return EFaction.Any
     @property
     def loser(self):
         if self.team1_score < self.team2_score:
-            return Faction.Allies
+            return EFaction.Allies
         elif self.team1_score > self.team2_score:
-            return Faction.Axis
+            return EFaction.Axis
         else:
-            return Faction.Any
+            return EFaction.Any
     
-    def get_data_for_faction(self, faction: 'Faction', include_unknown: bool = False):
-        faction = Faction(faction)
+    def get_data_for_faction(self, faction: 'EFaction', include_unknown: bool = False):
+        faction = EFaction(faction)
         if include_unknown:
-            return DataStore(self.duration, [player for player in self.players if player.faction == faction or player.faction == Faction.Any or player.faction is None])
+            return DataStore(self.duration, [player for player in self.players if player.faction == faction or player.faction == EFaction.Any or player.faction is None])
         else:
             return DataStore(self.duration, [player for player in self.players if player.faction == faction])
     
@@ -493,7 +528,7 @@ class MatchData(DataStore):
     def to_csv(self):
         return super().to_csv(single_match=True)
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         out = dict(
             map=self.map,
             team1=dict(
@@ -509,35 +544,35 @@ class MatchData(DataStore):
         return out
 
 class PlayerData:
-    def __init__(self, steam_id: str, name: str, match_start: datetime, match_end: datetime):
-        self.steam_id: str = steam_id
-        self.names: Dict[str, int] = {name: 1}
-        self._faction: Faction = Faction.Any
-        self.faction: Faction = None
+    def __init__(self, player_id: str, name: str, match_start: datetime | None, match_end: datetime | None):
+        self.player_id: str = player_id
+        self.names: dict[str, int] = {name: 1}
+        self._faction: EFaction = EFaction.Any
+        self.faction: EFaction | None = None
         self.kills: int = 0
         self.deaths: int = 0
         self.allied_kills: int = 0
         self.axis_kills: int = 0
         self.allied_deaths: int = 0
         self.axis_deaths: int = 0
-        self.weapons: Dict[str, int] = {'None': 0}
-        self.causes: Dict[str, int] = {'None': 0}
+        self.weapons: dict[Weapon, int] = {}
+        self.causes: dict[Weapon, int] = {}
         self.teamkills: int = 0
         self.suicides: int = 0
         self._curr_streak: int = 0
         self.killstreak: int = 0
         self._curr_deathstreak: int = 0
         self.deathstreak: int = 0
-        self._victims: Dict[str, int] = {}
-        self._nemeses: Dict[str, int] = {}
+        self._victims: dict["PlayerData", int] = {}
+        self._nemeses: dict["PlayerData", int] = {}
         self._last_seen_score: PlayerScore = PlayerScore()
         self.allied_score: PlayerScore = PlayerScore()
         self.axis_score: PlayerScore = PlayerScore()
         self.score: PlayerScore = PlayerScore()
         self._seconds_played: int = 0
         self._last_seen_playtime: int = 0
-        self._sess_start: datetime = match_start
-        self._match_end: datetime = match_end
+        self._sess_start: datetime | None = match_start
+        self._match_end: datetime | None = match_end
         self.allied_seconds_played: int = 0
         self.axis_seconds_played: int = 0
         self.num_matches_played: int = 1
@@ -546,7 +581,7 @@ class PlayerData:
         if not isinstance(other, PlayerData):
             return NotImplemented
         
-        res = PlayerData(self.steam_id, self.name, None, self._match_end)
+        res = PlayerData(self.player_id, self.name, None, self._match_end)
 
         for attr in ('kills', 'deaths', 'allied_kills', 'axis_kills', 'allied_deaths',
                      'axis_deaths', 'teamkills', 'suicides', 'allied_score', 'axis_score',
@@ -567,7 +602,7 @@ class PlayerData:
         res.names = combine_dicts(self.names, other.names)
 
         res.faction = self.faction
-        res.update_faction(other.faction)
+        res.update_faction(other._faction)
         
         return res
 
@@ -575,25 +610,25 @@ class PlayerData:
         return self + other
     
     def __hash__(self):
-        return hash(self.steam_id)
+        return hash(self.player_id)
     def __eq__(self, other):
-        return self.steam_id == other.steam_id if isinstance(other, PlayerData) else NotImplemented
+        return self.player_id == other.player_id if isinstance(other, PlayerData) else NotImplemented
 
-    def update_faction(self, faction: Faction):
+    def update_faction(self, faction: EFaction):
         if self.faction is None:
             self.faction = faction
-        elif self.faction == Faction.Any:
+        elif self.faction == EFaction.Any:
             pass
         elif self.faction != faction:
-            self.faction = Faction.Any
+            self.faction = EFaction.Any
         
-        if faction != Faction.Any:
+        if faction != EFaction.Any:
 
-            if self._faction == Faction.Allies:
+            if self._faction == EFaction.Allies:
                 self.allied_seconds_played += self.seconds_played - self._last_seen_playtime
                 self._last_seen_playtime = self.seconds_played
             
-            elif self._faction == Faction.Axis:
+            elif self._faction == EFaction.Axis:
                 self.axis_seconds_played += self.seconds_played - self._last_seen_playtime
                 self._last_seen_playtime = self.seconds_played
             
@@ -603,8 +638,13 @@ class PlayerData:
     
     def update_score(self, log: 'LogLine'):
         faction = self._faction
-        if faction == Faction.Any and log.player_team:
-            faction = Faction(log.player_team)
+        if faction == EFaction.Any and log.player_team:
+            faction = EFaction(log.player_team)
+
+        assert log.player_combat_score is not None
+        assert log.player_offense_score is not None
+        assert log.player_defense_score is not None
+        assert log.player_support_score is not None
 
         score = PlayerScore(
             combat=log.player_combat_score,
@@ -614,25 +654,27 @@ class PlayerData:
         )
         score_diff = score - self._last_seen_score
 
-        if faction == Faction.Allies:
+        if faction == EFaction.Allies:
             self.allied_score += score_diff
-        elif faction == Faction.Axis:
+        elif faction == EFaction.Axis:
             self.axis_score += score_diff
 
         self._faction = faction
         self.score += score_diff
         self._last_seen_score = score
 
-    def kill(self, victim, weapon: str, faction: Faction):
+    def kill(self, victim: "PlayerData", weapon: Weapon, faction: EFaction):
         self.kills += 1
-        if faction == Faction.Allies:
+        if faction == EFaction.Allies:
             self.allied_kills += 1
-        elif faction == Faction.Axis:
+        elif faction == EFaction.Axis:
             self.axis_kills += 1
         
         # Prefered weapon
-        try: self.weapons[weapon] += 1
-        except KeyError: self.weapons[weapon] = 1
+        try:
+            self.weapons[weapon] += 1
+        except KeyError:
+            self.weapons[weapon] = 1
 
         # Killstreak
         self._curr_streak += 1
@@ -642,116 +684,125 @@ class PlayerData:
         self._curr_deathstreak = 0
 
         # Victims
-        try: self._victims[victim] += 1
-        except KeyError: self._victims[victim] = 1
-    
-    def teamkill(self, victim, weapon: str, faction: Faction):
+        try:
+            self._victims[victim] += 1
+        except KeyError:
+            self._victims[victim] = 1
+
+    def teamkill(self, victim: "PlayerData", weapon: Weapon, faction: EFaction):
         self.teamkills += 1
 
         # Victims
-        try: self._victims[victim] += 1
-        except KeyError: self._victims[victim] = 1
+        try:
+            self._victims[victim] += 1
+        except KeyError:
+            self._victims[victim] = 1
 
-    def death(self, nemesis, weapon: str, faction: Faction = None):
+    def death(self, nemesis: "PlayerData", weapon: Weapon, faction: EFaction | None = None):
         self.deaths += 1
-        if faction == Faction.Allies:
+        if faction == EFaction.Allies:
             self.allied_deaths += 1
-        elif faction == Faction.Axis:
+        elif faction == EFaction.Axis:
             self.axis_deaths += 1
 
         # Cause of death
-        try: self.causes[weapon] += 1
-        except KeyError: self.causes[weapon] = 1
+        try:
+            self.causes[weapon] += 1
+        except KeyError:
+            self.causes[weapon] = 1
 
         # Killstreak
         self._curr_streak = 0
         # Deathstreak
         self._curr_deathstreak += 1
-        if self._curr_deathstreak > self.deathstreak: self.deathstreak = self._curr_deathstreak
+        if self._curr_deathstreak > self.deathstreak:
+            self.deathstreak = self._curr_deathstreak
 
         # Nemeses
-        try: self._nemeses[nemesis] += 1
-        except KeyError: self._nemeses[nemesis] = 1
+        try:
+            self._nemeses[nemesis] += 1
+        except KeyError:
+            self._nemeses[nemesis] = 1
     
-    def suicide(self, faction: Faction):
+    def suicide(self, faction: EFaction):
         self.deaths += 1
         self.suicides += 1
-        if faction == Faction.Allies:
+        if faction == EFaction.Allies:
             self.allied_deaths += 1
-        elif faction == Faction.Axis:
+        elif faction == EFaction.Axis:
             self.axis_deaths += 1
 
         # Killstreak
         self._curr_streak = 0
         # Deathstreak
         self._curr_deathstreak += 1
-        if self._curr_deathstreak > self.deathstreak: self.deathstreak = self._curr_deathstreak
+        if self._curr_deathstreak > self.deathstreak:
+            self.deathstreak = self._curr_deathstreak
 
-    def join(self, time):
+    def join(self, time: datetime):
         self._sess_start = time
-    def leave(self, time):
+    def leave(self, time: datetime):
         if not self._sess_start:
-            logging.warn('Player left but was already offline: %s', self.to_dict())
+            logging.warning('Player left but was already offline: %s', self.to_dict())
         else:
-            self._seconds_played += (time - self._sess_start).total_seconds()
+            self._seconds_played += int((time - self._sess_start).total_seconds())
         self._sess_start = None
         self._last_seen_score = PlayerScore()
     
     @property
-    def name(self):
-        return max(self.names, key=self.names.get)
+    def name(self) -> str:
+        return max(self.names, key=lambda x: self.names.get(x, 0))
 
     @property
-    def victims(self):
-        try:
-            return {p.name: a for p, a in self._victims.items()} if self._victims else {'None': 0}
-        except:
-            print(self._victims)
-            raise
+    def victims(self) -> dict[str, int]:
+        return {p.name: a for p, a in self._victims.items()}
     @property
-    def nemeses(self):
-        return {p.name: a for p, a in self._nemeses.items()} if self._nemeses else {'None': 0}
+    def nemeses(self) -> dict[str, int]:
+        return {p.name: a for p, a in self._nemeses.items()}
 
     @property
-    def kill_death_ratio(self):
+    def kill_death_ratio(self) -> float:
         return round(self.kills/self.deaths, 2) if self.deaths else float(self.kills)
     @property
-    def kills_per_match(self):
+    def kills_per_match(self) -> float:
         return round(self.kills/self.num_matches_played, 2)
     @property
-    def kills_per_minute(self):
+    def kills_per_minute(self) -> float:
         return round(self.kills / (self.seconds_played / 60), 2) if self.seconds_played else self.kills
 
     @property
-    def weapon(self):
-        return max(self.weapons, key=self.weapons.get)
+    def weapon(self) -> Weapon | None:
+        return max(self.weapons, key=lambda x: self.weapons[x]) if self.weapons else None
     @property
-    def cause(self):
-        return max(self.causes, key=self.causes.get)
+    def cause(self) -> Weapon | None:
+        return max(self.causes, key=lambda x: self.causes[x]) if self.causes else None
     @property
-    def victim(self):
-        return max(self.victims, key=self.victims.get)
+    def victim(self) -> str | None:
+        return max(self.victims, key=lambda x: self.victims[x]) if self.victims else None
     @property
-    def nemesis(self):
-        return max(self.nemeses, key=self.nemeses.get)
+    def nemesis(self) -> str | None:
+        return max(self.nemeses, key=lambda x: self.nemeses[x]) if self.nemeses else None
 
     @property
-    def seconds_played(self):
-        return int(self._seconds_played + (self._match_end - self._sess_start).total_seconds() if self._sess_start else self._seconds_played)    
+    def seconds_played(self) -> int:
+        return int(
+            self._seconds_played + (self._match_end - self._sess_start).total_seconds()
+            if self._sess_start and self._match_end
+            else self._seconds_played
+        )    
     
     @property
-    def seconds_alive(self):
+    def seconds_alive(self) -> int:
         return min(self.seconds_played, (1 + (self.score.offense + self.score.defense) // 20) * 60)
     @property
-    def allied_seconds_alive(self):
+    def allied_seconds_alive(self) -> int:
         return (1 + (self.allied_score.offense + self.allied_score.defense) // 20) * 60
     @property
-    def axis_seconds_alive(self):
+    def axis_seconds_alive(self) -> int:
         return (1 + (self.axis_score.offense + self.axis_score.defense) // 20) * 60
 
-    def to_string(self, rank: int, single_match=True):
-        weapon = self.weapon
-        weapon = mappings.VEHICLE_WEAPONS_FACTIONLESS.get(weapon, mappings.FACTIONLESS.get(weapon, weapon))
+    def to_string(self, rank: int, single_match=True) -> str:
+        weapon = mappings.FACTIONLESS.get(self.weapon, self.weapon.name) if self.weapon else "None"
         weapons = DataStore.map_weapons(self.weapons, mappings.VEHICLE_WEAPONS_FACTIONLESS, mappings.FACTIONLESS)
         victim = self.victim
         nemesis = self.nemesis
@@ -770,8 +821,8 @@ class PlayerData:
                 self.suicides,
                 self.killstreak,
                 f"{weapon}({weapons[weapon]})",
-                f"{victim}({self.victims[victim]})",
-                f"{nemesis}({self.nemeses[nemesis]})",
+                f"{victim}({self.victims[victim]})" if victim else "None(0)",
+                f"{nemesis}({self.nemeses[nemesis]})" if nemesis else "None(0)",
                 self.score.combat,
                 self.score.offense,
                 self.score.defense,
@@ -781,7 +832,7 @@ class PlayerData:
         else:
             return "#{: <5} {: <17} {: >2}  {: <25} {: <6} {: <6} {: <5} {: <5} {: <5} {: <6} {: <28}{: <25} {: <25} {: <4} {: <4} {: <4} {: <4} {: <9} {}".format(
                 rank,
-                self.steam_id,
+                self.player_id,
                 self.num_matches_played,
                 self.name,
                 self.kills,
@@ -791,8 +842,8 @@ class PlayerData:
                 self.suicides,
                 self.killstreak,
                 f"{weapon}({weapons[weapon]})",
-                f"{victim}({self.victims[victim]})",
-                f"{nemesis}({self.nemeses[nemesis]})",
+                f"{victim}({self.victims[victim]})" if victim else "None(0)",
+                f"{nemesis}({self.nemeses[nemesis]})" if nemesis else "None(0)",
                 self.score.combat,
                 self.score.offense,
                 self.score.defense,
@@ -802,8 +853,7 @@ class PlayerData:
             )
 
     def to_csv(self, rank: int, single_match=True):
-        weapon = self.weapon
-        weapon = mappings.VEHICLE_WEAPONS_FACTIONLESS.get(weapon, mappings.FACTIONLESS.get(weapon, weapon))
+        weapon = mappings.FACTIONLESS.get(self.weapon, self.weapon.name) if self.weapon else "None"
         weapons = DataStore.map_weapons(self.weapons, mappings.VEHICLE_WEAPONS_FACTIONLESS, mappings.FACTIONLESS)
         victim = self.victim
         nemesis = self.nemesis
@@ -811,7 +861,7 @@ class PlayerData:
         if single_match:
             values = (
                 rank,
-                self.steam_id,
+                self.player_id,
                 self.name,
                 self.kills,
                 self.deaths,
@@ -821,9 +871,9 @@ class PlayerData:
                 weapon,
                 weapons[weapon],
                 victim,
-                self.victims[victim],
+                self.victims[victim] if victim else 0,
                 nemesis,
-                self.nemeses[nemesis],
+                self.nemeses[nemesis] if nemesis else 0,
                 self.score.combat,
                 self.score.offense,
                 self.score.defense,
@@ -833,7 +883,7 @@ class PlayerData:
         else:
             values = (
                 rank,
-                self.steam_id,
+                self.player_id,
                 self.name,
                 self.num_matches_played,
                 self.kills,
@@ -844,9 +894,9 @@ class PlayerData:
                 weapon,
                 weapons[weapon],
                 victim,
-                self.victims[victim],
+                self.victims[victim] if victim else 0,
                 nemesis,
-                self.nemeses[nemesis],
+                self.nemeses[nemesis] if nemesis else 0,
                 self.score.combat,
                 self.score.offense,
                 self.score.defense,
@@ -862,7 +912,7 @@ class PlayerData:
     def to_dict(self):
         return dict(
             name=self.name,
-            steam_id=self.steam_id,
+            player_id=self.player_id,
             kills=self.kills,
             deaths=self.deaths,
             teamkills=self.teamkills,
@@ -884,7 +934,7 @@ class PlayerData:
 
 def _get_weapon_stats(stats: DataStore):
     def get_weapons_table(*mappings, skip_unmapped=False, title=None, show_tks=False):
-        table = [["WEAPON", "KILLS", "RATE"]]
+        table: list[list[str | int]] = [["WEAPON", "KILLS", "RATE"]]
         weapons = stats.weapons_killed_with(*mappings, skip_unmapped=skip_unmapped)
         total_kills = sum(weapons.values())
         for weapon, kills in sorted(weapons.items(), reverse=True, key=lambda i: i[1]):
@@ -893,7 +943,7 @@ def _get_weapon_stats(stats: DataStore):
             tks = stats.weapons_teamkilled_with(*mappings, skip_unmapped=skip_unmapped)
             table[0].append("TKS")
             for row in table[1:]:
-                row.append(tks.get(row[0], 0))
+                row.append(tks.get(str(row[0]), 0))
         return toTable(table, title=title)
 
     weaponsTable = get_weapons_table(mappings.VEHICLE_WEAPONS_FACTIONLESS, mappings.FACTIONLESS, show_tks=True)
@@ -901,7 +951,7 @@ def _get_weapon_stats(stats: DataStore):
     weaponsBasicAlliesTable = get_weapons_table(mappings.BASIC_CATEGORIES_ALLIES, skip_unmapped=True, title="WEAPONS USED BY ALLIES")
     weaponsBasicAxisTable = get_weapons_table(mappings.BASIC_CATEGORIES_AXIS, skip_unmapped=True, title="WEAPONS USED BY AXIS")
 
-    table = [["WEAPON", "ALLIES", "AXIS", "TOTAL", "RATE"]]
+    table: list[list[str | int]] = [["WEAPON", "ALLIES", "AXIS", "TOTAL", "RATE"]]
     weapons_allies = stats.weapons_killed_with(mappings.BASIC_CATEGORIES_ALLIES, skip_unmapped=True)
     weapons_axis = stats.weapons_killed_with(mappings.BASIC_CATEGORIES_AXIS, skip_unmapped=True)
     weapons = combine_dicts(weapons_allies, weapons_axis)
@@ -938,7 +988,7 @@ def create_scoreboard(data: Union['MatchData', 'MatchGroup']):
     output += [
         f"Duration: {int(stats.duration.total_seconds() / 60 + 0.5)} minutes",
         "",
-        f"Players: {len(list(filter(lambda p: p.steam_id, stats.players)))}",
+        f"Players: {len(list(filter(lambda p: p.player_id, stats.players)))}",
         f"Deaths: {stats.total_deaths}",
         f"  Kills: {stats.total_kills}",
         f"  Teamkills: {stats.total_teamkills}",
