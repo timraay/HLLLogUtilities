@@ -272,7 +272,7 @@ class HLLRcon:
             faction = player_data.faction
             if faction is not None:
                 team_id = faction.team.id
-                teams[team_id].faction = faction.name
+                teams[team_id].faction = faction.short_name
 
                 squad_name = player_data.platoon
                 if squad_name:

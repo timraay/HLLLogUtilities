@@ -414,7 +414,7 @@ class Team(BaseModel):
     created_at: datetime = pydantic.Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
     def __eq__(self, other: object) -> bool:
-        if isinstance(other, Player):
+        if isinstance(other, Team):
             return self.id == other.id
         return NotImplemented
 

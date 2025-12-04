@@ -100,8 +100,8 @@ def get_ranges(logs):
                 # The line appeared before the server_match_started event
                 ranges[-1].map_name = parse_layer(log.old).pretty_name
 
-    if len(ranges) == 1:
-        ranges.clear()
+    # if len(ranges) == 1:
+    #     ranges.clear()
 
     return ranges
 

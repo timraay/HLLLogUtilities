@@ -1,5 +1,8 @@
 from hllrcon.data import Map, GameMode, Layer, Weapon, WeaponType, Faction, Team
 
+# Nice and dirty
+Weapon.__hash__ = lambda self: hash(self.id) # type: ignore
+
 def get_map_and_mode(layer_name: str) -> tuple[str, str]:
     map, mode = layer_name.rsplit(' ', 1)
     map.replace(' NIGHT', '')

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from .base import Modifier
 from lib.events import on_player_any_kill, add_condition, add_cooldown
 from lib.rcon.models import PlayerKillEvent
-from lib.mappings import WEAPONS, VEHICLES
+from hllrcon.data import Weapon, Vehicle
 
 class NoPantherModifier(Modifier):
 
@@ -16,7 +16,7 @@ class NoPantherModifier(Modifier):
         enforce_name_validity = True
 
     @on_player_any_kill()
-    @add_condition(lambda _, event: VEHICLES.get(WEAPONS.get(event.weapon, event.weapon)) == "Panther")
+    @add_condition(lambda _, event: Weapon.by_id(event.weapon_id).vehicle == Vehicle.SD_KFZ_171_PANTHER)
     @add_cooldown("player_id", duration=10)
     async def punish_on_panther_usage(self, event: PlayerKillEvent):
         player = event.get_player()

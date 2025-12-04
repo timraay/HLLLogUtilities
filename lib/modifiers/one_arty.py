@@ -2,6 +2,7 @@ import asyncio
 import random
 from datetime import datetime, timezone
 from typing import Dict, Union
+from hllrcon.data import Weapon, WeaponType
 
 from lib.rcon.models import EventTypes, ActivationEvent, PlayerKillEvent, PlayerLeaveServerEvent, PlayerJoinServerEvent, Player, Team
 
@@ -9,23 +10,24 @@ from .base import Modifier
 from lib.events import (on_player_kill, on_player_any_kill, on_player_leave_server, on_player_join_server,
     add_condition, add_cooldown, event_listener)
 from lib.logs import LogLine
-from lib.mappings import WEAPONS, BASIC_CATEGORIES, VEHICLE_WEAPONS_FACTIONLESS
 from utils import get_config
 
 ABILITIES_ALLOWED = get_config().getboolean("OneManArty", "AllowCMDAbilities")
 
-def is_arty(weapon: str, yes_no: bool = True):
-    weapon = WEAPONS.get(weapon, weapon)
-    is_arty = BASIC_CATEGORIES.get(weapon) == "Artillery"
+def is_arty(weapon_name: str, yes_no: bool = True):
+    try:
+        weapon = Weapon.by_id(weapon_name)
+    except ValueError:
+        return not yes_no
+
+    is_arty = weapon.type == WeaponType.ARTILLERY
     if yes_no:
         return is_arty
     else:
         return not (
             is_arty
-            or weapon.endswith(" Mine")
-            or VEHICLE_WEAPONS_FACTIONLESS.get(weapon) == "Roadkill"
-            or (ABILITIES_ALLOWED and BASIC_CATEGORIES.get(weapon) == "Ability")
-            or weapon.upper() == "UNKNOWN"
+            or weapon.type in (WeaponType.AP_MINE, WeaponType.AT_MINE, WeaponType.UNKNOWN, WeaponType.ROADKILL)
+            or (ABILITIES_ALLOWED and weapon.type == WeaponType.COMMANDER_ABILITY)
         )
 def is_arty_condition(yes_no: bool = True):
     def decorator(func):

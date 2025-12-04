@@ -388,10 +388,14 @@ class MatchData(DataStore):
             log_type = EventTypes(log.event_type)
 
             # Look for map name
-            # TODO: Re-enable after U18 hotfix or U19 release, once `server.map` returns the layer name again
-            # if log_type == EventTypes.server_map_change:
-            #     map_name = mappings.parse_layer(log.new).pretty()
-            #     continue
+            if log_type == EventTypes.server_map_change:
+                if match_ended:
+                    assert log.old is not None
+                    map_name = mappings.parse_layer(log.old).pretty_name
+                else:
+                    assert log.new is not None
+                    map_name = mappings.parse_layer(log.new).pretty_name
+                continue
 
             if log_type == EventTypes.server_match_start:
                 assert log.new is not None
@@ -404,6 +408,16 @@ class MatchData(DataStore):
                 if not map_name:
                     map_name = " ".join(mappings.get_map_and_mode(log.new))
                 match_ended = log
+                continue
+
+            elif log_type not in {
+                EventTypes.player_kill,
+                EventTypes.player_teamkill,
+                EventTypes.player_suicide,
+                EventTypes.player_join_server,
+                EventTypes.player_leave_server,
+                EventTypes.player_change_team,
+            }:
                 continue
 
             # Get or create killer and victim data
@@ -820,7 +834,7 @@ class PlayerData:
                 self.teamkills,
                 self.suicides,
                 self.killstreak,
-                f"{weapon}({weapons[weapon]})",
+                f"{weapon}({weapons.get(weapon, 0)})",
                 f"{victim}({self.victims[victim]})" if victim else "None(0)",
                 f"{nemesis}({self.nemeses[nemesis]})" if nemesis else "None(0)",
                 self.score.combat,
@@ -841,7 +855,7 @@ class PlayerData:
                 self.teamkills,
                 self.suicides,
                 self.killstreak,
-                f"{weapon}({weapons[weapon]})",
+                f"{weapon}({weapons.get(weapon, 0)})",
                 f"{victim}({self.victims[victim]})" if victim else "None(0)",
                 f"{nemesis}({self.nemeses[nemesis]})" if nemesis else "None(0)",
                 self.score.combat,
@@ -869,7 +883,7 @@ class PlayerData:
                 self.suicides,
                 self.killstreak,
                 weapon,
-                weapons[weapon],
+                weapons.get(weapon, 0),
                 victim,
                 self.victims[victim] if victim else 0,
                 nemesis,
@@ -892,7 +906,7 @@ class PlayerData:
                 self.suicides,
                 self.killstreak,
                 weapon,
-                weapons[weapon],
+                weapons.get(weapon, 0),
                 victim,
                 self.victims[victim] if victim else 0,
                 nemesis,
@@ -918,8 +932,8 @@ class PlayerData:
             teamkills=self.teamkills,
             max_killstreak=self.killstreak,
             max_deathstreak=self.deathstreak,
-            weapons_used={k: v for k, v in sorted(self.weapons.items(), key=lambda x: x[1], reverse=True) if k != 'None'},
-            weapons_died_to={k: v for k, v in sorted(self.causes.items(), key=lambda x: x[1], reverse=True) if k != 'None'},
+            weapons_used={k.id: v for k, v in sorted(self.weapons.items(), key=lambda x: x[1], reverse=True)},
+            weapons_died_to={k.id: v for k, v in sorted(self.causes.items(), key=lambda x: x[1], reverse=True)},
             victims={k: v for k, v in sorted(self.victims.items(), key=lambda x: x[1], reverse=True) if k != 'None'},
             nemeses={k: v for k, v in sorted(self.nemeses.items(), key=lambda x: x[1], reverse=True) if k != 'None'},
             combat_score=self.score.combat,
