@@ -604,7 +604,7 @@ class PlayerData:
         
         for attr in ('weapons', 'causes'):
             _new_attr = combine_dicts(self.__getattribute__(attr), other.__getattribute__(attr))
-            res.__setattr__(attr, _new_attr if _new_attr else {'None': 0})
+            res.__setattr__(attr, _new_attr)
         
         for attr in ('_victims', '_nemeses'):
             _new_attr = combine_dicts(self.__getattribute__(attr), other.__getattribute__(attr))
