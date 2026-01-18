@@ -447,7 +447,7 @@ class MatchData(DataStore):
             if log.weapon:
                 try:
                     weapon = Weapon.by_id(log.weapon)
-                except KeyError:
+                except ValueError:
                     weapon = Weapon(
                         id=log.weapon,
                         name=log.weapon,
