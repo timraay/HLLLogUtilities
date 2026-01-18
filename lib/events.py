@@ -92,10 +92,14 @@ class EventListener:
             The method's result, or an exception if it failed
         """
         for condition in self._conditions:
-            if iscoroutinefunction(condition):
-                res = await condition(sf, event) # type: ignore
-            else:
-                res = condition(sf, event) # type: ignore
+            try:
+                if iscoroutinefunction(condition):
+                    res = await condition(sf, event) # type: ignore
+                else:
+                    res = condition(sf, event) # type: ignore
+            except Exception:
+                sf.logger.exception('Condition check failed')
+                return
 
             if not res:
                 return
@@ -107,7 +111,7 @@ class EventListener:
                 if cooldown.callback:
                     try:
                         cooldown.callback(event)
-                    except:
+                    except Exception:
                         sf.logger.exception('Cooldown callback failed')
             return
         for cooldown in self._cooldowns:
