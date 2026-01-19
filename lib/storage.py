@@ -6,7 +6,7 @@ from typing import Sequence
 from lib.logs import LogLine
 
 DB_VERSION = 7
-HLU_VERSION = "v2.2.14"
+HLU_VERSION = "v2.2.15"
 
 database = sqlite3.connect('sessions.db')
 cursor = database.cursor()
