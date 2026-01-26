@@ -104,7 +104,7 @@ class HSSApiKey:
 
 class HSSTeam(pydantic.BaseModel):
     tag: str
-    name: Optional[str]
+    name: Optional[str] = None
 
     def __str__(self):
         if self.name:
