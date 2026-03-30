@@ -1,4 +1,8 @@
+from typing import TypeVar
 import asyncio
+from collections.abc import Coroutine
+
+from lib.rcon.rcon import HLLRcon
 
 from .base import Modifier
 from lib.events import on_iteration
@@ -16,6 +20,21 @@ MODIFIERS_REMOVED_MSG = (
     "[  HLL LOG UTILITIES  ]\n"
     "An Admin has disabled all active modifiers."
 )
+
+C = TypeVar("C", bound=Coroutine)
+
+async def delay_coro(delay: float, coro: C) -> C:
+    await asyncio.sleep(delay)
+    return await coro
+
+async def send_message(rcon: HLLRcon, player_ids: list[str], message: str):
+    await asyncio.gather(*[
+        delay_coro(i * 0.005, rcon.client.message_player(
+            message=message,
+            player_id=player_id,
+        )) for i, player_id in enumerate(player_ids)
+    ])
+
 
 class ModifierNotifModifier(Modifier):
 
@@ -59,27 +78,19 @@ class ModifierNotifModifier(Modifier):
                 players_new.append(player)
             elif send_update:
                 players_update.append(player)
+            
+        try:
+            if players_new and has_modifiers:
+                rcon = self.get_rcon()
+                message = self.get_modifier_notif_msg()
+                await send_message(rcon, [player.id for player in players_new], message)
 
-        
-        if players_new and has_modifiers:
-            rcon = self.get_rcon()
-            message = self.get_modifier_notif_msg()
-            await asyncio.gather(*[
-                rcon.client.message_player(
-                    message=message,
-                    player_id=player.id,
-                ) for player in players_new
-            ])
-
-        if players_update:
-            rcon = self.get_rcon()
-            message = self.get_modifier_notif_msg(update=True)
-            await asyncio.gather(*[
-                rcon.client.message_player(
-                    message=message,
-                    player_id=player.id,
-                ) for player in players_update
-            ])
+            if players_update:
+                rcon = self.get_rcon()
+                message = self.get_modifier_notif_msg(update=True)
+                await send_message(rcon, [player.id for player in players_update], message)
+        except Exception as e:
+            self.logger.exception(f"Failed to send modifier notification: {e}")
         
         self.player_ids = {player.id for player in event.snapshot.players}
         self.last_seen = self.session.modifier_flags.copy()
