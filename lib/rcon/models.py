@@ -396,7 +396,7 @@ class Squad(TeamModelMixin, BaseModel):
 
     def get_players(self) -> Generator['Player', Any, None]:
         for player in self.snapshot.players:
-            if player.squad_id == self.id and player.team_id == self.id:
+            if player.squad_id == self.id and player.team_id == self.team_id:
                 yield player
 
     def get_leader(self) -> 'Player | None':
