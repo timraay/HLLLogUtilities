@@ -1,12 +1,12 @@
-from lib.exceptions import HLLAuthError
-from traceback import print_exc
 import asyncio
+from traceback import print_exc
 
-from hllrcon import Rcon
+from hllrcon import HLLAuthError, Rcon
 
-inp = input('Address + Port: ')
-address, port = inp.split(':', 1)
-password = input('Password (optional): ')
+inp = input("Address + Port: ")
+address, port = inp.split(":", 1)
+password = input("Password (optional): ")
+
 
 async def main():
     try:
@@ -17,19 +17,20 @@ async def main():
         )
         async with rcon.connect():
             pass
-        
+
     except HLLAuthError:
         if password:
             print_exc()
         else:
-            print('Successfully connected')
+            print("Successfully connected")
     except Exception:
         print_exc()
-    
+
     else:
-        print('Successfully connected') 
-        
+        print("Successfully connected")
+
     finally:
-        input('Press Enter to exit')
+        input("Press Enter to exit")
+
 
 asyncio.run(main())
