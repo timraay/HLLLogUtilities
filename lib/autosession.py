@@ -56,6 +56,7 @@ class AutoSessionManager:
             host=self.credentials.address,
             port=self.credentials.port,
             password=self.credentials.password,
+            logger=self.logger,
         )
         self._failed_attempts = 0
         self._cooldown = 0
