@@ -2,10 +2,11 @@ import discord
 from discord import Interaction
 from discord.ext import commands, tasks
 
-from discord_utils import handle_error, get_command_mention
-from lib.session import SESSIONS
+from discord_utils import get_command_mention, handle_error
 from lib.credentials import Credentials
 from lib.hss.api_key import HSSApiKey
+from lib.session import SESSIONS
+
 
 class _events(commands.Cog):
     """A class with most events in it"""
@@ -24,16 +25,28 @@ class _events(commands.Cog):
 
     @tasks.loop(minutes=5.0)
     async def update_status(self):
-        await self.bot.change_presence(activity=discord.Activity(name=f"over {len(SESSIONS)} sessions", type=discord.ActivityType.watching))
+        await self.bot.change_presence(
+            activity=discord.Activity(
+                name=f"over {len(SESSIONS)} sessions",
+                type=discord.ActivityType.watching,
+            )
+        )
+
     @update_status.before_loop
     async def before_status(self):
         await self.bot.wait_until_ready()
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild):
-        if guild.public_updates_channel and guild.public_updates_channel.permissions_for(guild.me).send_messages:
+        if (
+            guild.public_updates_channel
+            and guild.public_updates_channel.permissions_for(guild.me).send_messages
+        ):
             channel = guild.public_updates_channel
-        elif guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
+        elif (
+            guild.system_channel
+            and guild.system_channel.permissions_for(guild.me).send_messages
+        ):
             channel = guild.system_channel
         else:
             return
@@ -71,34 +84,41 @@ class _events(commands.Cog):
                 "\n❓ [Frequently Asked Questions](https://github.com/timraay/HLLLogUtilities/blob/main/FAQ.md)"
                 "\n☕ [Support me on Ko-fi](https://ko-fi.com/abusify)"
             ),
-            color=discord.Colour(7722980)
+            color=discord.Colour(7722980),
         ).set_image(
             url="https://github.com/timraay/HLLLogUtilities/blob/main/assets/banner.png?raw=true"
         )
 
         await channel.send(embed=embed)
-    
+
     @commands.Cog.listener()
     async def on_guild_remove(self, guild: discord.Guild):
         all_credentials = Credentials.in_guild(guild.id)
         for credentials in all_credentials:
             if credentials.autosession.enabled:
-                credentials.autosession.logger.info("Disabling AutoSession since its credentials are being deleted")
+                credentials.autosession.logger.info(
+                    "Disabling AutoSession since its credentials are being deleted"
+                )
                 credentials.autosession.disable()
-            
+
             for session in credentials.get_sessions():
                 if session.active_in() is True:
-                    session.logger.info("Stopping ongoing session since its credentials are being deleted")
+                    session.logger.info(
+                        "Stopping ongoing session since its credentials are being deleted"
+                    )
                     await session.stop()
-                
-                session.logger.info("Deleting session since it's being removed from a guild")
+
+                session.logger.info(
+                    "Deleting session since it's being removed from a guild"
+                )
                 await session.delete()
-            
+
             credentials.delete()
-        
+
         all_api_keys = HSSApiKey.in_guild(guild.id)
         for api_key in all_api_keys:
             api_key.delete()
+
 
 async def setup(bot):
     await bot.add_cog(_events(bot))

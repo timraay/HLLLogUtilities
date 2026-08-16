@@ -9,7 +9,12 @@ import discord
 from discord import ButtonStyle, Interaction, app_commands, ui
 from discord.ext import commands
 from discord.utils import escape_markdown as esc_md
-from hllrcon import HLLAuthError, HLLConnectionError, HLLConnectionRefusedError, Rcon
+from hllrcon import (
+    HLLRcon,
+    RconAuthError,
+    RconConnectionError,
+    RconConnectionRefusedError,
+)
 
 from discord_utils import (
     CallableButton,
@@ -116,10 +121,10 @@ class RCONCredentialsModal(Modal):
         await interaction.response.defer(ephemeral=True, thinking=True)
 
         try:
-            rcon = Rcon(host=address, port=port, password=password)
-            async with rcon.connect():
+            rcon = HLLRcon(host=address, port=port, password=password)
+            async with rcon.connection():
                 pass
-        except HLLConnectionError as error:
+        except RconConnectionError as error:
             logging.error(
                 "Failed connection to %s:%s (GID: %s) - %s: %s",
                 address,
@@ -128,7 +133,7 @@ class RCONCredentialsModal(Modal):
                 type(error).__name__,
                 str(error),
             )
-            if isinstance(error, HLLAuthError):
+            if isinstance(error, RconAuthError):
                 embed = get_error_embed(
                     title=str(error),
                     description=(
@@ -139,7 +144,7 @@ class RCONCredentialsModal(Modal):
                         " Otherwise you may dismiss this message."
                     ),
                 )
-            elif isinstance(error, HLLConnectionRefusedError):
+            elif isinstance(error, RconConnectionRefusedError):
                 embed = get_error_embed(
                     title=str(error),
                     description=(

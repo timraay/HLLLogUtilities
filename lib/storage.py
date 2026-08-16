@@ -1,14 +1,15 @@
 import logging
-from pypika import Table, Query
 import sqlite3
-from typing import Sequence
+from collections.abc import Sequence
+
+from pypika import Query, Table
 
 from lib.logs import LogLine
 
 DB_VERSION = 7
-HLU_VERSION = "v2.2.18"
+HLU_VERSION = "v2.3.0"
 
-database = sqlite3.connect('sessions.db')
+database = sqlite3.connect("sessions.db")
 cursor = database.cursor()
 
 cursor.execute("""
@@ -74,20 +75,28 @@ def rename_table_columns(table_name: str, old: list[str], new: list[str]):
 
     added = [c for c in new if c not in old]
     removed = [c for c in old if c not in new]
-    logging.info("Altered table %s: Added %s and removed %s", table_name, added, removed)
+    logging.info(
+        "Altered table %s: Added %s and removed %s", table_name, added, removed
+    )
 
 
-def update_table_columns(table_name: str, old: list[str], new: list[str], defaults: dict = {}):
+def update_table_columns(
+    table_name: str, old: list[str], new: list[str], defaults: dict = {}
+):
     table_name_new = table_name + "_new"
 
     # Create a new table with the proper columns
     cursor.execute(LogLine._get_create_query(table_name_new, _explicit_fields=new))
     # Copy over the values
     to_copy = [c for c in old if c in new]
-    query = Query.into(table_name_new).columns(*to_copy).from_(table_name).select(*to_copy)
+    query = (
+        Query.into(table_name_new).columns(*to_copy).from_(table_name).select(*to_copy)
+    )
     cursor.execute(str(query))
     # Insert defaults
-    defaults = {col: val for col, val in defaults.items() if col in new and col not in old}
+    defaults = {
+        col: val for col, val in defaults.items() if col in new and col not in old
+    }
     if defaults:
         query = Query.update(table_name_new)
         for col, val in defaults.items():
@@ -102,47 +111,105 @@ def update_table_columns(table_name: str, old: list[str], new: list[str], defaul
 
     added = [c for c in new if c not in old]
     removed = [c for c in old if c not in new]
-    logging.info("Altered table %s: Added %s and removed %s", table_name, added, removed)
+    logging.info(
+        "Altered table %s: Added %s and removed %s", table_name, added, removed
+    )
+
 
 cursor.execute("SELECT format_version FROM db_version")
 db_version: int = cursor.fetchone()[0]
 
 # Very dirty way of doing this, I know
 if db_version > DB_VERSION:
-    logging.warn('Unrecognized database format version! Expected %s but got %s. Certain functionality may be broken. Did you downgrade versions?', DB_VERSION, db_version)
+    logging.warning(
+        "Unrecognized database format version! Expected %s but got %s. Certain functionality may be broken. Did you downgrade versions?",
+        DB_VERSION,
+        db_version,
+    )
 elif db_version < DB_VERSION:
-    logging.info('Outdated database format version! Expected %s but got %s. Migrating now...', DB_VERSION, db_version)
+    logging.info(
+        "Outdated database format version! Expected %s but got %s. Migrating now...",
+        DB_VERSION,
+        db_version,
+    )
 
     if db_version < 2:
         # Add a "modifiers" column to the "sessions" table
-        cursor.execute('ALTER TABLE "sessions" ADD "modifiers" INTEGER DEFAULT 0 NOT NULL;')
-    
+        cursor.execute(
+            'ALTER TABLE "sessions" ADD "modifiers" INTEGER DEFAULT 0 NOT NULL;'
+        )
+
     if db_version < 3:
         # Add "player_score_X" columns to all session logs tables
-        cursor.execute('SELECT name FROM sqlite_master WHERE type = "table" AND name LIKE "session%";')
+        cursor.execute(
+            'SELECT name FROM sqlite_master WHERE type = "table" AND name LIKE "session%";'
+        )
         for (table_name,) in cursor.fetchall():
             try:
                 int(table_name[7:])
             except ValueError:
-                if table_name.endswith('_new'):
-                    logging.warning('Found table with name %s, you will likely need to manually delete it', table_name)
+                if table_name.endswith("_new"):
+                    logging.warning(
+                        "Found table with name %s, you will likely need to manually delete it",
+                        table_name,
+                    )
                 continue
 
-            update_table_columns(table_name,
-                old=['event_time', 'type', 'player_name', 'player_id', 'player_team', 'player_role', 'player2_name', 'player2_id',
-                     'player2_team', 'player2_role', 'weapon', 'old', 'new', 'team_name', 'squad_name', 'message'],
-                new=['event_time', 'type', 'player_name', 'player_id', 'player_team', 'player_role', 'player_combat_score',
-                     'player_offense_score', 'player_defense_score', 'player_support_score', 'player2_name', 'player2_id', 'player2_team',
-                     'player2_role', 'weapon', 'old', 'new', 'team_name', 'squad_name', 'message']
+            update_table_columns(
+                table_name,
+                old=[
+                    "event_time",
+                    "type",
+                    "player_name",
+                    "player_id",
+                    "player_team",
+                    "player_role",
+                    "player2_name",
+                    "player2_id",
+                    "player2_team",
+                    "player2_role",
+                    "weapon",
+                    "old",
+                    "new",
+                    "team_name",
+                    "squad_name",
+                    "message",
+                ],
+                new=[
+                    "event_time",
+                    "type",
+                    "player_name",
+                    "player_id",
+                    "player_team",
+                    "player_role",
+                    "player_combat_score",
+                    "player_offense_score",
+                    "player_defense_score",
+                    "player_support_score",
+                    "player2_name",
+                    "player2_id",
+                    "player2_team",
+                    "player2_role",
+                    "weapon",
+                    "old",
+                    "new",
+                    "team_name",
+                    "squad_name",
+                    "message",
+                ],
             )
-    
+
     if db_version < 4:
         # Add a "default_modifiers" column to the "credentials" table
-        cursor.execute('ALTER TABLE "credentials" ADD "default_modifiers" INTEGER DEFAULT 0 NOT NULL;')
+        cursor.execute(
+            'ALTER TABLE "credentials" ADD "default_modifiers" INTEGER DEFAULT 0 NOT NULL;'
+        )
 
     if db_version < 5:
         # Add a "autosession_enabled" column to the "credentials" table
-        cursor.execute('ALTER TABLE "credentials" ADD "autosession_enabled" BOOLEAN NOT NULL CHECK ("autosession_enabled" IN (0, 1)) DEFAULT 0;')
+        cursor.execute(
+            'ALTER TABLE "credentials" ADD "autosession_enabled" BOOLEAN NOT NULL CHECK ("autosession_enabled" IN (0, 1)) DEFAULT 0;'
+        )
 
         # Remove NOT NULL constraint from "end_time" column of the "sessions" table
         cursor.execute("""
@@ -163,8 +230,8 @@ elif db_version < DB_VERSION:
 
     if db_version < 6:
         # Create a new table with the proper columns
-        table_name = 'hss_api_keys'
-        table_name_new = f'{table_name}_new'
+        table_name = "hss_api_keys"
+        table_name_new = f"{table_name}_new"
         cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS "{table_name_new}" (
                 "guild_id"	VARCHAR(18) NOT NULL,
@@ -173,8 +240,13 @@ elif db_version < DB_VERSION:
             );
             """)
         # Copy over the values
-        to_copy = ['guild_id', 'tag', 'key']
-        query = Query.into(table_name_new).columns(*to_copy).from_(table_name).select(*to_copy)
+        to_copy = ["guild_id", "tag", "key"]
+        query = (
+            Query.into(table_name_new)
+            .columns(*to_copy)
+            .from_(table_name)
+            .select(*to_copy)
+        )
         cursor.execute(str(query))
         # Drop the old table
         cursor.execute(str(Query.drop_table(table_name)))
@@ -185,30 +257,74 @@ elif db_version < DB_VERSION:
 
     if db_version < 7:
         # Rename "player_steamid" and "player2_steamid" columns to "player_id" and "player2_id" respectively in all session logs tables
-        cursor.execute('SELECT name FROM sqlite_master WHERE type = "table" AND name LIKE "session%";')
+        cursor.execute(
+            'SELECT name FROM sqlite_master WHERE type = "table" AND name LIKE "session%";'
+        )
         for (table_name,) in cursor.fetchall():
             try:
                 int(table_name[7:])
             except ValueError:
-                if table_name.endswith('_new'):
-                    logging.warning('Found table with name %s, you will likely need to manually delete it', table_name)
+                if table_name.endswith("_new"):
+                    logging.warning(
+                        "Found table with name %s, you will likely need to manually delete it",
+                        table_name,
+                    )
                 continue
 
-            rename_table_columns(table_name,
-                old=['event_time', 'type', 'player_name', 'player_steamid', 'player_team', 'player_role', 'player_combat_score',
-                     'player_offense_score', 'player_defense_score', 'player_support_score', 'player2_name', 'player2_steamid', 'player2_team',
-                     'player2_role', 'weapon', 'old', 'new', 'team_name', 'squad_name', 'message'],
-                new=['event_time', 'event_type', 'player_name', 'player_id', 'player_team', 'player_role', 'player_combat_score',
-                     'player_offense_score', 'player_defense_score', 'player_support_score', 'player2_name', 'player2_id', 'player2_team',
-                     'player2_role', 'weapon', 'old', 'new', 'team_name', 'squad_name', 'message']
+            rename_table_columns(
+                table_name,
+                old=[
+                    "event_time",
+                    "type",
+                    "player_name",
+                    "player_steamid",
+                    "player_team",
+                    "player_role",
+                    "player_combat_score",
+                    "player_offense_score",
+                    "player_defense_score",
+                    "player_support_score",
+                    "player2_name",
+                    "player2_steamid",
+                    "player2_team",
+                    "player2_role",
+                    "weapon",
+                    "old",
+                    "new",
+                    "team_name",
+                    "squad_name",
+                    "message",
+                ],
+                new=[
+                    "event_time",
+                    "event_type",
+                    "player_name",
+                    "player_id",
+                    "player_team",
+                    "player_role",
+                    "player_combat_score",
+                    "player_offense_score",
+                    "player_defense_score",
+                    "player_support_score",
+                    "player2_name",
+                    "player2_id",
+                    "player2_team",
+                    "player2_role",
+                    "weapon",
+                    "old",
+                    "new",
+                    "team_name",
+                    "squad_name",
+                    "message",
+                ],
             )
 
     cursor.execute('UPDATE "db_version" SET "format_version" = ?', (DB_VERSION,))
     database.commit()
-    logging.info('Migrated database to format version %s!', DB_VERSION)
+    logging.info("Migrated database to format version %s!", DB_VERSION)
 
 
-def insert_many_logs(sess_id: int, logs: Sequence['LogLine'], sort: bool = True):
+def insert_many_logs(sess_id: int, logs: Sequence["LogLine"], sort: bool = True):
     sess_name = f"session{int(sess_id)}"
     table = Table(sess_name)
 
@@ -220,8 +336,9 @@ def insert_many_logs(sess_id: int, logs: Sequence['LogLine'], sort: bool = True)
     for log in logs:
         insert_query = insert_query.insert(*log.model_dump().values())
     cursor.execute(str(insert_query))
-    
+
     database.commit()
+
 
 def delete_logs(sess_id: int):
     sess_name = f"session{int(sess_id)}"
@@ -229,5 +346,5 @@ def delete_logs(sess_id: int):
     # Drop the table
     drop_query = Query.drop_table(sess_name)
     cursor.execute(str(drop_query))
-    
+
     database.commit()

@@ -1,27 +1,52 @@
 import asyncio
-from datetime import datetime, timezone
 import re
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
-from hllrcon import Rcon
 
+import hllrcon
+
+from lib.games import Game, game_switch
 from lib.rcon.models import (
-    Player, PlayerEnterAdminCamEvent, PlayerExitAdminCamEvent, PlayerKillEvent, PlayerMessageEvent, PlayerScore, PlayerScoreUpdateEvent, PlayerSuicideEvent, PlayerTeamkillEvent,
-    Server, ServerMatchEndedEvent, ServerMatchStartedEvent, ServerWarmupEndedEvent, Snapshot, Squad, Team
+    Player,
+    PlayerEnterAdminCamEvent,
+    PlayerExitAdminCamEvent,
+    PlayerKillEvent,
+    PlayerMessageEvent,
+    PlayerScore,
+    PlayerScoreUpdateEvent,
+    PlayerSuicideEvent,
+    PlayerTeamkillEvent,
+    Server,
+    ServerMatchEndedEvent,
+    ServerMatchStartedEvent,
+    ServerWarmupEndedEvent,
+    Snapshot,
+    Squad,
+    Team,
 )
 
 if TYPE_CHECKING:
     from lib.session import HLLCaptureSession
 
-RE_LOG_KILL = re.compile(r"^(?P<is_teamkill>TEAM )?KILL: .+\((?:Allies|Axis)\/(?P<player_id>\d{17}|[\da-f]{32})\) -> .+\((?:Allies|Axis)\/(?P<victim_id>\d{17}|[\da-f]{32})\) with (?P<weapon>.+)$")
-RE_LOG_CHAT = re.compile(r"^CHAT\[(?P<channel_name>Team|Unit)\]\[.+\((?:Allies|Axis)\/(?P<player_id>\d{17}|[\da-f]{32})\)\]: (?P<message>.+)$")
-RE_LOG_ADMIN_CAM = re.compile(r"^Player \[.+ \((?P<player_id>\d{17}|[\da-f]{32})\)\] (?:Left|(?P<is_entering>Entered)) Admin Camera$")
+RE_LOG_KILL = re.compile(
+    r"^(?P<is_teamkill>TEAM )?KILL: .+\((?:Allies|Axis)\/(?P<player_id>\d{17}|[\da-f]{32})\) -> .+\((?:Allies|Axis)\/(?P<victim_id>\d{17}|[\da-f]{32})\) with (?P<weapon>.+)$"
+)
+RE_LOG_CHAT = re.compile(
+    r"^CHAT\[(?P<channel_name>Team|Unit)\]\[.+\((?:Allies|Axis)\/(?P<player_id>\d{17}|[\da-f]{32})\)\]: (?P<message>.+)$"
+)
+RE_LOG_ADMIN_CAM = re.compile(
+    r"^Player \[.+ \((?P<player_id>\d{17}|[\da-f]{32})\)\] (?:Left|(?P<is_entering>Entered)) Admin Camera$"
+)
 RE_LOG_MATCH_START = re.compile(r"^MATCH START (?P<map_name>.+)$")
-RE_LOG_MATCH_ENDED = re.compile(r"^MATCH ENDED `(?P<map_name>.+)` ALLIED \((?P<score>.+)\) AXIS *$")
+RE_LOG_MATCH_ENDED = re.compile(
+    r"^MATCH ENDED `(?P<map_name>.+)` ALLIED \((?P<score>.+)\) AXIS *$"
+)
+
 
 class HLLRcon:
-    def __init__(self, session: 'HLLCaptureSession'):
+    def __init__(self, session: "HLLCaptureSession"):
         self.session = session
-        self._client: Rcon | None = None
+        self._client: hllrcon.AnyRcon | None = None
 
         self.snapshot: Snapshot | None = None
         self._snapshot = Snapshot()
@@ -30,51 +55,78 @@ class HLLRcon:
         self._logs_last_seen_time = datetime.now(tz=timezone.utc)
 
         self._spectators: set[str] = set()
-        
+
         self._match_start_time = datetime.now(tz=timezone.utc)
         self._match_state = "in_progress"
         self._end_warmup_handle = None
-        
+
         self._previously_missing_deaths: dict[str, int] = {}
         self._logged_deaths: dict[str, int] = {}
         self._last_death_time: dict[str, datetime] = {}
 
+        self._game: Game | None = None
+
     @property
     def loop(self):
         return self.session.loop
+
     @property
     def credentials(self):
         return self.session.credentials
+
     @property
     def logger(self):
         return self.session.logger
+
     @property
     def client(self):
         if not self._client:
             raise RuntimeError("RCON client is not connected")
         return self._client
-    
-    async def start(self):
+
+    @property
+    def game(self):
+        return self._game or Game.HLL
+
+    def _create_new_client(self):
         if self._client is not None:
             self._client.disconnect()
 
         if not self.credentials:
             raise RuntimeError("No credentials are known")
 
-        self._client = Rcon(
+        client_cls = game_switch(self.game, hllrcon.HLLRcon, hllrcon.HLLVRcon)
+        self._client = client_cls(
             host=self.credentials.address,
             port=self.credentials.port,
             password=self.credentials.password,
             logger=self.logger,
         )
-    
+
+    async def start(self):
+        self._create_new_client()
+
     async def stop(self):
         if self._client is not None:
             self._client.disconnect()
 
         self._client = None
 
+    async def detect_game(self):
+        available_maps = await self.client.get_available_maps()
+        old_game = self.game
+        if "foy_warfare" in available_maps:
+            self._game = Game.HLL
+        else:
+            self._game = Game.HLLV
+
+        if self._game != old_game:
+            self._create_new_client()
+
     async def create_snapshot(self):
+        if self._game is None:
+            await self.detect_game()
+
         self._snapshot = Snapshot()
         logs_last_seen_time = await self._fetch_logs()
         await self._fetch_server_state()
@@ -89,46 +141,34 @@ class HLLRcon:
 
         self.snapshot = self._snapshot
         return self.snapshot
-    
+
     async def _fetch_logs(self) -> datetime | None:
         response = await self.client.get_admin_log(seconds_span=30)
 
         skip: bool = True
-        time: datetime | None = None
         log: str = ""
 
         for entry in response.entries:
-            try:
-                match = re.match(r"^\[.+? \((?P<timestamp>\d+)\)\] (?P<log>[\w\W]+)$", entry.message, flags=re.M)
-                if not match:
-                    raise Exception("Failed to read timestamp from log line: %s" % entry.message)
+            if skip:
+                # Avoid duplicates
+                if self._logs_last_seen_time > entry.timestamp:
+                    continue
+                elif self._logs_last_seen_time == entry.timestamp:
+                    if self._logs_last_seen_content == entry.raw_message:
+                        skip = False
+                    continue
+            skip = False
 
-                timestamp = int(match.group("timestamp"))
-                log = match.group("log")
+            self._parse_log(entry)
 
-                time = datetime.fromtimestamp(timestamp).astimezone(timezone.utc)
-
-                if skip:
-                    # Avoid duplicates
-                    if self._logs_last_seen_time > time:
-                        continue
-                    elif self._logs_last_seen_time == time:
-                        if self._logs_last_seen_content == log:
-                            skip = False
-                        continue
-                skip = False
-
-                self._parse_log(time, log)
-            except Exception:
-                self.logger.exception("Failed to parse log line: %s", entry.message)
-
-        if time:
-            self._logs_last_seen_time = time
-            self._logs_last_seen_content = log
-            return time
+        if response.entries:
+            latest_entry = response.entries[-1]
+            self._logs_last_seen_time = latest_entry.timestamp
+            self._logs_last_seen_content = latest_entry.raw_message
+            return latest_entry.timestamp
         return None
-        
-    def _parse_log(self, event_time: datetime, log: str):
+
+    def _parse_log(self, entry: hllrcon.AnyAdminLog):
         """
         [10:00:00 hours (1639106251)] CONNECTED A Player Name (12345678901234567)
         [10:00:00 hours (1639122640)] DISCONNECTED A Player Name (12345678901234567)
@@ -142,79 +182,111 @@ class HLLRcon:
         [15.03 sec (1639148961)] KICK: [A Player Name] has been kicked. [BANNED FOR 2 HOURS BY THE ADMINISTRATOR!]
         [15.03 sec (1639148961)] MESSAGE: player [A Player Name(12345678901234567)], content [Stop teamkilling, you donkey!]
         [805 ms (1639148969)] MATCH START SAINTE-MÈRE-ÉGLISE WARFARE
-        [805 ms (1639148969)] MATCH ENDED `SAINTE-MÈRE-ÉGLISE WARFARE` ALLIED (2 - 3) AXIS 
+        [805 ms (1639148969)] MATCH ENDED `SAINTE-MÈRE-ÉGLISE WARFARE` ALLIED (2 - 3) AXIS
         """
-        if log.startswith("KILL") or log.startswith("TEAM KILL"):
-            data = RE_LOG_KILL.match(log).groupdict() # type: ignore
-            data["snapshot"] = self._snapshot
+        if isinstance(entry, hllrcon.AnyPlayerKillAdminLog):
+            self._snapshot.add_event(
+                PlayerKillEvent(
+                    snapshot=self._snapshot,
+                    event_time=entry.timestamp,
+                    player_id=entry.instigator_id,
+                    victim_id=entry.victim_id,
+                    weapon=entry.weapon_id,
+                )
+            )
+            self._logged_deaths[entry.instigator_id] = (
+                self._logged_deaths.get(entry.instigator_id, 0) + 1
+            )
 
-            is_teamkill = bool(data.pop("is_teamkill"))
-            e_cls = PlayerTeamkillEvent if is_teamkill else PlayerKillEvent
+        elif isinstance(entry, hllrcon.AnyPlayerTeamKillAdminLog):
+            self._snapshot.add_event(
+                PlayerTeamkillEvent(
+                    snapshot=self._snapshot,
+                    event_time=entry.timestamp,
+                    player_id=entry.instigator_id,
+                    victim_id=entry.victim_id,
+                    weapon=entry.weapon_id,
+                )
+            )
+            self._logged_deaths[entry.instigator_id] = (
+                self._logged_deaths.get(entry.instigator_id, 0) + 1
+            )
 
-            event = e_cls.model_validate(data)
-            self._snapshot.add_event(event)
-
-            self._logged_deaths[event.player_id] = self._logged_deaths.get(event.player_id, 0) + 1
-
-        elif log.startswith('CHAT'):
-            data = RE_LOG_CHAT.match(log).groupdict() # type: ignore
-            data["snapshot"] = self._snapshot
-
+        elif isinstance(entry, hllrcon.AnyPlayerSendMessageAdminLog):
             old_channel: Team | Squad | None = None
             if self.snapshot:
                 for player in self.snapshot.players:
-                    if player.id == data["player_id"]:
-                        if data["channel_name"] == "Unit":
+                    if player.id == entry.player_id:
+                        if (
+                            entry.channel
+                            == hllrcon.admin_logs.PlayerMessageChannel.UNIT
+                        ):
                             old_channel = player.get_squad()
                         else:
                             old_channel = player.get_team()
                         break
-            data["old_channel"] = old_channel            
-            
-            event = PlayerMessageEvent.model_validate(data)
-            self._snapshot.add_event(event)
 
-        elif log.startswith('Player'):
-            data = RE_LOG_ADMIN_CAM.match(log).groupdict() # type: ignore
-            data["snapshot"] = self._snapshot
+            self._snapshot.add_event(
+                PlayerMessageEvent(
+                    snapshot=self._snapshot,
+                    event_time=entry.timestamp,
+                    player_id=entry.player_id,
+                    message=entry.message,
+                    channel_name=entry.channel.value,
+                    old_channel=old_channel,
+                )
+            )
 
-            is_entering = bool(data.pop("is_entering"))
-            if is_entering:
-                e_cls = PlayerEnterAdminCamEvent
-                self._spectators.add(data["player_id"])
-            else:
-                e_cls = PlayerExitAdminCamEvent
-                try:
-                    self._spectators.remove(data["player_id"])
-                except KeyError:
-                    pass
-            
-            event = e_cls.model_validate(data)
-            self._snapshot.add_event(event)
+        elif isinstance(entry, hllrcon.AnyPlayerEnterAdminCameraAdminLog):
+            self._spectators.add(entry.player_id)
+            self._snapshot.add_event(
+                PlayerEnterAdminCamEvent(
+                    snapshot=self._snapshot,
+                    event_time=entry.timestamp,
+                    player_id=entry.player_id,
+                )
+            )
 
-        elif log.startswith('MATCH START'):
-            data = RE_LOG_MATCH_START.match(log).groupdict() # type: ignore
-            data["snapshot"] = self._snapshot
+        elif isinstance(entry, hllrcon.AnyPlayerLeaveAdminCameraAdminLog):
+            self._spectators.discard(entry.player_id)
+            self._snapshot.add_event(
+                PlayerExitAdminCamEvent(
+                    snapshot=self._snapshot,
+                    event_time=entry.timestamp,
+                    player_id=entry.player_id,
+                )
+            )
 
-            event = ServerMatchStartedEvent.model_validate(data)
-            self._snapshot.add_event(event)
+        elif isinstance(entry, hllrcon.AnyMatchStartAdminLog):
+            self._snapshot.add_event(
+                ServerMatchStartedEvent(
+                    snapshot=self._snapshot,
+                    event_time=entry.timestamp,
+                    map_name=entry.map_name,
+                )
+            )
 
             self._state = "warmup"
             if isinstance(self._end_warmup_handle, asyncio.TimerHandle):
                 self._end_warmup_handle.cancel()
-            self._end_warmup_handle = self.loop.call_later(180, self.__enter_playing_state)
+            self._end_warmup_handle = self.loop.call_later(
+                180, self.__enter_playing_state
+            )
 
             self._spectators.clear()
             self._previously_missing_deaths.clear()
             self._logged_deaths.clear()
             self._last_death_time.clear()
 
-        elif log.startswith('MATCH ENDED'):
-            data = RE_LOG_MATCH_ENDED.match(log).groupdict() # type: ignore
-            data["snapshot"] = self._snapshot
-
-            event = ServerMatchEndedEvent.model_validate(data)
-            self._snapshot.add_event(event)
+        elif isinstance(entry, hllrcon.AnyMatchEndAdminLog):
+            self._snapshot.add_event(
+                ServerMatchEndedEvent(
+                    snapshot=self._snapshot,
+                    event_time=entry.timestamp,
+                    map_name=entry.map_name,
+                    score=f"{entry.allied_score} - {entry.axis_score}",
+                )
+            )
             self._state = "end_of_round"
 
             # Cancel the timer responsible for triggering the Warmup Ended event
@@ -228,17 +300,10 @@ class HLLRcon:
                     self._snapshot.add_event(
                         PlayerScoreUpdateEvent(
                             snapshot=self._snapshot,
-                            event_time=event_time,
+                            event_time=entry.timestamp,
                             player_id=player.id,
                         )
                     )
-
-        elif log.split(' ', 1)[0] in {'CONNECTED', 'DISCONNECTED', 'TEAMSWITCH', 'KICK:', 'BAN:', 'VOTESYS:', 'MESSAGE:'}:
-            # Suppress error logs
-            pass
-            
-        else:
-            raise Exception("Unknown log line: %s", log)
 
     async def _fetch_server_state(self):
         players_response, server_response = await asyncio.gather(
@@ -261,7 +326,7 @@ class HLLRcon:
                 name="Axis",
                 faction="GER",
                 score=server_response.axis_score,
-            )
+            ),
         }
         self._snapshot.add_teams(*teams.values())
 
@@ -333,14 +398,14 @@ class HLLRcon:
 
     def _update_state(self):
         if self._end_warmup_handle is True:
-            self._snapshot.add_event(
-                ServerWarmupEndedEvent(snapshot=self._snapshot)
-            )
+            self._snapshot.add_event(ServerWarmupEndedEvent(snapshot=self._snapshot))
             self._end_warmup_handle = None
 
         missing_deaths = {}
         for player in self._snapshot.players:
-            logged_deaths = self._logged_deaths.setdefault(player.id, max(player.deaths, 0))
+            logged_deaths = self._logged_deaths.setdefault(
+                player.id, max(player.deaths, 0)
+            )
             missing = player.deaths - logged_deaths
             if missing < 0:
                 missing = 0
@@ -350,21 +415,23 @@ class HLLRcon:
 
         for player_id, missing_old in self._previously_missing_deaths.items():
             missing = missing_deaths.get(player_id)
-            
+
             if missing is None:
                 continue
 
-            if missing >= missing_old and missing_old > 0:
+            if missing >= missing_old > 0:
                 self._logged_deaths[player_id] += missing
                 missing_deaths[player_id] = 0
                 self._snapshot.add_event(
                     PlayerSuicideEvent(
                         snapshot=self._snapshot,
-                        event_time=self._last_death_time.get(player_id, datetime.now(tz=timezone.utc)),
+                        event_time=self._last_death_time.get(
+                            player_id, datetime.now(tz=timezone.utc)
+                        ),
                         player_id=player_id,
                     )
                 )
-            
+
         self._previously_missing_deaths = missing_deaths
 
     def __enter_playing_state(self):

@@ -1,58 +1,64 @@
+import itertools
+from collections.abc import Generator, Iterator, Sequence
 from datetime import datetime, timezone
 from enum import Enum, unique
 from functools import total_ordering
-import itertools
+from typing import Any, Literal, Protocol, TypeVar, cast
+
 import pydantic
+from hllrcon import AnyPlayerPlatform, AnyRole, HLLRole, HLLVRole
 from sortedcontainers import SortedList
-from typing import Any, Generator, Iterator, Literal, Protocol, Sequence, TypeVar, cast
 
 from lib.logs import LogLineBuilder
-from hllrcon.responses import PlayerPlatform
-from hllrcon.data import Role
 from lib.storage import LogLine
 
 __all__ = (
-    'Snapshot',
-    'Player',
-    'PlayerScore',
-    'Squad',
-    'Team',
-    'Server',
-    'ActivationEvent',
-    'IterationEvent',
-    'DeactivationEvent',
-    'PlayerJoinServerEvent',
-    'ServerMapChangedEvent',
-    'ServerMatchStartedEvent',
-    'ServerWarmupEndedEvent',
-    'ServerMatchEndedEvent',
-    'SquadCreateEvent',
-    'PlayerChangeTeamEvent',
-    'PlayerChangeSquadEvent',
-    'SquadChangeLeaderEvent',
-    'PlayerChangeRoleEvent',
-    'PlayerChangeLoadoutEvent',
-    'PlayerEnterAdminCamEvent',
-    'PlayerMessageEvent',
-    'PlayerKillEvent',
-    'PlayerTeamkillEvent',
-    'PlayerSuicideEvent',
-    'TeamCaptureObjectiveEvent',
-    'PlayerLevelUpEvent',
-    'PlayerScoreUpdateEvent',
-    'PlayerExitAdminCamEvent',
-    'PlayerLeaveServerEvent',
-    'SquadDisbandEvent',
-    'EventTypes',
+    "ActivationEvent",
+    "DeactivationEvent",
+    "EventTypes",
+    "IterationEvent",
+    "Player",
+    "PlayerChangeLoadoutEvent",
+    "PlayerChangeRoleEvent",
+    "PlayerChangeSquadEvent",
+    "PlayerChangeTeamEvent",
+    "PlayerEnterAdminCamEvent",
+    "PlayerExitAdminCamEvent",
+    "PlayerJoinServerEvent",
+    "PlayerKillEvent",
+    "PlayerLeaveServerEvent",
+    "PlayerLevelUpEvent",
+    "PlayerMessageEvent",
+    "PlayerScore",
+    "PlayerScoreUpdateEvent",
+    "PlayerSuicideEvent",
+    "PlayerTeamkillEvent",
+    "Server",
+    "ServerMapChangedEvent",
+    "ServerMatchEndedEvent",
+    "ServerMatchStartedEvent",
+    "ServerWarmupEndedEvent",
+    "Snapshot",
+    "Squad",
+    "SquadChangeLeaderEvent",
+    "SquadCreateEvent",
+    "SquadDisbandEvent",
+    "Team",
+    "TeamCaptureObjectiveEvent",
 )
 
+
 class Comparable(Protocol):
-    def __eq__(self, other: Any) -> bool: ...
+    def __eq__(self, other: object) -> bool: ...
     def __lt__(self, other: Any) -> bool: ...
+
 
 T = TypeVar("T", bound=Comparable)
 
-def align_sorted_lists(a: Sequence[T], b: Sequence[T]) -> Iterator[tuple[T | None, T | None]]:
+
+def align_sorted_lists(
+    a: Sequence[T], b: Sequence[T]
+) -> Iterator[tuple[T | None, T | None]]:
     i = 0
     j = 0
     len_a = len(a)
@@ -77,14 +83,15 @@ def align_sorted_lists(a: Sequence[T], b: Sequence[T]) -> Iterator[tuple[T | Non
             yield (None, b[j])
             j += 1
 
+
 class Snapshot:
-    players: list['Player']
-    disconnected_players: list['Player']
-    squads: list['Squad']
-    disbanded_squads: list['Squad']
-    teams: list['Team']
-    server: 'Server'
-    events: list['EventModel']
+    players: list["Player"]
+    disconnected_players: list["Player"]
+    squads: list["Squad"]
+    disbanded_squads: list["Squad"]
+    teams: list["Team"]
+    server: "Server"
+    events: list["EventModel"]
 
     def __init__(self) -> None:
         self.players = SortedList(key=lambda x: x.id)
@@ -92,33 +99,39 @@ class Snapshot:
         self.squads = SortedList(key=lambda x: x.id)
         self.disbanded_squads = SortedList(key=lambda x: x.id)
         self.teams = SortedList(key=lambda x: x.id)
-        self.server = None # type: ignore
+        self.server = None  # type: ignore
         self.events = []
 
-    def add_players(self, *players: 'Player'):
-        cast('SortedList', self.players).update(players)
-    def add_disconnected_players(self, *players: 'Player'):
-        cast('SortedList', self.disconnected_players).update(players)
-    def add_squads(self, *squads: 'Squad'):
-        cast('SortedList', self.squads).update(squads)
-    def add_disbanded_squads(self, *squads: 'Squad'):
-        cast('SortedList', self.disbanded_squads).update(squads)
-    def add_teams(self, *teams: 'Team'):
-        cast('SortedList', self.teams).update(teams)
-    def set_server(self, server: 'Server'):
+    def add_players(self, *players: "Player"):
+        cast("SortedList", self.players).update(players)
+
+    def add_disconnected_players(self, *players: "Player"):
+        cast("SortedList", self.disconnected_players).update(players)
+
+    def add_squads(self, *squads: "Squad"):
+        cast("SortedList", self.squads).update(squads)
+
+    def add_disbanded_squads(self, *squads: "Squad"):
+        cast("SortedList", self.disbanded_squads).update(squads)
+
+    def add_teams(self, *teams: "Team"):
+        cast("SortedList", self.teams).update(teams)
+
+    def set_server(self, server: "Server"):
         self.server = server
-    
-    def add_event(self, event: 'EventModel'):
+
+    def add_event(self, event: "EventModel"):
         self.events.append(event)
-  
+
     @property
     def team1(self):
         return self.teams[0]
+
     @property
     def team2(self):
         return self.teams[1]
-    
-    def compare_older(self, other: 'Snapshot', event_time: datetime | None = None):
+
+    def compare_older(self, other: "Snapshot", event_time: datetime | None = None):
         if not event_time:
             event_time = datetime.now(tz=timezone.utc)
 
@@ -130,16 +143,14 @@ class Snapshot:
             new_team_id = None
             old_squad_id = None
             new_squad_id = None
-            old_role = Role.RIFLEMAN
-            new_role = Role.RIFLEMAN
+            old_role = HLLRole.RIFLEMAN
+            new_role = HLLRole.RIFLEMAN
 
             if old_player is None:
                 assert new_player is not None
                 events.append(
                     PlayerJoinServerEvent(
-                        snapshot=self,
-                        event_time=event_time,
-                        player_id=new_player.id
+                        snapshot=self, event_time=event_time, player_id=new_player.id
                     )
                 )
             else:
@@ -157,15 +168,17 @@ class Snapshot:
                     PlayerLeaveServerEvent(
                         snapshot=self,
                         event_time=event_time,
-                        player_id=disconnected_player.id
+                        player_id=disconnected_player.id,
                     )
                 )
                 if other.server and other.server.state == "in_progress":
-                    events.append(PlayerScoreUpdateEvent(
-                        snapshot=self,
-                        event_time=event_time,
-                        player_id=disconnected_player.id
-                    ))
+                    events.append(
+                        PlayerScoreUpdateEvent(
+                            snapshot=self,
+                            event_time=event_time,
+                            player_id=disconnected_player.id,
+                        )
+                    )
             else:
                 player_id = new_player.id
                 new_team_id = new_player.team_id
@@ -242,12 +255,12 @@ class Snapshot:
             if new_squad is None:
                 assert old_squad is not None
                 new_leader = old_leader
-                self.add_disbanded_squads(old_squad.model_copy(update={"snapshot": self}))
+                self.add_disbanded_squads(
+                    old_squad.model_copy(update={"snapshot": self})
+                )
                 events.append(
                     SquadDisbandEvent(
-                        snapshot=self,
-                        event_time=event_time,
-                        squad=old_squad
+                        snapshot=self, event_time=event_time, squad=old_squad
                     )
                 )
             else:
@@ -257,7 +270,7 @@ class Snapshot:
 
             if new_squad and old_squad:
                 new_squad.created_at = old_squad.created_at
-            
+
             if new_leader != old_leader:
                 events.append(
                     SquadChangeLeaderEvent(
@@ -276,64 +289,75 @@ class Snapshot:
                 continue
 
             if new_team.score > old_team.score:
-                events.append(TeamCaptureObjectiveEvent(
-                    snapshot=self,
-                    event_time=event_time,
-                    team_id=new_team.id,
-                    score=f"{self.team1.score} - {self.team2.score}"
-                ))
+                events.append(
+                    TeamCaptureObjectiveEvent(
+                        snapshot=self,
+                        event_time=event_time,
+                        team_id=new_team.id,
+                        score=f"{self.team1.score} - {self.team2.score}",
+                    )
+                )
 
         if other.server and self.server.map != other.server.map:
-            events.append(ServerMapChangedEvent(
-                snapshot=self,
-                event_time=event_time,
-                old_map=other.server.map,
-                new_map=self.server.map,
-            ))
-        
+            events.append(
+                ServerMapChangedEvent(
+                    snapshot=self,
+                    event_time=event_time,
+                    old_map=other.server.map,
+                    new_map=self.server.map,
+                )
+            )
+
         self.events.extend(events)
 
 
 class BaseModel(pydantic.BaseModel, arbitrary_types_allowed=True):
-    snapshot: 'Snapshot' = pydantic.Field(exclude=True)
+    snapshot: "Snapshot" = pydantic.Field(exclude=True)
+
 
 class TeamModelMixin(BaseModel):
     team_id: int | None
 
-    def get_team(self) -> 'Team | None':
+    def get_team(self) -> "Team | None":
         if self.team_id is None:
             return None
 
         for team in self.snapshot.teams:
             if team.id == self.team_id:
                 return team
-        
+
         return None
+
 
 class SquadModelMixin(TeamModelMixin):
     squad_id: int | None
 
-    def get_squad(self) -> 'Squad | None':
+    def get_squad(self) -> "Squad | None":
         if self.squad_id is None or self.team_id is None:
             return None
 
-        for squad in itertools.chain(self.snapshot.squads, self.snapshot.disbanded_squads):
+        for squad in itertools.chain(
+            self.snapshot.squads, self.snapshot.disbanded_squads
+        ):
             if squad.id == self.squad_id and squad.team_id == self.team_id:
                 return squad
-        
+
         return None
+
 
 class PlayerModelMixin(BaseModel):
     player_id: str | None
 
-    def get_player(self) -> 'Player | None':
+    def get_player(self) -> "Player | None":
         if self.player_id is None:
             return None
 
-        for player in itertools.chain(self.snapshot.players, self.snapshot.disconnected_players):
+        for player in itertools.chain(
+            self.snapshot.players, self.snapshot.disconnected_players
+        ):
             if player.id == self.player_id:
                 return player
-        
+
         return None
 
 
@@ -347,10 +371,10 @@ class PlayerScore(pydantic.BaseModel):
 @total_ordering
 class Player(SquadModelMixin, TeamModelMixin, BaseModel):
     id: str
-    platform: PlayerPlatform
+    platform: AnyPlayerPlatform | str
     name: str
     eos_id: str
-    role: Role
+    role: AnyRole
     loadout: str
     level: int
     kills: int
@@ -358,28 +382,33 @@ class Player(SquadModelMixin, TeamModelMixin, BaseModel):
     is_alive: bool
     score: PlayerScore
     location: tuple[float, float, float]
-    joined_at: datetime = pydantic.Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+    joined_at: datetime = pydantic.Field(
+        default_factory=lambda: datetime.now(tz=timezone.utc)
+    )
     is_spectator: bool
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, Player):
             return self.id == other.id
         return NotImplemented
-    
+
     def __lt__(self, other: object) -> bool:
         if isinstance(other, Player):
             return self.id < other.id
         return NotImplemented
-    
+
     def is_leader(self) -> bool:
         return self.role.is_squad_leader
+
 
 @total_ordering
 class Squad(TeamModelMixin, BaseModel):
     id: int
     team_id: int
     name: str
-    created_at: datetime = pydantic.Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+    created_at: datetime = pydantic.Field(
+        default_factory=lambda: datetime.now(tz=timezone.utc)
+    )
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, Squad):
@@ -394,16 +423,17 @@ class Squad(TeamModelMixin, BaseModel):
                 return self.team_id < other.team_id
         return NotImplemented
 
-    def get_players(self) -> Generator['Player', Any, None]:
+    def get_players(self) -> Generator["Player", Any, None]:
         for player in self.snapshot.players:
             if player.squad_id == self.id and player.team_id == self.team_id:
                 yield player
 
-    def get_leader(self) -> 'Player | None':
+    def get_leader(self) -> "Player | None":
         for player in self.get_players():
             if player.is_leader():
                 return player
         return None
+
 
 @total_ordering
 class Team(BaseModel):
@@ -411,7 +441,9 @@ class Team(BaseModel):
     name: str
     faction: str
     score: int
-    created_at: datetime = pydantic.Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+    created_at: datetime = pydantic.Field(
+        default_factory=lambda: datetime.now(tz=timezone.utc)
+    )
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, Team):
@@ -423,26 +455,27 @@ class Team(BaseModel):
             return self.id < other.id
         return NotImplemented
 
-    def get_players(self) -> Generator['Player', Any, None]:
+    def get_players(self) -> Generator["Player", Any, None]:
         for player in self.snapshot.players:
             if player.team_id == self.id:
                 yield player
 
-    def get_squads(self) -> Generator['Squad', Any, None]:
+    def get_squads(self) -> Generator["Squad", Any, None]:
         for squad in self.snapshot.squads:
             if squad.team_id == self.id:
                 yield squad
 
-    def get_commander(self) -> 'Player | None':
+    def get_commander(self) -> "Player | None":
         for player in self.get_players():
-            if player.role == Role.COMMANDER:
+            if player.role in (HLLRole.COMMANDER, HLLVRole.COMMANDER):
                 return player
         return None
 
-    def get_unassigned_players(self) -> Generator['Player', Any, None]:
+    def get_unassigned_players(self) -> Generator["Player", Any, None]:
         for player in self.get_players():
             if player.squad_id is None:
                 yield player
+
 
 class Server(BaseModel):
     name: str
@@ -451,28 +484,32 @@ class Server(BaseModel):
     state: str
     max_players: int
 
-    def get_players(self) -> Generator['Player', Any, None]:
+    def get_players(self) -> Generator["Player", Any, None]:
         yield from self.snapshot.players
 
-    def get_squads(self) -> Generator['Squad', Any, None]:
+    def get_squads(self) -> Generator["Squad", Any, None]:
         yield from self.snapshot.squads
 
-    def get_teams(self) -> Generator['Team', Any, None]:
+    def get_teams(self) -> Generator["Team", Any, None]:
         yield from self.snapshot.teams
 
-    def get_unassigned_players(self) -> Generator['Player', Any, None]:
+    def get_unassigned_players(self) -> Generator["Player", Any, None]:
         for player in self.get_players():
             if player.team_id is None:
                 yield player
+
 
 #####################################
 #              EVENTS               #
 #####################################
 
-class EventModel(BaseModel):
-    event_time: datetime = pydantic.Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
-    def get_type(self) -> 'EventTypes':
+class EventModel(BaseModel):
+    event_time: datetime = pydantic.Field(
+        default_factory=lambda: datetime.now(tz=timezone.utc)
+    )
+
+    def get_type(self) -> "EventTypes":
         return EventTypes(type(self))
 
     def to_log_line(self) -> LogLine:
@@ -484,11 +521,9 @@ class PlayerJoinServerEvent(PlayerModelMixin, EventModel):
 
     def to_log_line(self) -> LogLine:
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_player(self.get_player())
-                .to_log_line()
+            LogLineBuilder.from_event(self).set_player(self.get_player()).to_log_line()
         )
+
 
 class ServerMapChangedEvent(EventModel):
     old_map: str
@@ -496,26 +531,27 @@ class ServerMapChangedEvent(EventModel):
 
     def to_log_line(self) -> LogLine:
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_old_and_new(self.old_map, self.new_map)
-                .to_log_line()
+            LogLineBuilder.from_event(self)
+            .set_old_and_new(self.old_map, self.new_map)
+            .to_log_line()
         )
+
 
 class ServerMatchStartedEvent(EventModel):
     map_name: str
 
     def to_log_line(self) -> LogLine:
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_old_and_new(None, self.map_name)
-                .to_log_line()
+            LogLineBuilder.from_event(self)
+            .set_old_and_new(None, self.map_name)
+            .to_log_line()
         )
-    
+
+
 class ServerWarmupEndedEvent(EventModel):
     def to_log_line(self) -> LogLine:
         return LogLineBuilder.from_event(self).to_log_line()
+
 
 class ServerMatchEndedEvent(EventModel):
     map_name: str
@@ -523,30 +559,26 @@ class ServerMatchEndedEvent(EventModel):
 
     def to_log_line(self) -> LogLine:
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_old_and_new(None, self.map_name)
-                .set_message(self.score)
-                .to_log_line()
+            LogLineBuilder.from_event(self)
+            .set_old_and_new(None, self.map_name)
+            .set_message(self.score)
+            .to_log_line()
         )
+
 
 class SquadCreateEvent(SquadModelMixin, EventModel):
     squad_id: int
 
     def to_log_line(self) -> LogLine:
-        return (
-            LogLineBuilder
-                .from_event(self)
-                .set_squad(self.get_squad())
-                .to_log_line()
-        )
+        return LogLineBuilder.from_event(self).set_squad(self.get_squad()).to_log_line()
+
 
 class PlayerChangeTeamEvent(PlayerModelMixin, EventModel):
     player_id: str
     old_team_id: int | None
     new_team_id: int | None
 
-    def get_old_team(self) -> 'Team | None':
+    def get_old_team(self) -> "Team | None":
         if self.old_team_id is None:
             return None
         for team in self.snapshot.teams:
@@ -554,7 +586,7 @@ class PlayerChangeTeamEvent(PlayerModelMixin, EventModel):
                 return team
         return None
 
-    def get_new_team(self) -> 'Team | None':
+    def get_new_team(self) -> "Team | None":
         if self.new_team_id is None:
             return None
         for team in self.snapshot.teams:
@@ -566,30 +598,32 @@ class PlayerChangeTeamEvent(PlayerModelMixin, EventModel):
         old_team = self.get_old_team()
         new_team = self.get_new_team()
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_player(self.get_player())
-                .set_old_and_new(
-                    old_team.name if old_team else None,
-                    new_team.name if new_team else None,
-                )
-                .to_log_line()
+            LogLineBuilder.from_event(self)
+            .set_player(self.get_player())
+            .set_old_and_new(
+                old_team.name if old_team else None,
+                new_team.name if new_team else None,
+            )
+            .to_log_line()
         )
+
 
 class PlayerChangeSquadEvent(PlayerModelMixin, EventModel):
     player_id: str
     old_squad_id: int | None
     new_squad_id: int | None
 
-    def get_old_squad(self) -> 'Squad | None':
+    def get_old_squad(self) -> "Squad | None":
         if self.old_squad_id is None:
             return None
-        for squad in itertools.chain(self.snapshot.squads, self.snapshot.disbanded_squads):
+        for squad in itertools.chain(
+            self.snapshot.squads, self.snapshot.disbanded_squads
+        ):
             if squad.id == self.old_squad_id:
                 return squad
         return None
 
-    def get_new_squad(self) -> 'Squad | None':
+    def get_new_squad(self) -> "Squad | None":
         if self.new_squad_id is None:
             return None
         for squad in self.snapshot.squads:
@@ -601,15 +635,15 @@ class PlayerChangeSquadEvent(PlayerModelMixin, EventModel):
         old_squad = self.get_old_squad()
         new_squad = self.get_new_squad()
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_player(self.get_player())
-                .set_old_and_new(
-                    old_squad.name if old_squad else None,
-                    new_squad.name if new_squad else None,
-                )
-                .to_log_line()
+            LogLineBuilder.from_event(self)
+            .set_player(self.get_player())
+            .set_old_and_new(
+                old_squad.name if old_squad else None,
+                new_squad.name if new_squad else None,
+            )
+            .to_log_line()
         )
+
 
 class SquadChangeLeaderEvent(SquadModelMixin, EventModel):
     squad_id: int
@@ -618,27 +652,27 @@ class SquadChangeLeaderEvent(SquadModelMixin, EventModel):
 
     def to_log_line(self) -> LogLine:
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_player(self.new_leader)
-                .set_player2(self.old_leader)
-                .set_squad(self.get_squad())
-                .to_log_line()
+            LogLineBuilder.from_event(self)
+            .set_player(self.new_leader)
+            .set_player2(self.old_leader)
+            .set_squad(self.get_squad())
+            .to_log_line()
         )
+
 
 class PlayerChangeRoleEvent(PlayerModelMixin, EventModel):
     player_id: str
-    old_role: Role
-    new_role: Role
+    old_role: AnyRole
+    new_role: AnyRole
 
     def to_log_line(self) -> LogLine:
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_player(self.get_player())
-                .set_old_and_new(self.old_role.name, self.new_role.name)
-                .to_log_line()
+            LogLineBuilder.from_event(self)
+            .set_player(self.get_player())
+            .set_old_and_new(self.old_role.name, self.new_role.name)
+            .to_log_line()
         )
+
 
 class PlayerChangeLoadoutEvent(PlayerModelMixin, EventModel):
     player_id: str
@@ -647,34 +681,30 @@ class PlayerChangeLoadoutEvent(PlayerModelMixin, EventModel):
 
     def to_log_line(self) -> LogLine:
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_player(self.get_player())
-                .set_old_and_new(self.old_loadout, self.new_loadout)
-                .to_log_line()
+            LogLineBuilder.from_event(self)
+            .set_player(self.get_player())
+            .set_old_and_new(self.old_loadout, self.new_loadout)
+            .to_log_line()
         )
+
 
 class PlayerEnterAdminCamEvent(PlayerModelMixin, EventModel):
     player_id: str
 
     def to_log_line(self) -> LogLine:
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_player(self.get_player())
-                .to_log_line()
+            LogLineBuilder.from_event(self).set_player(self.get_player()).to_log_line()
         )
+
 
 class PlayerExitAdminCamEvent(PlayerModelMixin, EventModel):
     player_id: str
 
     def to_log_line(self) -> LogLine:
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_player(self.get_player())
-                .to_log_line()
+            LogLineBuilder.from_event(self).set_player(self.get_player()).to_log_line()
         )
+
 
 class PlayerMessageEvent(PlayerModelMixin, EventModel):
     player_id: str
@@ -694,10 +724,7 @@ class PlayerMessageEvent(PlayerModelMixin, EventModel):
         player = self.get_player()
 
         builder = (
-            LogLineBuilder
-                .from_event(self)
-                .set_player(player)
-                .set_message(self.message)
+            LogLineBuilder.from_event(self).set_player(player).set_message(self.message)
         )
 
         if player:
@@ -710,58 +737,61 @@ class PlayerMessageEvent(PlayerModelMixin, EventModel):
 
         return builder.to_log_line()
 
+
 class PlayerKillEvent(PlayerModelMixin, EventModel):
     player_id: str
     victim_id: str
     weapon: str
 
-    def get_victim(self) -> 'Player | None':
-        for player in itertools.chain(self.snapshot.players, self.snapshot.disconnected_players):
+    def get_victim(self) -> "Player | None":
+        for player in itertools.chain(
+            self.snapshot.players, self.snapshot.disconnected_players
+        ):
             if player.id == self.victim_id:
                 return player
         return None
 
     def to_log_line(self) -> LogLine:
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_player(self.get_player())
-                .set_player2(self.get_victim())
-                .set_weapon(self.weapon)
-                .to_log_line()
+            LogLineBuilder.from_event(self)
+            .set_player(self.get_player())
+            .set_player2(self.get_victim())
+            .set_weapon(self.weapon)
+            .to_log_line()
         )
+
 
 class PlayerTeamkillEvent(PlayerModelMixin, EventModel):
     player_id: str
     victim_id: str
     weapon: str
 
-    def get_victim(self) -> 'Player | None':
-        for player in itertools.chain(self.snapshot.players, self.snapshot.disconnected_players):
+    def get_victim(self) -> "Player | None":
+        for player in itertools.chain(
+            self.snapshot.players, self.snapshot.disconnected_players
+        ):
             if player.id == self.victim_id:
                 return player
         return None
 
     def to_log_line(self) -> LogLine:
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_player(self.get_player())
-                .set_player2(self.get_victim())
-                .set_weapon(self.weapon)
-                .to_log_line()
+            LogLineBuilder.from_event(self)
+            .set_player(self.get_player())
+            .set_player2(self.get_victim())
+            .set_weapon(self.weapon)
+            .to_log_line()
         )
+
 
 class PlayerSuicideEvent(PlayerModelMixin, EventModel):
     player_id: str
 
     def to_log_line(self) -> LogLine:
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_player(self.get_player())
-                .to_log_line()
+            LogLineBuilder.from_event(self).set_player(self.get_player()).to_log_line()
         )
+
 
 class TeamCaptureObjectiveEvent(TeamModelMixin, EventModel):
     team_id: int
@@ -769,12 +799,12 @@ class TeamCaptureObjectiveEvent(TeamModelMixin, EventModel):
 
     def to_log_line(self) -> LogLine:
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_team(self.get_team())
-                .set_message(self.score)
-                .to_log_line()
+            LogLineBuilder.from_event(self)
+            .set_team(self.get_team())
+            .set_message(self.score)
+            .to_log_line()
         )
+
 
 class PlayerLevelUpEvent(PlayerModelMixin, EventModel):
     player_id: str
@@ -783,66 +813,66 @@ class PlayerLevelUpEvent(PlayerModelMixin, EventModel):
 
     def to_log_line(self) -> LogLine:
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_player(self.get_player())
-                .set_old_and_new(str(self.old_level), str(self.new_level))
-                .to_log_line()
+            LogLineBuilder.from_event(self)
+            .set_player(self.get_player())
+            .set_old_and_new(str(self.old_level), str(self.new_level))
+            .to_log_line()
         )
+
 
 class PlayerScoreUpdateEvent(PlayerModelMixin, EventModel):
     def to_log_line(self) -> LogLine:
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_player(self.get_player(), include_score=True)
-                .to_log_line()
+            LogLineBuilder.from_event(self)
+            .set_player(self.get_player(), include_score=True)
+            .to_log_line()
         )
+
 
 class PlayerLeaveServerEvent(PlayerModelMixin, EventModel):
     def to_log_line(self) -> LogLine:
         return (
-            LogLineBuilder
-                .from_event(self)
-                .set_player(self.get_player())
-                .to_log_line()
+            LogLineBuilder.from_event(self).set_player(self.get_player()).to_log_line()
         )
+
 
 class SquadDisbandEvent(EventModel):
     squad: Squad
 
     def to_log_line(self) -> LogLine:
-        return (
-            LogLineBuilder
-                .from_event(self)
-                .set_squad(self.squad)
-                .to_log_line()
-        )
+        return LogLineBuilder.from_event(self).set_squad(self.squad).to_log_line()
+
 
 class PrivateEventModel(EventModel):
     """A special event model that simply flags
     this event as one that should not be adopted
     by info trees."""
 
+
 class ActivationEvent(PrivateEventModel):
     pass
+
+
 class IterationEvent(PrivateEventModel):
     pass
+
+
 class DeactivationEvent(PrivateEventModel):
     pass
 
+
 #####################################
+
 
 @unique
 class EventTypes(Enum):
-
     def __str__(self):
         return self.name
 
     activation = ActivationEvent
     iteration = IterationEvent
     deactivation = DeactivationEvent
-    
+
     # In order of evaluation!
     player_join_server = PlayerJoinServerEvent
     server_map_change = ServerMapChangedEvent
@@ -873,11 +903,12 @@ class EventTypes(Enum):
             return cls[str(value)]
         except KeyError:
             return super()._missing_(value)
-    
+
     @classmethod
     def all(cls):
         """An iterator containing all events, including private ones."""
         return (cls._member_map_[name] for name in cls._member_names_)
+
     @classmethod
     def public(cls):
         """An iterator containing all events, excluding private ones."""
@@ -886,4 +917,3 @@ class EventTypes(Enum):
             for name in cls._member_names_
             if not issubclass(cls._member_map_[name].value, PrivateEventModel)
         )
-

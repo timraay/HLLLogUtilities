@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from discord.ext import tasks
-from hllrcon import HLLAuthError, HLLConnectionError, Rcon
+from hllrcon import HLLRcon, RconAuthError, RconConnectionError
 
 from lib.exceptions import AutoSessionAlreadyCreatedError, TemporaryCredentialsError
 from utils import get_autosession_logger, get_config
@@ -26,7 +26,7 @@ NUM_ITERATIONS_UNTIL_COOLDOWN_EXPIRE = 3
 NUM_ATTEMPTS_PER_ITERATION = 3
 
 
-AUTOSESSIONS: dict[int, "AutoSessionManager"] = dict()
+AUTOSESSIONS: dict[int, "AutoSessionManager"] = {}
 
 
 class AutoSessionManager:
@@ -42,17 +42,17 @@ class AutoSessionManager:
 
         if self.credentials.temporary:
             raise TemporaryCredentialsError(
-                "Credentials %s are temporary" % self.credentials.name
+                f"Credentials {self.credentials.name} are temporary"
             )
         if self.id in AUTOSESSIONS:
             raise AutoSessionAlreadyCreatedError(
-                "An auto-session with ID %s is already known" % self.id
+                f"An auto-session with ID {self.id} is already known"
             )
         assert self.id is not None
 
         self._logger = None
 
-        self.client = Rcon(
+        self.client = HLLRcon(
             host=self.credentials.address,
             port=self.credentials.port,
             password=self.credentials.password,
@@ -150,7 +150,7 @@ class AutoSessionManager:
             try:
                 await self._check_for_session_start()
 
-            except HLLAuthError:
+            except RconAuthError:
                 # If the password is incorrect there is no point in
                 # trying several times.
                 self.logger.warning(
@@ -171,7 +171,7 @@ class AutoSessionManager:
                         "Failed to receive player count, %s attempts left", 2 - i
                     )
 
-                if isinstance(exc, HLLConnectionError):
+                if isinstance(exc, RconConnectionError):
                     self.client.disconnect()
                     self.last_error = str(exc)
                 elif isinstance(exc, asyncio.TimeoutError):

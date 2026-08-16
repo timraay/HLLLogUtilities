@@ -1,63 +1,98 @@
-from hllrcon.data import Map, GameMode, Layer, Weapon, WeaponType, Faction, Team
+import contextlib
+import itertools
 
-# Nice and dirty
-Weapon.__hash__ = lambda self: hash(self.id) # type: ignore
+from hllrcon import (
+    AnyLayer,
+    AnyWeapon,
+    HLLFaction,
+    HLLGameMode,
+    HLLLayer,
+    HLLMap,
+    HLLVFaction,
+    HLLVGameMode,
+    HLLVLayer,
+    HLLVMap,
+    HLLVWeapon,
+    HLLWeapon,
+    WeaponType,
+)
+
+from lib.games import Game
+
 
 def get_map_and_mode(layer_name: str) -> tuple[str, str]:
-    map, mode = layer_name.rsplit(' ', 1)
-    map.replace(' NIGHT', '')
+    map, mode = layer_name.rsplit(" ", 1)
+    map.replace(" NIGHT", "")
 
     map_name = MAPS_BY_NAME[map].pretty_name if map in MAPS_BY_NAME else map
 
-    try:
-        game_mode_name = GameMode.by_id(mode).id.capitalize()
-    except ValueError:
+    game_mode = None
+    with contextlib.suppress(ValueError):
+        game_mode = HLLGameMode.by_id(mode)
+    with contextlib.suppress(ValueError):
+        game_mode = HLLVGameMode.by_id(mode)
+
+    if game_mode:
+        game_mode_name = game_mode.id.capitalize()
+    else:
         game_mode_name = mode.capitalize()
 
-    return (
-        map_name,
-        game_mode_name
-    )
+    return (map_name, game_mode_name)
 
-MAPS_BY_NAME = { m.name: m for m in Map.all() }
 
-def parse_layer(layer_name: str) -> Layer:
-    return Layer.by_id(layer_name, strict=False)
+MAPS_BY_NAME = {m.name: m for m in itertools.chain(HLLVMap.all(), HLLMap.all())}
 
-ALLIED_FACTIONS = set([
+
+def parse_layer(layer_name: str, game: Game | None = None) -> AnyLayer:
+    if game == Game.HLL:
+        return HLLLayer.by_id(layer_name, strict=False)
+    elif game == Game.HLLV:
+        return HLLVLayer.by_id(layer_name, strict=False)
+
+    with contextlib.suppress(ValueError):
+        return HLLLayer.by_id(layer_name)
+    with contextlib.suppress(ValueError):
+        return HLLVLayer.by_id(layer_name)
+
+    return HLLLayer.by_id(layer_name, strict=False)
+
+
+ALLIED_FACTIONS = {
     faction
-    for faction in Faction.all()
-    if faction.team is Team.ALLIES
-])
+    for faction in itertools.chain(HLLVFaction.all(), HLLFaction.all())
+    if faction.is_allied
+}
 
-AXIS_FACTIONS = set([
+AXIS_FACTIONS = {
     faction
-    for faction in Faction.all()
-    if faction.team is Team.AXIS
-])
+    for faction in itertools.chain(HLLVFaction.all(), HLLFaction.all())
+    if faction.is_axis
+}
+
 
 BASIC_CATEGORIES_ALLIES = {
     weapon: weapon.type.value
-    for weapon in Weapon.all()
+    for weapon in itertools.chain(HLLVWeapon.all(), HLLWeapon.all())
     if weapon.factions.issubset(ALLIED_FACTIONS)
 }
 
 BASIC_CATEGORIES_AXIS = {
     weapon: weapon.type.value
-    for weapon in Weapon.all()
+    for weapon in itertools.chain(HLLVWeapon.all(), HLLWeapon.all())
     if weapon.factions.issubset(AXIS_FACTIONS)
 }
 
 BASIC_CATEGORIES_SHARED = {
     weapon: weapon.type.value
-    for weapon in Weapon.all()
-    if not weapon.factions.issubset(ALLIED_FACTIONS) and not weapon.factions.issubset(AXIS_FACTIONS)
+    for weapon in itertools.chain(HLLVWeapon.all(), HLLWeapon.all())
+    if not weapon.factions.issubset(ALLIED_FACTIONS)
+    and not weapon.factions.issubset(AXIS_FACTIONS)
 }
 
 BASIC_CATEGORIES = {
     **BASIC_CATEGORIES_ALLIES,
     **BASIC_CATEGORIES_AXIS,
-    **BASIC_CATEGORIES_SHARED
+    **BASIC_CATEGORIES_SHARED,
 }
 
 _NORMALIZED_CATEGORIES = {
@@ -71,21 +106,21 @@ _NORMALIZED_CATEGORIES = {
     WeaponType.AT_MINE: "AT Mine",
     WeaponType.AP_MINE: "AP Mine",
     WeaponType.FLAMETHROWER: "Flamethrower",
-    WeaponType.FLARE_GUN: "Flare Gun",
+    WeaponType.RECON_FLARE: "Flare Gun",
 }
 
-VEHICLES: dict[Weapon, str] = {}
-VEHICLES_ALLIES: dict[Weapon, str] = {}
-VEHICLES_AXIS: dict[Weapon, str] = {}
-VEHICLE_WEAPONS: dict[Weapon, str] = {}
-VEHICLE_WEAPONS_FACTIONLESS: dict[Weapon, str] = {}
-VEHICLE_CLASSES: dict[Weapon, str] = {}
-for weapon in Weapon.all():
+VEHICLES: dict[AnyWeapon, str] = {}
+VEHICLES_ALLIES: dict[AnyWeapon, str] = {}
+VEHICLES_AXIS: dict[AnyWeapon, str] = {}
+VEHICLE_WEAPONS: dict[AnyWeapon, str] = {}
+VEHICLE_WEAPONS_FACTIONLESS: dict[AnyWeapon, str] = {}
+VEHICLE_CLASSES: dict[AnyWeapon, str] = {}
+for weapon in itertools.chain(HLLVWeapon.all(), HLLWeapon.all()):
     vehicle = weapon.vehicle
     if not vehicle:
         continue
 
-    for faction in Faction.all():
+    for faction in itertools.chain(HLLVFaction.all(), HLLFaction.all()):
         if faction in weapon.factions:
             break
     else:
@@ -104,11 +139,10 @@ for weapon in Weapon.all():
 
     VEHICLE_CLASSES[weapon] = vehicle.type.value
 
-FACTIONLESS: dict[Weapon, str] = {}
-for weapon in Weapon.all():
+FACTIONLESS: dict[AnyWeapon, str] = {}
+for weapon in itertools.chain(HLLVWeapon.all(), HLLWeapon.all()):
     if weapon not in _NORMALIZED_CATEGORIES:
         continue
 
     weapon_name = _NORMALIZED_CATEGORIES[weapon.type]
     FACTIONLESS[weapon] = weapon_name
-    
