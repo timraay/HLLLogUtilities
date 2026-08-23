@@ -21,8 +21,11 @@ from lib.games import Game
 
 
 def get_map_and_mode(layer_name: str) -> tuple[str, str]:
-    map, mode = layer_name.rsplit(" ", 1)
-    map.replace(" NIGHT", "")
+    if " " in layer_name:
+        map, mode = layer_name.rsplit(" ", 1)
+        map.replace(" NIGHT", "")
+    else:
+        map, mode = layer_name, "Warfare"
 
     map_name = MAPS_BY_NAME[map].pretty_name if map in MAPS_BY_NAME else map
 

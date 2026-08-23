@@ -262,7 +262,7 @@ class HLLRcon:
                 ServerMatchStartedEvent(
                     snapshot=self._snapshot,
                     event_time=entry.timestamp,
-                    map_name=entry.map_name,
+                    map_name=f"{entry.map_name} {entry.game_mode_id}",
                 )
             )
 
